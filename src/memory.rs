@@ -47,9 +47,9 @@ impl MemoryStatus {
         const MB: u64 = 1024 * 1024;
 
         if bytes >= GB {
-            format!("{:.1} GB", bytes as f64 / GB as f64)
+            format!("{:.2} GB", bytes as f64 / GB as f64)
         } else {
-            format!("{:.0} MB", bytes as f64 / MB as f64)
+            format!("{:.2} MB", bytes as f64 / MB as f64)
         }
     }
 }
