@@ -1,12 +1,40 @@
 use anyhow::{Context, Result};
 use windows::Win32::System::SystemInformation::{GlobalMemoryStatusEx, MEMORYSTATUSEX};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct MemorySection {
-    pub header: String,
-    pub used_label: String,
-    pub free_label: String,
+    pub title: String,
+    pub total: u64,
+    pub used: u64,
+    pub avail: u64,
     pub used_percent: f32,
+}
+
+impl MemorySection {
+    pub fn header(&self) -> String {
+        format!("{} ({})", self.title, MemoryStatus::format_bytes(self.total))
+    }
+
+    pub fn usage_summary(&self) -> String {
+        if self.total == 0 {
+            return "—".into();
+        }
+        format!(
+            "已用 {} · 可用 {}",
+            MemoryStatus::format_bytes(self.used),
+            MemoryStatus::format_bytes(self.avail),
+        )
+    }
+
+    pub fn unavailable(title: &str) -> Self {
+        Self {
+            title: title.into(),
+            total: 0,
+            used: 0,
+            avail: 0,
+            used_percent: 0.0,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]

@@ -16,18 +16,17 @@ use crate::memory::MemorySection;
 const RING_ANIM_DURATION: Duration = Duration::from_millis(450);
 const OUTER_RADIUS: f32 = 55.;
 const INNER_RADIUS: f32 = 35.;
-const SLICE_PAD_ANGLE: f32 = 0.02;
 
 #[derive(Clone, Copy)]
-struct RingColors {
+struct RingTheme {
     chart_1: Hsla,
     chart_2: Hsla,
     warning: Hsla,
     danger: Hsla,
 }
 
-impl RingColors {
-    fn from_theme(theme: &gpui_component::Theme) -> Self {
+impl RingTheme {
+    fn new(theme: &gpui_component::Theme) -> Self {
         Self {
             chart_1: theme.chart_1,
             chart_2: theme.chart_2,
@@ -42,54 +41,25 @@ struct RingAnimState {
     target: Cell<f32>,
 }
 
-impl RingAnimState {
-    fn new(value: f32) -> Self {
-        Self {
-            value,
-            target: Cell::new(value),
-        }
-    }
-
-    fn target(&self) -> f32 {
-        self.target.get()
-    }
-
-    fn set_target(&self, value: f32) {
-        self.target.set(value);
-    }
-}
-
-fn usage_color(percent: f32, colors: RingColors) -> Hsla {
+fn usage_color(percent: f32, theme: RingTheme) -> Hsla {
     if percent >= 90.0 {
-        colors.danger
+        theme.danger
     } else if percent >= 70.0 {
-        colors.warning
+        theme.warning
     } else {
-        colors.chart_2
+        theme.chart_2
     }
 }
 
-struct DonutPrepaint {
-    used_percent: f32,
-    used_color: Hsla,
-    free_color: Hsla,
-    bounds: Bounds<Pixels>,
-}
-
-fn render_donut_canvas(used_percent: f32, colors: RingColors) -> impl IntoElement {
+fn render_donut(used_percent: f32, theme: RingTheme) -> impl IntoElement {
     let used_percent = used_percent.clamp(0.0, 100.0);
-    let used_color = usage_color(used_percent, colors);
-    let free_color = colors.chart_1;
+    let used_color = usage_color(used_percent, theme);
+    let free_color = theme.chart_1;
+    let used_angle = (used_percent / 100.0) * TAU;
 
     canvas(
-        move |bounds: Bounds<Pixels>, _window: &mut Window, _cx: &mut App| DonutPrepaint {
-            used_percent,
-            used_color,
-            free_color,
-            bounds,
-        },
-        move |_bounds, prepaint, window: &mut Window, _cx: &mut App| {
-            let used_angle = (prepaint.used_percent / 100.0) * TAU;
+        move |bounds, _, _| (used_percent, used_color, free_color, used_angle, bounds),
+        move |_, (used_percent, used_color, free_color, used_angle, bounds), window, _| {
             let arc = Arc::new()
                 .inner_radius(INNER_RADIUS)
                 .outer_radius(OUTER_RADIUS);
@@ -103,27 +73,27 @@ fn render_donut_canvas(used_percent: f32, colors: RingColors) -> impl IntoElemen
                     end_angle: TAU,
                     pad_angle: 0.,
                 },
-                prepaint.free_color,
+                free_color,
                 None,
                 None,
-                &prepaint.bounds,
+                &bounds,
                 window,
             );
 
-            if prepaint.used_percent > 0.01 {
+            if used_percent > 0.01 {
                 arc.paint(
                     &ArcData {
                         data: &(),
                         index: 1,
-                        value: prepaint.used_percent,
+                        value: used_percent,
                         start_angle: 0.,
-                        end_angle: used_angle.max(SLICE_PAD_ANGLE),
-                        pad_angle: SLICE_PAD_ANGLE,
+                        end_angle: used_angle.max(0.02),
+                        pad_angle: 0.02,
                     },
-                    prepaint.used_color,
+                    used_color,
                     None,
                     None,
-                    &prepaint.bounds,
+                    &bounds,
                     window,
                 );
             }
@@ -133,9 +103,7 @@ fn render_donut_canvas(used_percent: f32, colors: RingColors) -> impl IntoElemen
     .size_full()
 }
 
-fn render_ring(used_percent: f32, colors: RingColors) -> impl IntoElement {
-    let percent_text = format!("{}%", used_percent.round() as u32);
-
+fn render_ring(used_percent: f32, theme: RingTheme) -> impl IntoElement {
     div()
         .relative()
         .w(px(110.))
@@ -151,22 +119,26 @@ fn render_ring(used_percent: f32, colors: RingColors) -> impl IntoElement {
                 .items_center()
                 .justify_center()
                 .child(
-                    Label::new(percent_text)
+                    Label::new(format!("{}%", used_percent.round() as u32))
                         .text_lg()
                         .font_weight(FontWeight::BOLD),
                 ),
         )
-        .child(render_donut_canvas(used_percent, colors))
+        .child(render_donut(used_percent, theme))
 }
 
-fn schedule_ring_sync(state: Entity<RingAnimState>, cx: &mut Context<MemoryCleanerApp>) {
-    cx.spawn(async move |_, async_cx| {
-        Timer::after(RING_ANIM_DURATION).await;
-        _ = state.update(async_cx, |this, _| {
-            this.value = this.target();
-        });
-    })
-    .detach();
+fn render_animated_ring(id: &'static str, from: f32, to: f32, theme: RingTheme) -> AnyElement {
+    div()
+        .id(id)
+        .with_animation(
+            format!("{id}-ring-anim"),
+            Animation::new(RING_ANIM_DURATION).with_easing(ease_in_out_cubic),
+            move |this, delta| {
+                let percent = from + (to - from) * delta;
+                this.child(render_ring(percent, theme))
+            },
+        )
+        .into_any_element()
 }
 
 pub fn render_memory_card(
@@ -176,19 +148,26 @@ pub fn render_memory_card(
     window: &mut Window,
     cx: &mut Context<MemoryCleanerApp>,
 ) -> impl IntoElement {
-    let colors = RingColors::from_theme(cx.theme());
-    let target_percent = section.used_percent.clamp(0.0, 100.0);
+    let ring_theme = RingTheme::new(cx.theme());
+    let target = section.used_percent.clamp(0.0, 100.0);
 
-    let state = window.use_keyed_state(id, cx, |_, _| RingAnimState::new(target_percent));
+    let state = window.use_keyed_state(id, cx, |_, _| RingAnimState {
+        value: target,
+        target: Cell::new(target),
+    });
     let current = state.read(cx).value;
-    let anim_target = state.read(cx).target();
 
-    if (anim_target - target_percent).abs() > 0.01 {
-        state.read(cx).set_target(target_percent);
-        schedule_ring_sync(state.clone(), cx);
+    if (state.read(cx).target.get() - target).abs() > 0.01 {
+        state.read(cx).target.set(target);
+        let anim_state = state.clone();
+        cx.spawn(async move |_, async_cx| {
+            Timer::after(RING_ANIM_DURATION).await;
+            _ = anim_state.update(async_cx, |this, _| {
+                this.value = this.target.get();
+            });
+        })
+        .detach();
     }
-
-    let needs_animation = (current - target_percent).abs() > 0.01;
 
     let icon = if is_physical {
         IconName::Cpu
@@ -196,24 +175,14 @@ pub fn render_memory_card(
         IconName::HardDrive
     };
 
-    let ring = if needs_animation {
-        let from = current;
-        let to = state.read(cx).target();
-
-        div()
-            .id(id)
-            .with_animation(
-                format!("{id}-ring-anim"),
-                Animation::new(RING_ANIM_DURATION).with_easing(ease_in_out_cubic),
-                move |this, delta| {
-                    let animated = from + (to - from) * delta;
-                    this.child(render_ring(animated, colors))
-                },
-            )
-            .into_any_element()
+    let ring = if (current - target).abs() > 0.01 {
+        render_animated_ring(id, current, state.read(cx).target.get(), ring_theme)
     } else {
-        render_ring(target_percent, colors).into_any_element()
+        render_ring(target, ring_theme).into_any_element()
     };
+
+    let summary = section.usage_summary();
+    let muted = cx.theme().foreground.opacity(0.82);
 
     v_flex()
         .w_full()
@@ -225,25 +194,15 @@ pub fn render_memory_card(
                 .gap_1()
                 .child(Icon::new(icon).small())
                 .child(
-                    Label::new(section.header.clone())
+                    Label::new(section.header())
                         .text_sm()
                         .font_weight(FontWeight::SEMIBOLD),
                 ),
         )
         .child(ring)
         .child(
-            h_flex()
-                .w_full()
-                .justify_between()
-                .child(
-                    Label::new(section.used_label.clone())
-                        .text_xs()
-                        .text_color(cx.theme().foreground.opacity(0.82)),
-                )
-                .child(
-                    Label::new(section.free_label.clone())
-                        .text_xs()
-                        .text_color(cx.theme().foreground.opacity(0.82)),
-                ),
+            Label::new(summary)
+                .text_xs()
+                .text_color(muted),
         )
 }

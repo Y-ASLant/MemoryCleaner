@@ -33,19 +33,11 @@ fn build_section(
     used_percent: u32,
     title: &str,
 ) -> MemorySection {
-    let free_percent = 100u32.saturating_sub(used_percent);
     MemorySection {
-        header: format!("{} ({})", title, MemoryStatus::format_bytes(total)),
-        used_label: format!(
-            "使用中 | {} ({}%)",
-            MemoryStatus::format_bytes(used),
-            used_percent
-        ),
-        free_label: format!(
-            "可用 | {} ({}%)",
-            MemoryStatus::format_bytes(avail),
-            free_percent
-        ),
+        title: title.into(),
+        total,
+        used,
+        avail,
         used_percent: used_percent as f32,
     }
 }
@@ -100,15 +92,7 @@ impl MemoryCleanerApp {
         let settings = Settings::load();
         let (physical, virtual_mem) = query_sections(settings.show_virtual_memory).unwrap_or_else(|e| {
             crate::log_msg(&format!("[memory] initial query failed: {e}"));
-            (
-                MemorySection {
-                    header: "物理内存".into(),
-                    used_label: "—".into(),
-                    free_label: "—".into(),
-                    used_percent: 0.0,
-                },
-                None,
-            )
+            (MemorySection::unavailable("物理内存"), None)
         });
         let window_handle = window.window_handle();
 
@@ -151,15 +135,8 @@ impl MemoryCleanerApp {
         else {
             return false;
         };
-        let phys_changed = self.physical.used_percent.to_bits() != physical.used_percent.to_bits()
-            || self.physical.header != physical.header
-            || self.physical.used_label != physical.used_label
-            || self.physical.free_label != physical.free_label;
-        let virt_changed = self.virtual_mem.as_ref().map(|v| {
-            (v.used_percent.to_bits(), &v.header, &v.used_label, &v.free_label)
-        }) != virtual_mem.as_ref().map(|v| {
-            (v.used_percent.to_bits(), &v.header, &v.used_label, &v.free_label)
-        });
+        let phys_changed = self.physical != physical;
+        let virt_changed = self.virtual_mem != virtual_mem;
 
         if phys_changed {
             self.physical = physical;
