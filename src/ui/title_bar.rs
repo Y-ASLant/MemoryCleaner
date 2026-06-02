@@ -1,0 +1,155 @@
+use gpui::*;
+use gpui::prelude::FluentBuilder;
+use gpui_component::{
+    h_flex, label::Label, ActiveTheme, Icon, IconName, Sizable, TITLE_BAR_HEIGHT,
+};
+
+use crate::app::MemoryCleanerApp;
+
+const APP_NAME: &str = "Memory Cleaner";
+const TITLE_BAR_LEFT_PADDING: Pixels = px(12.);
+
+struct TitleBarDragState {
+    should_move: bool,
+}
+
+fn title_bar_control(
+    id: &'static str,
+    icon: IconName,
+    area: WindowControlArea,
+    cx: &App,
+    is_close: bool,
+) -> impl IntoElement {
+    let hover_fg = if is_close {
+        cx.theme().danger_foreground
+    } else {
+        cx.theme().secondary_foreground
+    };
+    let hover_bg = if is_close {
+        cx.theme().danger
+    } else {
+        cx.theme().secondary_hover
+    };
+    let active_bg = if is_close {
+        cx.theme().danger_active
+    } else {
+        cx.theme().secondary_active
+    };
+
+    div()
+        .id(id)
+        .flex()
+        .w(TITLE_BAR_HEIGHT)
+        .h_full()
+        .flex_shrink_0()
+        .justify_center()
+        .content_center()
+        .items_center()
+        .text_color(cx.theme().foreground)
+        .hover(|style| style.bg(hover_bg).text_color(hover_fg))
+        .active(|style| style.bg(active_bg).text_color(hover_fg))
+        .when(cfg!(target_os = "windows"), |this| this.window_control_area(area))
+        .when(cfg!(target_os = "linux"), |this| {
+            this.on_click(move |_, window, cx| {
+                cx.stop_propagation();
+                match area {
+                    WindowControlArea::Min => window.minimize_window(),
+                    WindowControlArea::Close => window.remove_window(),
+                    _ => {}
+                }
+            })
+        })
+        .child(Icon::new(icon).small())
+}
+
+fn window_controls(cx: &App) -> impl IntoElement {
+    h_flex()
+        .id("window-controls")
+        .items_center()
+        .flex_shrink_0()
+        .h_full()
+        .child(title_bar_control(
+            "minimize",
+            IconName::WindowMinimize,
+            WindowControlArea::Min,
+            cx,
+            false,
+        ))
+        .child(title_bar_control(
+            "close",
+            IconName::WindowClose,
+            WindowControlArea::Close,
+            cx,
+            true,
+        ))
+}
+
+pub fn render_title_bar(
+    _this: &MemoryCleanerApp,
+    window: &mut Window,
+    cx: &mut Context<MemoryCleanerApp>,
+) -> impl IntoElement {
+    let state = window.use_state(cx, |_, _| TitleBarDragState { should_move: false });
+    let theme = cx.theme();
+    let show_custom_controls = !(cfg!(target_os = "macos") || cfg!(target_family = "wasm"));
+
+    div()
+        .flex_shrink_0()
+        .child(
+            div()
+                .id("title-bar")
+                .flex()
+                .flex_row()
+                .items_center()
+                .justify_between()
+                .h(TITLE_BAR_HEIGHT)
+                .pl(TITLE_BAR_LEFT_PADDING)
+                .border_b_1()
+                .border_color(theme.title_bar_border)
+                .bg(theme.title_bar)
+                .on_mouse_down_out(window.listener_for(&state, |state, _, _, _| {
+                    state.should_move = false;
+                }))
+                .on_mouse_down(
+                    MouseButton::Left,
+                    window.listener_for(&state, |state, _, _, _| {
+                        state.should_move = true;
+                    }),
+                )
+                .on_mouse_up(
+                    MouseButton::Left,
+                    window.listener_for(&state, |state, _, _, _| {
+                        state.should_move = false;
+                    }),
+                )
+                .on_mouse_move(window.listener_for(&state, |state, _, window, _| {
+                    if state.should_move {
+                        state.should_move = false;
+                        window.start_window_move();
+                    }
+                }))
+                .child(
+                    h_flex()
+                        .id("bar")
+                        .h_full()
+                        .justify_between()
+                        .flex_shrink_0()
+                        .flex_1()
+                        .window_control_area(WindowControlArea::Drag)
+                        .child(
+                            h_flex()
+                                .h_full()
+                                .items_center()
+                                .gap_2()
+                                .child(Icon::new(IconName::MemoryStick).small())
+                                .child(
+                                    Label::new(APP_NAME)
+                                        .text_sm()
+                                        .font_weight(FontWeight::SEMIBOLD)
+                                        .text_color(theme.foreground),
+                                ),
+                        ),
+                )
+                .when(show_custom_controls, |this| this.child(window_controls(cx))),
+        )
+}

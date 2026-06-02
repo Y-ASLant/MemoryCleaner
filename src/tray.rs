@@ -1,0 +1,95 @@
+use tray_icon::menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem};
+use tray_icon::{Icon, TrayIcon, TrayIconBuilder};
+
+pub struct Tray {
+    _icon: TrayIcon,
+}
+
+impl Tray {
+    pub fn install() -> Result<Self, Box<dyn std::error::Error>> {
+        let menu = Menu::new();
+        menu.append(&MenuItem::with_id("optimize", "优化内存", true, None))?;
+        menu.append(&MenuItem::with_id("show", "显示窗口", true, None))?;
+        menu.append(&MenuItem::with_id("hide", "隐藏窗口", true, None))?;
+        menu.append(&PredefinedMenuItem::separator())?;
+        menu.append(&MenuItem::with_id("quit", "退出", true, None))?;
+
+        let icon = load_app_icon().unwrap_or_else(|_| create_fallback_icon());
+        let tray_icon = TrayIconBuilder::new()
+            .with_menu(Box::new(menu))
+            .with_menu_on_left_click(false)
+            .with_tooltip("内存清理工具")
+            .with_icon(icon)
+            .build()?;
+
+        Ok(Self { _icon: tray_icon })
+    }
+}
+
+/// Load the application icon from the embedded PNG, resize to 32×32 for
+/// the system tray, and convert to raw RGBA for `tray_icon::Icon`.
+fn load_app_icon() -> Result<Icon, Box<dyn std::error::Error>> {
+    let png_data = include_bytes!("../App.png");
+    let img = image::load_from_memory(png_data)?;
+    let img = img
+        .resize(32, 32, image::imageops::FilterType::Lanczos3)
+        .to_rgba8();
+    let (width, height) = img.dimensions();
+    Icon::from_rgba(img.into_raw(), width, height).map_err(Into::into)
+}
+
+/// Fallback icon used when the embedded PNG cannot be decoded – a simple
+/// green circle so the tray is at least visible even if something went
+/// wrong with the asset pipeline.
+fn create_fallback_icon() -> Icon {
+    let width = 16u32;
+    let height = 16u32;
+    let mut rgba = vec![0u8; (width * height * 4) as usize];
+
+    for y in 0..height {
+        for x in 0..width {
+            let idx = ((y * width + x) * 4) as usize;
+            let dx = x as f32 - 7.5;
+            let dy = y as f32 - 7.5;
+            let dist = (dx * dx + dy * dy).sqrt();
+            if dist < 7.0 {
+                rgba[idx] = 39;
+                rgba[idx + 1] = 174;
+                rgba[idx + 2] = 96;
+                rgba[idx + 3] = 255;
+            }
+        }
+    }
+
+    Icon::from_rgba(rgba, width, height)
+        .unwrap_or_else(|_| Icon::from_rgba(vec![0, 0, 0, 0], 1, 1).unwrap_or_else(|_| {
+            panic!("tray_icon::Icon::from_rgba rejected a 1x1 transparent buffer")
+        }))
+}
+
+pub fn poll_menu_events() -> Option<String> {
+    MenuEvent::receiver()
+        .try_recv()
+        .ok()
+        .map(|event| event.id().0.clone())
+}
+
+pub fn poll_tray_click() -> bool {
+    use tray_icon::{MouseButton, MouseButtonState, TrayIconEvent};
+
+    let receiver = TrayIconEvent::receiver();
+    let mut clicked = false;
+    while let Ok(event) = receiver.try_recv() {
+        if matches!(
+            event,
+            TrayIconEvent::Click {
+                button: MouseButton::Left,
+                button_state: MouseButtonState::Up,
+                ..
+            }
+        ) {
+            clicked = true;
+        }
+    }
+    clicked
+}

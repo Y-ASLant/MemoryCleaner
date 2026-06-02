@@ -1,0 +1,46 @@
+[package]
+name = "memory-cleanr"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.96"
+description = "Memory Cleaner - GPUI GUI"
+
+[[bin]]
+name = "memory-cleanr"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+bitflags = "2"
+gpui = { git = "https://github.com/zed-industries/zed" }
+gpui_platform = { git = "https://github.com/zed-industries/zed", features = ["font-kit"] }
+gpui-component = { git = "https://github.com/longbridge/gpui-component", rev = "9ad30e631e15f9bbba049717767bf4cd98e4f179" }
+gpui-component-assets = { git = "https://github.com/longbridge/gpui-component", rev = "9ad30e631e15f9bbba049717767bf4cd98e4f179" }
+serde = { version = "1", features = ["derive"] }
+smol = "2"
+raw-window-handle = "0.6"
+tray-icon = { version = "0.24", default-features = false }
+image = { version = "0.25", default-features = false, features = ["png"] }
+toml = { version = "1", default-features = false, features = ["parse", "display", "serde"] }
+windows = { version = "0.62", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_System_Memory",
+    "Win32_System_SystemInformation",
+    "Win32_System_Registry",
+    "Win32_System_Threading",
+    "Win32_System_IO",
+    "Win32_Storage_FileSystem",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_UI_Shell",
+] }
+
+[profile.release]
+strip = true
+lto = true
+opt-level = "z"
+codegen-units = 1
+panic = "abort"
+
+[build-dependencies]
+winres = "0.1"
