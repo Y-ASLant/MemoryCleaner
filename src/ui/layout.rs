@@ -1,6 +1,8 @@
 //! Shared layout metrics for window sizing and spacing.
 
 pub const SECTION_GAP: f32 = 6.;
+pub const DIALOG_PADDING_TOP: f32 = 16.;
+pub const DIALOG_PADDING_HORIZONTAL: f32 = 16.;
 pub const TITLE_BAR_H: f32 = 34.;
 pub const CLEANUP_BUTTON_H: f32 = 48.;
 

@@ -322,6 +322,7 @@ impl MemoryCleanerApp {
     }
 
     pub fn open_window_behavior_dialog(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        use crate::ui::layout::{DIALOG_PADDING_HORIZONTAL, DIALOG_PADDING_TOP};
         use crate::ui::settings_page::render_window_behavior_dialog;
 
         let weak = cx.weak_entity();
@@ -330,7 +331,10 @@ impl MemoryCleanerApp {
             dialog
                 .title("窗口行为")
                 .w(px(400.))
-                .p(px(CONTENT_PADDING))
+                .pt(px(DIALOG_PADDING_TOP))
+                .pb(px(CONTENT_PADDING))
+                .pl(px(DIALOG_PADDING_HORIZONTAL))
+                .pr(px(DIALOG_PADDING_HORIZONTAL))
                 .overlay_closable(true)
                 .content({
                     let weak = weak.clone();
