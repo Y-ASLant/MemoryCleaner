@@ -3,9 +3,9 @@ use gpui::Window;
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use windows::Win32::Foundation::HWND;
 use windows::Win32::UI::WindowsAndMessaging::{
-    GetWindowLongPtrW, IsIconic, SetWindowLongPtrW, SetWindowPos, ShowWindow, GWL_EXSTYLE,
-    GWL_STYLE, HWND_NOTOPMOST, HWND_TOPMOST, SHOW_WINDOW_CMD, SWP_FRAMECHANGED, SWP_NOACTIVATE,
-    SWP_NOMOVE, SWP_NOSIZE, SW_HIDE, SW_RESTORE, SW_SHOW, WS_EX_APPWINDOW, WS_EX_TOOLWINDOW,
+    GWL_EXSTYLE, GWL_STYLE, GetWindowLongPtrW, HWND_NOTOPMOST, HWND_TOPMOST, IsIconic,
+    SHOW_WINDOW_CMD, SW_HIDE, SW_RESTORE, SW_SHOW, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE,
+    SWP_NOSIZE, SetWindowLongPtrW, SetWindowPos, ShowWindow, WS_EX_APPWINDOW, WS_EX_TOOLWINDOW,
     WS_MAXIMIZEBOX,
 };
 
@@ -48,7 +48,9 @@ fn hwnd_from_window(window: &Window) -> Result<HWND> {
 /// Hide the window and remove it from the taskbar (tray-only visibility).
 pub fn hide_to_tray(window: &Window) -> Result<()> {
     let hwnd = hwnd_from_window(window)?;
-    apply_extended_style(hwnd, |style| (style | WS_EX_TOOLWINDOW.0) & !WS_EX_APPWINDOW.0)?;
+    apply_extended_style(hwnd, |style| {
+        (style | WS_EX_TOOLWINDOW.0) & !WS_EX_APPWINDOW.0
+    })?;
     show_window(hwnd, SW_HIDE)?;
     Ok(())
 }
@@ -58,7 +60,9 @@ pub fn hide_to_tray(window: &Window) -> Result<()> {
 /// rather than leaving it minimized.
 pub fn show_from_tray(window: &Window) -> Result<()> {
     let hwnd = hwnd_from_window(window)?;
-    apply_extended_style(hwnd, |style| (style & !WS_EX_TOOLWINDOW.0) | WS_EX_APPWINDOW.0)?;
+    apply_extended_style(hwnd, |style| {
+        (style & !WS_EX_TOOLWINDOW.0) | WS_EX_APPWINDOW.0
+    })?;
     let cmd = unsafe {
         if IsIconic(hwnd).as_bool() {
             SW_RESTORE

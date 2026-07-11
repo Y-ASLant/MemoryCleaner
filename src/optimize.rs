@@ -1,17 +1,17 @@
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use windows::Win32::Foundation::CloseHandle;
 use windows::Win32::Foundation::{GENERIC_READ, GENERIC_WRITE};
 use windows::Win32::Storage::FileSystem::{
     CreateFileW, FILE_ATTRIBUTE_NORMAL, FILE_FLAG_NO_BUFFERING, FILE_SHARE_READ, FILE_SHARE_WRITE,
     OPEN_EXISTING,
 };
-use windows::Win32::System::Memory::SetSystemFileCacheSize;
 use windows::Win32::System::IO::DeviceIoControl;
+use windows::Win32::System::Memory::SetSystemFileCacheSize;
 
 use crate::privileges::enable_privilege;
 use crate::win32::nt::{
-    nt_set_system_information, InfoClass, MemoryCombineInformationEx, SystemFileCacheInformation64,
-    SystemMemoryListCommand,
+    InfoClass, MemoryCombineInformationEx, SystemFileCacheInformation64, SystemMemoryListCommand,
+    nt_set_system_information,
 };
 
 type OptimizeFn = fn() -> Result<()>;
@@ -107,11 +107,7 @@ pub fn step_plan(areas: MemoryAreas) -> Result<StepPlan> {
         .collect())
 }
 
-fn purge_memory_list(
-    command: SystemMemoryListCommand,
-    privilege: &str,
-    what: &str,
-) -> Result<()> {
+fn purge_memory_list(command: SystemMemoryListCommand, privilege: &str, what: &str) -> Result<()> {
     enable_privilege(privilege).with_context(|| format!("{what} requires {privilege}"))?;
     nt_set_system_information(
         InfoClass::MemoryList,
@@ -180,11 +176,7 @@ fn optimize_standby_list(low_priority: bool) -> Result<()> {
     } else {
         SystemMemoryListCommand::PurgeStandbyList
     };
-    purge_memory_list(
-        command,
-        "SeProfileSingleProcessPrivilege",
-        "Standby List",
-    )
+    purge_memory_list(command, "SeProfileSingleProcessPrivilege", "Standby List")
 }
 
 fn optimize_combined_page_list() -> Result<()> {
@@ -292,11 +284,16 @@ fn optimize_modified_file_cache() -> Result<()> {
 
 fn optimize_registry_cache() -> Result<()> {
     use windows::Win32::System::Registry::{
-        RegFlushKey, HKEY_CLASSES_ROOT, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, HKEY_USERS,
+        HKEY_CLASSES_ROOT, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, HKEY_USERS, RegFlushKey,
     };
 
     unsafe {
-        let keys = [HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, HKEY_CLASSES_ROOT, HKEY_USERS];
+        let keys = [
+            HKEY_CURRENT_USER,
+            HKEY_LOCAL_MACHINE,
+            HKEY_CLASSES_ROOT,
+            HKEY_USERS,
+        ];
         for key in keys {
             let _ = RegFlushKey(key);
         }

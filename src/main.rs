@@ -7,6 +7,7 @@ mod privileges;
 mod settings;
 mod tray;
 mod ui;
+mod version;
 mod win32;
 
 use gpui::{actions, *};

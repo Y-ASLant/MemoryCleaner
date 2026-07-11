@@ -28,14 +28,9 @@ pub fn memory_section_height() -> f32 {
 }
 
 pub fn cleanup_section_height(content_padding: f32) -> f32 {
-    let cleanup_areas =
-        HINT_H + SECTION_GAP + CHECKBOX_ROW_H * CLEANUP_ROWS + CLEANUP_ROW_GAPS;
+    let cleanup_areas = HINT_H + SECTION_GAP + CHECKBOX_ROW_H * CLEANUP_ROWS + CLEANUP_ROW_GAPS;
 
-    PANEL_BORDER
-        + content_padding * 2.
-        + SECTION_TITLE_H
-        + SECTION_GAP
-        + cleanup_areas
+    PANEL_BORDER + content_padding * 2. + SECTION_TITLE_H + SECTION_GAP + cleanup_areas
 }
 
 pub fn expanded_window_height(content_padding: f32) -> f32 {

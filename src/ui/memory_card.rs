@@ -1,12 +1,13 @@
 use std::f32::consts::TAU;
 
-use gpui::{canvas, Animation, AnimationExt, *};
+use gpui::{Animation, AnimationExt, canvas, *};
 use gpui_component::{
+    ActiveTheme, Icon, IconName, Sizable,
     animation::ease_in_out_cubic,
     h_flex,
     label::Label,
     plot::shape::{Arc, ArcData},
-    v_flex, ActiveTheme, Icon, IconName, Sizable,
+    v_flex,
 };
 
 use crate::memory::MemorySection;
@@ -225,13 +226,9 @@ pub fn render_memory_card(
                 ),
         )
         .child(ring)
-        .child(
-            Label::new(summary)
-                .text_xs()
-                .text_color(if unavailable {
-                    cx.theme().warning
-                } else {
-                    muted
-                }),
-        )
+        .child(Label::new(summary).text_xs().text_color(if unavailable {
+            cx.theme().warning
+        } else {
+            muted
+        }))
 }

@@ -2,7 +2,6 @@ use std::time::Duration;
 
 use anyhow::Result;
 use gpui::*;
-use gpui_component::v_flex;
 use gpui_component::ActiveTheme;
 use gpui_component::WindowExt;
 use smol::Timer;
@@ -12,7 +11,7 @@ use crate::optimize::{self, MemoryAreas};
 use crate::settings::Settings;
 use crate::tray::{poll_menu_events, poll_tray_click};
 use crate::ui::layout::SECTION_GAP;
-use crate::ui::memory_card::{RingAnim, RING_ANIM_DURATION_MS};
+use crate::ui::memory_card::{RING_ANIM_DURATION_MS, RingAnim};
 use crate::win32;
 
 pub const TRAY_POLL: Duration = Duration::from_millis(200);
@@ -331,16 +330,12 @@ impl MemoryCleanerApp {
             dialog
                 .title("窗口行为")
                 .w(px(400.))
+                .p(px(CONTENT_PADDING))
                 .overlay_closable(true)
                 .content({
                     let weak = weak.clone();
                     move |content, _window, cx| {
-                        content.child(
-                            v_flex()
-                                .w_full()
-                                .p(px(CONTENT_PADDING))
-                                .child(render_window_behavior_dialog(weak.clone(), cx)),
-                        )
+                        content.child(render_window_behavior_dialog(weak.clone(), cx))
                     }
                 })
         });
@@ -458,11 +453,7 @@ impl MemoryCleanerApp {
                     format!("清理完成 · {freed_detail}")
                 }
             }
-            (false, false) => format!(
-                "完成 {} 项，失败：{}",
-                completed.len(),
-                errors.join("、")
-            ),
+            (false, false) => format!("完成 {} 项，失败：{}", completed.len(), errors.join("、")),
         }
     }
 
@@ -525,8 +516,11 @@ impl MemoryCleanerApp {
             let sub_base = drive_index as f32 / drive_total as f32;
 
             let _ = this.update(cx, |app, cx| {
-                app.optimize_step =
-                    format!("正在清理 {name} ({drive}:) [{}/{}]...", drive_index + 1, drive_total);
+                app.optimize_step = format!(
+                    "正在清理 {name} ({drive}:) [{}/{}]...",
+                    drive_index + 1,
+                    drive_total
+                );
                 app.optimize_percent = (step_base + sub_base * step_span) * 100.0;
                 cx.notify();
             });
@@ -698,41 +692,50 @@ impl Render for MemoryCleanerApp {
                 .into_any_element()
         };
 
-        div().relative().w_full().h_full().overflow_hidden().child(
-            v_flex()
-                .w_full()
-                .h_full()
-                .overflow_hidden()
-                .bg(bg)
-                .child(render_title_bar(self, window, cx))
-                .child(
-                    v_flex()
-                        .w_full()
-                        .flex_1()
-                        .min_h_0()
-                        .overflow_hidden()
-                        .child(
-                            v_flex()
-                                .w_full()
-                                .flex_1()
-                                .min_h_0()
-                                .px(px(CONTENT_PADDING))
-                                .pt(px(CONTENT_PADDING))
-                                .gap(px(SECTION_GAP))
-                                .child(memory_row)
-                                .child(render_settings_content(self, cx)),
-                        )
-                        .child(
-                            div()
-                                .w_full()
-                                .flex_shrink_0()
-                                .px(px(CONTENT_PADDING))
-                                .pb(px(CONTENT_PADDING))
-                                .pt(px(SECTION_GAP))
-                                .child(render_cleanup_footer(self, cx)),
-                        ),
-                ),
-        )
-        .children(gpui_component::Root::render_dialog_layer(window, cx))
+        div()
+            .relative()
+            .w_full()
+            .h_full()
+            .overflow_hidden()
+            .child(
+                v_flex()
+                    .w_full()
+                    .h_full()
+                    .overflow_hidden()
+                    .bg(bg)
+                    .child(render_title_bar(self, window, cx))
+                    .child(
+                        v_flex()
+                            .w_full()
+                            .flex_1()
+                            .min_h_0()
+                            .overflow_hidden()
+                            .child({
+                                let mut body = v_flex()
+                                    .w_full()
+                                    .px(px(CONTENT_PADDING))
+                                    .pt(px(CONTENT_PADDING))
+                                    .gap(px(SECTION_GAP))
+                                    .child(memory_row)
+                                    .child(render_settings_content(self, cx));
+                                if self.settings_expanded {
+                                    body = body.flex_shrink_0();
+                                } else {
+                                    body = body.flex_1().min_h_0();
+                                }
+                                body
+                            })
+                            .child(
+                                div()
+                                    .w_full()
+                                    .flex_shrink_0()
+                                    .px(px(CONTENT_PADDING))
+                                    .pb(px(CONTENT_PADDING))
+                                    .pt(px(SECTION_GAP))
+                                    .child(render_cleanup_footer(self, cx)),
+                            ),
+                    ),
+            )
+            .children(gpui_component::Root::render_dialog_layer(window, cx))
     }
 }

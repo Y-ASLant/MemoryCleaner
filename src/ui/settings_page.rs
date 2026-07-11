@@ -1,5 +1,6 @@
 use gpui::*;
 use gpui_component::{
+    ActiveTheme, Disableable, Icon, IconName, Sizable,
     button::{Button, ButtonVariants},
     checkbox::Checkbox,
     h_flex,
@@ -7,12 +8,11 @@ use gpui_component::{
     progress::ProgressCircle,
     switch::Switch,
     v_flex,
-    ActiveTheme, Disableable, Icon, IconName, Sizable,
 };
 
-use crate::app::{MemoryCleanerApp, CONTENT_PADDING};
-use crate::ui::layout::{CLEANUP_BUTTON_H, SECTION_GAP};
+use crate::app::{CONTENT_PADDING, MemoryCleanerApp};
 use crate::optimize::MemoryAreas;
+use crate::ui::layout::{CLEANUP_BUTTON_H, SECTION_GAP};
 
 const ROW_GAP: f32 = 6.;
 const BUTTON_STATUS_TRUNCATE_CHARS: usize = 24;
@@ -155,21 +155,29 @@ fn switch_row_app(
                                 .font_weight(FontWeight::MEDIUM)
                                 .text_color(foreground),
                         )
-                        .child(
-                            Label::new(config.description)
-                                .text_xs()
-                                .text_color(muted),
-                        ),
+                        .child(Label::new(config.description).text_xs().text_color(muted)),
                 ),
         )
         .child(
-            div()
-                .flex_shrink_0()
-                .child(
-                    Switch::new(config.id)
-                        .checked(config.checked)
-                        .on_click(on_click),
-                ),
+            div().flex_shrink_0().child(
+                Switch::new(config.id)
+                    .checked(config.checked)
+                    .on_click(on_click),
+            ),
+        )
+}
+
+fn render_version_row(muted: Hsla, foreground: Hsla) -> impl IntoElement {
+    h_flex()
+        .w_full()
+        .justify_between()
+        .items_center()
+        .child(Label::new("软件版本").text_xs().text_color(muted))
+        .child(
+            Label::new(format!("v{}", crate::version::VERSION))
+                .text_xs()
+                .font_weight(FontWeight::MEDIUM)
+                .text_color(foreground),
         )
 }
 
@@ -177,10 +185,19 @@ pub fn render_window_behavior_dialog(
     weak: WeakEntity<MemoryCleanerApp>,
     cx: &App,
 ) -> impl IntoElement {
-    let app = weak.upgrade().expect("MemoryCleanerApp entity should exist");
-    let settings = app.read(cx).settings.clone();
     let muted = cx.theme().muted_foreground;
     let foreground = cx.theme().foreground;
+
+    let Some(app) = weak.upgrade() else {
+        return v_flex().w_full().child(
+            div()
+                .w_full()
+                .pt(px(4.))
+                .child(render_version_row(muted, foreground)),
+        );
+    };
+
+    let settings = app.read(cx).settings.clone();
 
     v_flex()
         .w_full()
@@ -242,6 +259,15 @@ pub fn render_window_behavior_dialog(
                 }
             },
         ))
+        .child(
+            div()
+                .w_full()
+                .mt(px(SECTION_GAP))
+                .pt(px(SECTION_GAP))
+                .border_t_1()
+                .border_color(muted.opacity(0.25))
+                .child(render_version_row(muted, foreground)),
+        )
 }
 
 fn truncate_chars(text: &str, max_chars: usize) -> String {

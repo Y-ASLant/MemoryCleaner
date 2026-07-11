@@ -1,6 +1,12 @@
-.PHONY: build clean
+.PHONY: build check clean fmt
 
-build:
+fmt:
+	cargo fmt --all
+
+check:
+	cargo clippy --release -- -D warnings
+
+build: check
 	cargo build --release
 
 clean:

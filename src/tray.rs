@@ -61,10 +61,11 @@ fn create_fallback_icon() -> Icon {
         }
     }
 
-    Icon::from_rgba(rgba, width, height)
-        .unwrap_or_else(|_| Icon::from_rgba(vec![0, 0, 0, 0], 1, 1).unwrap_or_else(|_| {
+    Icon::from_rgba(rgba, width, height).unwrap_or_else(|_| {
+        Icon::from_rgba(vec![0, 0, 0, 0], 1, 1).unwrap_or_else(|_| {
             panic!("tray_icon::Icon::from_rgba rejected a 1x1 transparent buffer")
-        }))
+        })
+    })
 }
 
 pub fn poll_menu_events() -> Option<String> {

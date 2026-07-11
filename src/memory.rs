@@ -12,7 +12,11 @@ pub struct MemorySection {
 
 impl MemorySection {
     pub fn header(&self) -> String {
-        format!("{} ({})", self.title, MemoryStatus::format_bytes(self.total))
+        format!(
+            "{} ({})",
+            self.title,
+            MemoryStatus::format_bytes(self.total)
+        )
     }
 
     pub fn usage_summary(&self) -> String {

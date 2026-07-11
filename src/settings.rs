@@ -63,10 +63,7 @@ impl Settings {
             Ok(content) => match toml::from_str(&content) {
                 Ok(settings) => settings,
                 Err(e) => {
-                    crate::log_msg(&format!(
-                        "Failed to parse {}: {e}",
-                        path.display()
-                    ));
+                    crate::log_msg(&format!("Failed to parse {}: {e}", path.display()));
                     Self::default()
                 }
             },
