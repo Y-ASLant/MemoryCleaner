@@ -3,7 +3,13 @@ name = "memory-cleanr"
 version = "1.0.0"
 edition = "2024"
 rust-version = "1.96"
-description = "Memory Cleaner - GPUI GUI"
+description = "Memory Cleaner"
+
+[package.metadata.winres]
+OriginalFilename = "MemoryCleanr.exe"
+FileDescription = "Memory Cleaner"
+ProductName = "Memory Cleaner"
+InternalName = "MemoryCleanr"
 
 [[bin]]
 name = "MemoryCleanr"
@@ -31,6 +37,7 @@ windows = { version = "0.62", features = [
     "Win32_System_Threading",
     "Win32_System_IO",
     "Win32_Storage_FileSystem",
+    "Win32_System_Diagnostics_ToolHelp",
     "Win32_UI_WindowsAndMessaging",
 ] }
 

@@ -35,7 +35,7 @@ fn apply_extended_style(hwnd: HWND, update: impl FnOnce(u32) -> u32) -> Result<(
     Ok(())
 }
 
-fn hwnd_from_window(window: &Window) -> Result<HWND> {
+pub(crate) fn hwnd_from_window(window: &Window) -> Result<HWND> {
     let handle = HasWindowHandle::window_handle(window)
         .map_err(|e| anyhow::anyhow!("window handle unavailable: {e}"))?;
     let RawWindowHandle::Win32(win32) = handle.as_raw() else {

@@ -1,6 +1,7 @@
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed=App.ico");
+    println!("cargo:rerun-if-changed=Cargo.toml");
 
     let mut res = winres::WindowsResource::new();
     res.set_icon("App.ico");

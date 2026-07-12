@@ -4,8 +4,7 @@ use gpui_component::{
 };
 
 use crate::app::MemoryCleanerApp;
-
-const APP_NAME: &str = "Memory Cleaner";
+use crate::version::APP_NAME;
 const TITLE_BAR_LEFT_PADDING: Pixels = px(12.);
 
 struct TitleBarDragState {

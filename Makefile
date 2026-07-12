@@ -11,8 +11,4 @@ build: check
 
 clean:
 	cargo clean
-	-@if [ "$(OS)" = "Windows_NT" ]; then \
-		if [ -d dist ]; then rm -rf dist; fi; \
-	else \
-		rm -rf dist; \
-	fi
+	-if exist dist rmdir /s /q dist

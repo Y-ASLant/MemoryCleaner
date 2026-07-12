@@ -13,11 +13,15 @@ mod win32;
 use gpui::{actions, *};
 use gpui_component::{Root, Theme, ThemeMode, TitleBar};
 
+use crate::version::APP_NAME;
 use app::MemoryCleanerApp;
 use settings::Settings;
 use tray::Tray;
 
 actions!(wmc_gpui, [Quit]);
+
+/// Passed to the elevated instance so it does not re-trigger UAC.
+const ELEVATED_ARG: &str = "--elevated";
 
 /// Write a diagnostic message to the Windows debug stream (viewable via
 /// DebugView) and, when stderr is attached, also to stderr. Used instead of
@@ -42,6 +46,10 @@ pub fn log_msg(msg: &str) {
 /// manifest via Cargo feature unification).
 fn ensure_elevated() {
     use std::os::windows::ffi::OsStrExt;
+
+    if std::env::args().any(|arg| arg == ELEVATED_ARG) {
+        return;
+    }
 
     use windows::Win32::Foundation::{CloseHandle, HANDLE};
     use windows::Win32::Security::{
@@ -82,16 +90,25 @@ fn ensure_elevated() {
         let exe = std::env::current_exe().expect("cannot determine exe path");
         let path: Vec<u16> = exe.as_os_str().encode_wide().chain(Some(0)).collect();
         let verb: Vec<u16> = "runas".encode_utf16().chain(Some(0)).collect();
+        let params: Vec<u16> = ELEVATED_ARG.encode_utf16().chain(Some(0)).collect();
 
         let h = ShellExecuteW(
             0,
             verb.as_ptr(),
             path.as_ptr(),
-            std::ptr::null(),
+            params.as_ptr(),
             std::ptr::null(),
             1,
         );
-        if h > 32 {
+        // ShellExecute may return > 32 even when the user later cancels UAC.
+        // Wait for the elevated child before exiting; otherwise continue unelevated.
+        if h as usize > 32
+            && win32::process::wait_for_elevated_relaunch(
+                std::process::id(),
+                concat!(env!("CARGO_BIN_NAME"), ".exe"),
+                10_000,
+            )
+        {
             std::process::exit(0);
         }
         // User cancelled UAC — continue without admin; some cleanup areas will fail.
@@ -130,6 +147,8 @@ fn main() {
 
         cx.spawn(async move |cx| {
             cx.open_window(window_options, |window, cx| {
+                window.set_window_title(APP_NAME);
+
                 let settings = Settings::load();
                 let start_minimized = settings.start_minimized;
                 let app_entity = cx.new(|cx| {
@@ -146,7 +165,6 @@ fn main() {
                     let _ = weak.update(cx, |app, _| app.settings.save());
                     cx.quit();
                 });
-                window.set_window_title("Memory Cleaner");
                 let _ = win32::window::remove_maximize_button(window);
                 Theme::change(ThemeMode::Light, Some(window), cx);
                 cx.new(|cx| Root::new(app_entity, window, cx))
