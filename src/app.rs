@@ -118,10 +118,11 @@ impl MemoryCleanerApp {
 
         let weak = cx.weak_entity();
         window.on_window_should_close(cx, move |window, app| {
-            weak.update(app, |this, _| {
+            weak.update(app, |this, cx| {
                 if this.settings.close_to_notification_area {
                     this.settings.save();
                     let _ = win32::window::hide_to_tray(window);
+                    this.sync_tray(cx);
                     false
                 } else {
                     this.settings.save();
@@ -151,8 +152,22 @@ impl MemoryCleanerApp {
         };
 
         app.start_background_tasks(cx, tray_rx);
+        app.sync_tray(cx);
 
         app
+    }
+
+    fn sync_tray(&self, cx: &mut Context<Self>) {
+        let physical = self.physical.clone();
+        let virtual_mem = self
+            .settings
+            .show_virtual_memory
+            .then(|| self.virtual_mem.clone())
+            .flatten();
+        let _ = self.window.update(cx, |_, window, _| {
+            let visible = win32::window::is_visible(window).unwrap_or(true);
+            crate::tray::sync_display(&physical, virtual_mem.as_ref(), visible);
+        });
     }
 
     fn queue_settings_save(&mut self, cx: &mut Context<Self>) {
@@ -210,12 +225,14 @@ impl MemoryCleanerApp {
             let _ = win32::window::show_from_tray(window);
             window.activate_window();
         });
+        self.sync_tray(cx);
     }
 
     pub fn hide_to_tray(&self, cx: &mut Context<Self>) {
         let _ = self.window.update(cx, |_, window, _| {
             let _ = win32::window::hide_to_tray(window);
         });
+        self.sync_tray(cx);
     }
 
     pub fn set_memory_area(&mut self, area: MemoryAreas, enabled: bool, cx: &mut Context<Self>) {
@@ -313,8 +330,18 @@ impl MemoryCleanerApp {
     pub fn handle_tray_action(&mut self, action: &str, cx: &mut Context<Self>) {
         match action {
             "optimize" => self.run_optimize(cx),
-            "show" => self.activate_window(cx),
-            "hide" => self.hide_to_tray(cx),
+            "toggle_window" => {
+                let visible = self
+                    .window
+                    .update(cx, |_, window, _| win32::window::is_visible(window))
+                    .flatten()
+                    .unwrap_or(true);
+                if visible {
+                    self.hide_to_tray(cx);
+                } else {
+                    self.activate_window(cx);
+                }
+            }
             "quit" => {
                 self.settings.save();
                 cx.quit();
@@ -347,6 +374,7 @@ impl MemoryCleanerApp {
                         if this.refresh_memory(cx) {
                             changed = true;
                         }
+                        this.sync_tray(cx);
                         if changed {
                             cx.notify();
                         }

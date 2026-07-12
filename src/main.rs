@@ -125,17 +125,11 @@ fn main() {
         std::process::exit(0);
     }
 
-    let tray_rx = match Tray::install() {
-        Ok((tray, rx)) => {
-            let _ = Box::leak(Box::new(tray));
-            rx
-        }
-        Err(e) => {
-            log_msg(&format!("Failed to install tray icon: {e}"));
-            let (_tx, rx) = std::sync::mpsc::channel();
-            rx
-        }
-    };
+    let tray_rx = Tray::install().unwrap_or_else(|e| {
+        log_msg(&format!("Failed to install tray icon: {e}"));
+        let (_tx, rx) = std::sync::mpsc::channel();
+        rx
+    });
 
     let app = gpui_platform::application().with_assets(gpui_component_assets::Assets);
 

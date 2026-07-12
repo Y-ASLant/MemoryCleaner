@@ -1,11 +1,17 @@
+use std::sync::atomic::{AtomicPtr, Ordering};
 use std::sync::mpsc::{Receiver, Sender};
+
 use tray_icon::menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem};
 use tray_icon::{Icon, MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
 
 use crate::app::MemoryCleanerApp;
+use crate::memory::MemorySection;
+
+static TRAY: AtomicPtr<Tray> = AtomicPtr::new(std::ptr::null_mut());
 
 pub struct Tray {
-    _icon: TrayIcon,
+    icon: TrayIcon,
+    toggle_window: MenuItem,
 }
 
 #[derive(Debug, Clone)]
@@ -15,27 +21,82 @@ pub enum TrayCommand {
 }
 
 impl Tray {
-    pub fn install() -> Result<(Self, Receiver<TrayCommand>), Box<dyn std::error::Error>> {
+    pub fn install() -> Result<Receiver<TrayCommand>, Box<dyn std::error::Error>> {
         let (tx, rx) = std::sync::mpsc::channel();
         install_event_handlers(tx);
 
+        let toggle_window = MenuItem::with_id("toggle_window", "隐藏窗口", true, None);
         let menu = Menu::new();
         menu.append(&MenuItem::with_id("optimize", "优化内存", true, None))?;
-        menu.append(&MenuItem::with_id("show", "显示窗口", true, None))?;
-        menu.append(&MenuItem::with_id("hide", "隐藏窗口", true, None))?;
+        menu.append(&toggle_window)?;
         menu.append(&PredefinedMenuItem::separator())?;
-        menu.append(&MenuItem::with_id("quit", "退出", true, None))?;
+        menu.append(&MenuItem::with_id("quit", "退出程序", true, None))?;
 
         let icon = load_app_icon().unwrap_or_else(|_| create_fallback_icon());
         let tray_icon = TrayIconBuilder::new()
             .with_menu(Box::new(menu))
             .with_menu_on_left_click(false)
-            .with_tooltip("内存清理工具")
+            .with_tooltip("物理内存: —")
             .with_icon(icon)
             .build()?;
 
-        Ok((Self { _icon: tray_icon }, rx))
+        let tray = Box::new(Self {
+            icon: tray_icon,
+            toggle_window,
+        });
+        let leaked = Box::leak(tray);
+        TRAY.store(leaked, Ordering::Release);
+
+        Ok(rx)
     }
+}
+
+fn tray() -> Option<&'static Tray> {
+    let ptr = TRAY.load(Ordering::Acquire);
+    if ptr.is_null() {
+        None
+    } else {
+        // SAFETY: `TRAY` is set once during install and the value is leaked for process lifetime.
+        Some(unsafe { &*ptr })
+    }
+}
+
+pub fn sync_display(
+    physical: &MemorySection,
+    virtual_mem: Option<&MemorySection>,
+    window_visible: bool,
+) {
+    let Some(tray) = tray() else {
+        return;
+    };
+
+    let _ = tray
+        .icon
+        .set_tooltip(Some(memory_tooltip(physical, virtual_mem)));
+    tray.toggle_window.set_text(if window_visible {
+        "隐藏窗口"
+    } else {
+        "显示窗口"
+    });
+}
+
+fn memory_tooltip(physical: &MemorySection, virtual_mem: Option<&MemorySection>) -> String {
+    let physical_pct = if physical.is_unavailable() {
+        "—".into()
+    } else {
+        format!("{}%", physical.used_percent.round() as u32)
+    };
+
+    let mut lines = vec![format!("物理内存: {physical_pct}")];
+    if let Some(virtual_mem) = virtual_mem {
+        let virtual_pct = if virtual_mem.is_unavailable() {
+            "—".into()
+        } else {
+            format!("{}%", virtual_mem.used_percent.round() as u32)
+        };
+        lines.push(format!("虚拟内存: {virtual_pct}"));
+    }
+    lines.join("\n")
 }
 
 fn install_event_handlers(tx: Sender<TrayCommand>) {
