@@ -12,10 +12,13 @@ const MEMORY_HEADER_H: f32 = 20.;
 const MEMORY_LINE_GAP: f32 = 4.;
 const MEMORY_SUMMARY_H: f32 = 16.;
 const SECTION_TITLE_H: f32 = 20.;
-const HINT_H: f32 = 26.;
-const CHECKBOX_ROW_H: f32 = 28.;
+const HINT_H: f32 = 25.;
+const CHECKBOX_ROW_H: f32 = 25.;
 const CLEANUP_ROWS: f32 = 4.;
 const CLEANUP_ROW_GAPS: f32 = SECTION_GAP * 3.;
+/// Checkbox/hint rows render slightly taller than the sizing constants above;
+/// keep expanded window from clipping the footer's 6px bottom padding.
+const EXPANDED_FOOTER_PADDING_GUARD: f32 = 2.;
 
 pub fn memory_section_height() -> f32 {
     use crate::ui::memory_card::{MEMORY_CARD_PY, MEMORY_RING_SIZE};
@@ -44,4 +47,5 @@ pub fn expanded_window_height(content_padding: f32) -> f32 {
         + SECTION_GAP
         + CLEANUP_BUTTON_H
         + content_padding
+        + EXPANDED_FOOTER_PADDING_GUARD
 }

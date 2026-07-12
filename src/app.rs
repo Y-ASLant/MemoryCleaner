@@ -724,12 +724,14 @@ impl Render for MemoryCleanerApp {
                     .overflow_hidden()
                     .bg(bg)
                     .child(render_title_bar(self, window, cx))
-                    .child(
-                        v_flex()
-                            .w_full()
-                            .flex_1()
-                            .min_h_0()
-                            .overflow_hidden()
+                    .child({
+                        let mut main_column = v_flex().w_full().min_h_0().overflow_hidden();
+                        if self.settings_expanded {
+                            main_column = main_column.flex_shrink_0();
+                        } else {
+                            main_column = main_column.flex_1();
+                        }
+                        main_column
                             .child({
                                 let mut body = v_flex()
                                     .w_full()
@@ -753,8 +755,8 @@ impl Render for MemoryCleanerApp {
                                     .pb(px(CONTENT_PADDING))
                                     .pt(px(SECTION_GAP))
                                     .child(render_cleanup_footer(self, cx)),
-                            ),
-                    ),
+                            )
+                    }),
             )
             .children(gpui_component::Root::render_dialog_layer(window, cx))
     }
