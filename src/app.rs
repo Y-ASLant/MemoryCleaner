@@ -11,7 +11,6 @@ use crate::optimize::{self, MemoryAreas};
 use crate::settings::Settings;
 use crate::tray::{TrayCommand, dispatch_command};
 use crate::ui::layout::SECTION_GAP;
-use crate::ui::memory_card::{RING_ANIM_DURATION_MS, RingAnim};
 use crate::win32;
 
 const MEMORY_POLL_INTERVAL: Duration = Duration::from_secs(5);
@@ -93,10 +92,6 @@ pub struct MemoryCleanerApp {
     pub settings: Settings,
     pub physical: MemorySection,
     pub virtual_mem: Option<MemorySection>,
-    pub physical_ring: RingAnim,
-    pub virtual_ring: RingAnim,
-    physical_ring_gen: u32,
-    virtual_ring_gen: u32,
     settings_save_gen: u32,
     pub is_optimizing: bool,
     pub optimize_step: String,
@@ -134,12 +129,6 @@ impl MemoryCleanerApp {
         });
         let window_handle = window.window_handle();
 
-        let physical_ring = RingAnim::new(physical.used_percent);
-        let virtual_ring = virtual_mem
-            .as_ref()
-            .map(|v| RingAnim::new(v.used_percent))
-            .unwrap_or_default();
-
         let weak = cx.weak_entity();
         window.on_window_should_close(cx, move |window, app| {
             weak.update(app, |this, _| {
@@ -164,10 +153,6 @@ impl MemoryCleanerApp {
             settings,
             physical,
             virtual_mem,
-            physical_ring,
-            virtual_ring,
-            physical_ring_gen: 0,
-            virtual_ring_gen: 0,
             settings_save_gen: 0,
             is_optimizing: false,
             optimize_step: String::new(),
@@ -196,74 +181,7 @@ impl MemoryCleanerApp {
         .detach();
     }
 
-    fn schedule_ring_sync(
-        &mut self,
-        which: RingKind,
-        generation: u32,
-        target: f32,
-        cx: &mut Context<Self>,
-    ) {
-        cx.spawn(async move |this, cx| {
-            Timer::after(Duration::from_millis(RING_ANIM_DURATION_MS)).await;
-            let _ = this.update(cx, |app, cx| {
-                let (active_gen, ring) = match which {
-                    RingKind::Physical => (&mut app.physical_ring_gen, &mut app.physical_ring),
-                    RingKind::Virtual => (&mut app.virtual_ring_gen, &mut app.virtual_ring),
-                };
-                if *active_gen != generation {
-                    return;
-                }
-                ring.from = target;
-                cx.notify();
-            });
-        })
-        .detach();
-    }
-
-    fn update_ring_target(
-        &mut self,
-        which: RingKind,
-        new_target: f32,
-        cx: &mut Context<Self>,
-    ) -> bool {
-        let target = new_target.clamp(0.0, 100.0);
-        let ring = match which {
-            RingKind::Physical => &mut self.physical_ring,
-            RingKind::Virtual => &mut self.virtual_ring,
-        };
-
-        if (ring.to - target).abs() <= 0.01 {
-            return false;
-        }
-
-        ring.from = ring.to;
-        ring.to = target;
-
-        let generation = match which {
-            RingKind::Physical => {
-                self.physical_ring_gen = self.physical_ring_gen.wrapping_add(1);
-                self.physical_ring_gen
-            }
-            RingKind::Virtual => {
-                self.virtual_ring_gen = self.virtual_ring_gen.wrapping_add(1);
-                self.virtual_ring_gen
-            }
-        };
-
-        self.schedule_ring_sync(which, generation, target, cx);
-        true
-    }
-
-    fn sync_ring_targets(&mut self, cx: &mut Context<Self>) -> bool {
-        let mut changed = false;
-        changed |= self.update_ring_target(RingKind::Physical, self.physical.used_percent, cx);
-        if let Some(virt) = self.virtual_mem.as_ref() {
-            changed |= self.update_ring_target(RingKind::Virtual, virt.used_percent, cx);
-        }
-        changed
-    }
-
-    pub fn refresh_memory(&mut self, cx: &mut Context<Self>) -> bool {
+    pub fn refresh_memory(&mut self, _cx: &mut Context<Self>) -> bool {
         let show_virtual = self.settings.show_virtual_memory;
         let Ok((physical, virtual_mem)) = query_sections(show_virtual) else {
             let degraded = if self.physical.is_unavailable()
@@ -277,7 +195,6 @@ impl MemoryCleanerApp {
                 } else {
                     None
                 };
-                self.sync_ring_targets(cx);
                 true
             };
             return degraded;
@@ -296,7 +213,6 @@ impl MemoryCleanerApp {
             return false;
         }
 
-        self.sync_ring_targets(cx);
         true
     }
 
@@ -629,12 +545,6 @@ impl MemoryCleanerApp {
     }
 }
 
-#[derive(Clone, Copy)]
-enum RingKind {
-    Physical,
-    Virtual,
-}
-
 impl Render for MemoryCleanerApp {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         use crate::ui::memory_card::render_memory_card;
@@ -646,8 +556,6 @@ impl Render for MemoryCleanerApp {
         };
 
         let bg = cx.theme().background;
-        let physical_ring = self.physical_ring;
-        let virtual_ring = self.virtual_ring;
         let show_virtual = self.virtual_mem.is_some();
 
         let physical_card = GroupBox::new()
@@ -662,7 +570,6 @@ impl Render for MemoryCleanerApp {
                     .py(px(crate::ui::memory_card::MEMORY_CARD_PY))
                     .child(render_memory_card(
                         &self.physical,
-                        physical_ring,
                         "physical-memory",
                         true,
                         cx,
@@ -690,7 +597,6 @@ impl Render for MemoryCleanerApp {
                                     self.virtual_mem
                                         .as_ref()
                                         .expect("virtual card requires data"),
-                                    virtual_ring,
                                     "virtual-memory",
                                     false,
                                     cx,
