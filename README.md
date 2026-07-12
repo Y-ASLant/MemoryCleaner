@@ -58,6 +58,17 @@ cargo run --release
 
 默认折叠，仅显示内存卡片与清理按钮；展开后窗口自动增高以容纳清理区域设置。窗口行为（置顶、关闭隐藏到托盘、调试日志）通过标题栏齿轮图标打开的对话框配置；点击弹窗外空白区域不会关闭对话框。
 
+### 界面截图（Windows 10 / 11 对比）
+
+实机运行对比（序号 1–4 两平台一致）：
+
+| | Windows 10（直角） | Windows 11（圆角） |
+|:--|:--|:--|
+| **1 · 折叠** | ![Win10 折叠](assets/Win10_1.png) | ![Win11 折叠](assets/Win11_1.png) |
+| **2 · 窗口行为** | ![Win10 窗口行为](assets/Win10_2.png) | ![Win11 窗口行为](assets/Win11_2.png) |
+| **3 · 展开** | ![Win10 展开](assets/Win10_3.png) | ![Win11 展开](assets/Win11_3.png) |
+| **4 · 窗口行为（展开背景）** | ![Win10 窗口行为-展开](assets/Win10_4.png) | ![Win11 窗口行为-展开](assets/Win11_4.png) |
+
 ### Windows 10 / 11 界面风格
 
 启动时通过 `RtlGetVersion` 检测系统 build 号，自动调整 gpui-component 主题圆角，无需用户配置：
@@ -124,6 +135,16 @@ cargo run --release
 ## 项目结构
 
 ```
+assets/                  # 界面截图（Win10 / Win11 对比，1–4 序号一致）
+├── Win10_1.png          # 折叠
+├── Win10_2.png          # 窗口行为对话框
+├── Win10_3.png          # 展开
+├── Win10_4.png          # 窗口行为（展开背景）
+├── Win11_1.png
+├── Win11_2.png
+├── Win11_3.png
+└── Win11_4.png
+
 src/
 ├── main.rs              # 入口：UAC 提权、单实例检查、托盘安装、GPUI 窗口初始化
 ├── app.rs               # 应用状态、内存轮询、优化流程、托盘事件
@@ -159,13 +180,6 @@ src/
 
 Windows 会按需将常用页面重新加载到内存。清理后短期内可能因缓存重建而略有延迟，但不会造成长期影响；在内存紧张时，主动清理可释放更多可用内存。
 
-**可以设置开机自启吗？**
-
-当前版本未内置。可将 `MemoryCleanr.exe` 的快捷方式放入：
-
-```
-%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup
-```
 
 **如何查看日志？**
 
