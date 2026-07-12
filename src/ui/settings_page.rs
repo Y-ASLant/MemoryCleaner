@@ -189,18 +189,22 @@ fn switch_row_app(
         )
 }
 
-fn render_version_row(muted: Hsla, foreground: Hsla) -> impl IntoElement {
-    h_flex()
-        .w_full()
-        .justify_between()
-        .items_center()
-        .child(Label::new("软件版本").text_xs().text_color(muted))
-        .child(
-            Label::new(format!("v{}", crate::version::VERSION))
-                .text_xs()
-                .font_weight(FontWeight::MEDIUM)
-                .text_color(foreground),
-        )
+fn render_version_row(cx: &App) -> impl IntoElement {
+    let link_color = cx.theme().primary;
+    let version = format!("v{}", crate::version::VERSION);
+
+    h_flex().w_full().justify_center().items_center().child(
+        div()
+            .id("version-link")
+            .cursor_pointer()
+            .on_click(|_, _, cx| cx.open_url(crate::version::REPO_URL))
+            .child(
+                Label::new(version)
+                    .text_xs()
+                    .font_weight(FontWeight::MEDIUM)
+                    .text_color(link_color),
+            ),
+    )
 }
 
 pub fn render_window_behavior_dialog(
@@ -211,12 +215,9 @@ pub fn render_window_behavior_dialog(
     let foreground = cx.theme().foreground;
 
     let Some(app) = weak.upgrade() else {
-        return v_flex().w_full().child(
-            div()
-                .w_full()
-                .pt(px(4.))
-                .child(render_version_row(muted, foreground)),
-        );
+        return v_flex()
+            .w_full()
+            .child(div().w_full().pt(px(4.)).child(render_version_row(cx)));
     };
 
     let settings = app.read(cx).settings.clone();
@@ -288,7 +289,7 @@ pub fn render_window_behavior_dialog(
                 .pt(px(SECTION_GAP))
                 .border_t_1()
                 .border_color(muted.opacity(0.25))
-                .child(render_version_row(muted, foreground)),
+                .child(render_version_row(cx)),
         )
 }
 
