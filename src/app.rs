@@ -252,20 +252,30 @@ impl MemoryCleanerApp {
     }
 
     pub fn open_window_behavior_dialog(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        use crate::ui::layout::{DIALOG_PADDING_HORIZONTAL, DIALOG_PADDING_TOP};
+        use crate::ui::layout::{
+            DIALOG_PADDING_HORIZONTAL, DIALOG_PADDING_TOP, TITLE_BAR_H,
+            WINDOW_BEHAVIOR_DIALOG_ESTIMATED_HEIGHT, WINDOW_BEHAVIOR_DIALOG_WIDTH,
+            centered_dialog_margin_top,
+        };
         use crate::ui::settings_page::render_window_behavior_dialog;
 
         let weak = cx.weak_entity();
-        window.open_dialog(cx, move |dialog, _window, _cx| {
+        window.open_dialog(cx, move |dialog, window, _cx| {
             let weak = weak.clone();
+            let margin_top = centered_dialog_margin_top(
+                window.viewport_size().height,
+                WINDOW_BEHAVIOR_DIALOG_ESTIMATED_HEIGHT,
+                TITLE_BAR_H,
+            );
             dialog
                 .title("窗口行为")
-                .w(px(400.))
+                .w(px(WINDOW_BEHAVIOR_DIALOG_WIDTH))
+                .margin_top(margin_top)
                 .pt(px(DIALOG_PADDING_TOP))
                 .pb(px(CONTENT_PADDING))
                 .pl(px(DIALOG_PADDING_HORIZONTAL))
                 .pr(px(DIALOG_PADDING_HORIZONTAL))
-                .overlay_closable(true)
+                .overlay_closable(false)
                 .content({
                     let weak = weak.clone();
                     move |content, _window, cx| {
@@ -623,42 +633,43 @@ impl Render for MemoryCleanerApp {
             .relative()
             .w_full()
             .h_full()
-            .overflow_hidden()
             .child(
-                v_flex()
-                    .w_full()
-                    .h_full()
-                    .overflow_hidden()
-                    .bg(bg)
-                    .child(render_title_bar(self, window, cx))
-                    .child({
-                        let mut body = v_flex()
-                            .w_full()
-                            .flex_shrink_0()
-                            .px(px(CONTENT_PADDING))
-                            .pt(px(CONTENT_PADDING))
-                            .child(memory_row);
-                        if self.settings_expanded {
-                            body = body
+                div().w_full().h_full().overflow_hidden().child(
+                    v_flex()
+                        .w_full()
+                        .h_full()
+                        .overflow_hidden()
+                        .bg(bg)
+                        .child(render_title_bar(self, window, cx))
+                        .child({
+                            let mut body = v_flex()
+                                .w_full()
+                                .flex_shrink_0()
+                                .px(px(CONTENT_PADDING))
+                                .pt(px(CONTENT_PADDING))
+                                .child(memory_row);
+                            if self.settings_expanded {
+                                body = body
+                                    .gap(px(SECTION_GAP))
+                                    .child(render_settings_content(self, cx));
+                            }
+                            v_flex()
+                                .w_full()
+                                .flex_shrink_0()
+                                .min_h_0()
+                                .overflow_hidden()
                                 .gap(px(SECTION_GAP))
-                                .child(render_settings_content(self, cx));
-                        }
-                        v_flex()
-                            .w_full()
-                            .flex_shrink_0()
-                            .min_h_0()
-                            .overflow_hidden()
-                            .gap(px(SECTION_GAP))
-                            .child(body)
-                            .child(
-                                div()
-                                    .w_full()
-                                    .flex_shrink_0()
-                                    .px(px(CONTENT_PADDING))
-                                    .pb(px(CONTENT_PADDING))
-                                    .child(render_cleanup_footer(self, cx)),
-                            )
-                    }),
+                                .child(body)
+                                .child(
+                                    div()
+                                        .w_full()
+                                        .flex_shrink_0()
+                                        .px(px(CONTENT_PADDING))
+                                        .pb(px(CONTENT_PADDING))
+                                        .child(render_cleanup_footer(self, cx)),
+                                )
+                        }),
+                ),
             )
             .children(gpui_component::Root::render_dialog_layer(window, cx))
     }
