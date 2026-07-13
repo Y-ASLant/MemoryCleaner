@@ -1,3 +1,5 @@
+use rust_i18n::t;
+
 use gpui::*;
 use gpui_component::{
     ActiveTheme, Disableable, Icon, IconName, Sizable, TITLE_BAR_HEIGHT,
@@ -120,9 +122,9 @@ fn expand_toggle_control(
 
 fn icon_cache_tooltip(app: &MemoryCleanerApp) -> SharedString {
     if app.is_refreshing_icon_cache {
-        "正在刷新桌面图标缓存…".into()
+        t!("icon_cache.refreshing").to_string().into()
     } else if app.icon_cache_status.is_empty() {
-        "刷新桌面图标缓存".into()
+        t!("icon_cache.tooltip").to_string().into()
     } else {
         app.icon_cache_status.clone().into()
     }
@@ -264,15 +266,18 @@ pub fn render_title_bar(
                             ),
                     ),
             )
-            .child(
-                h_flex()
+            .child({
+                let mut actions = h_flex()
                     .items_center()
                     .flex_shrink_0()
                     .h_full()
-                    .child(icon_cache_control(app, action_colors, cx))
-                    .child(window_settings_control(action_colors, cx))
+                    .child(icon_cache_control(app, action_colors, cx));
+                if app.settings_expanded {
+                    actions = actions.child(window_settings_control(action_colors, cx));
+                }
+                actions
                     .child(expand_toggle_control(app, action_colors, cx))
-                    .child(window_controls(cx)),
-            ),
+                    .child(window_controls(cx))
+            }),
     )
 }

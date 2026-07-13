@@ -1,6 +1,6 @@
-.PHONY: build check clean fmt test
+.PHONY: build check clean format test
 
-fmt:
+format:
 	cargo fmt --all
 
 check:

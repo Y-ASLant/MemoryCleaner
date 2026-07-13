@@ -1,3 +1,5 @@
+use rust_i18n::t;
+
 use std::sync::atomic::{AtomicPtr, Ordering};
 use std::sync::mpsc::{Receiver, Sender};
 
@@ -11,7 +13,9 @@ static TRAY: AtomicPtr<Tray> = AtomicPtr::new(std::ptr::null_mut());
 
 pub struct Tray {
     icon: TrayIcon,
+    optimize: MenuItem,
     toggle_window: MenuItem,
+    quit: MenuItem,
 }
 
 #[derive(Debug, Clone)]
@@ -25,24 +29,28 @@ impl Tray {
         let (tx, rx) = std::sync::mpsc::channel();
         install_event_handlers(tx);
 
-        let toggle_window = MenuItem::with_id("toggle_window", "隐藏窗口", true, None);
+        let optimize = MenuItem::with_id("optimize", t!("tray.optimize"), true, None);
+        let toggle_window = MenuItem::with_id("toggle_window", t!("tray.hide_window"), true, None);
+        let quit = MenuItem::with_id("quit", t!("tray.quit"), true, None);
         let menu = Menu::new();
-        menu.append(&MenuItem::with_id("optimize", "优化内存", true, None))?;
+        menu.append(&optimize)?;
         menu.append(&toggle_window)?;
         menu.append(&PredefinedMenuItem::separator())?;
-        menu.append(&MenuItem::with_id("quit", "退出程序", true, None))?;
+        menu.append(&quit)?;
 
         let icon = load_app_icon().unwrap_or_else(|_| create_fallback_icon());
         let tray_icon = TrayIconBuilder::new()
             .with_menu(Box::new(menu))
             .with_menu_on_left_click(false)
-            .with_tooltip("物理内存: —")
+            .with_tooltip(t!("tray.tooltip", percent = "—"))
             .with_icon(icon)
             .build()?;
 
         let tray = Box::new(Self {
             icon: tray_icon,
+            optimize,
             toggle_window,
+            quit,
         });
         let leaked = Box::leak(tray);
         TRAY.store(leaked, Ordering::Release);
@@ -65,9 +73,15 @@ pub fn format_memory_tooltip(
     physical: &MemorySection,
     virtual_mem: Option<&MemorySection>,
 ) -> String {
-    let mut lines = vec![format!("物理内存: {}", physical.percent_label())];
+    let mut lines = vec![t!("tray.tooltip", percent = physical.percent_label()).to_string()];
     if let Some(virtual_mem) = virtual_mem {
-        lines.push(format!("虚拟内存: {}", virtual_mem.percent_label()));
+        lines.push(
+            t!(
+                "tray.tooltip_virtual",
+                percent = virtual_mem.percent_label()
+            )
+            .to_string(),
+        );
     }
     lines.join("\n")
 }
@@ -84,10 +98,12 @@ pub fn sync_display(
     let _ = tray
         .icon
         .set_tooltip(Some(format_memory_tooltip(physical, virtual_mem)));
+    tray.optimize.set_text(t!("tray.optimize"));
+    tray.quit.set_text(t!("tray.quit"));
     tray.toggle_window.set_text(if window_visible {
-        "隐藏窗口"
+        t!("tray.hide_window")
     } else {
-        "显示窗口"
+        t!("tray.show_window")
     });
 }
 
@@ -170,6 +186,7 @@ pub fn dispatch_command(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::locale::with_locale;
     use crate::memory::MemorySection;
 
     fn section(title: &str, percent: f32) -> MemorySection {
@@ -183,16 +200,38 @@ mod tests {
     }
 
     #[test]
-    fn format_memory_tooltip_includes_virtual_memory_when_present() {
-        let physical = section("物理内存", 46.0);
-        let virtual_mem = section("虚拟内存", 86.0);
-        let tooltip = format_memory_tooltip(&physical, Some(&virtual_mem));
-        assert_eq!(tooltip, "物理内存: 46%\n虚拟内存: 86%");
+    fn format_memory_tooltip_includes_virtual_memory_when_present_zh() {
+        with_locale("zh-CN", || {
+            let physical = section("物理内存", 46.0);
+            let virtual_mem = section("虚拟内存", 86.0);
+            let tooltip = format_memory_tooltip(&physical, Some(&virtual_mem));
+            assert_eq!(tooltip, "物理内存: 46%\n虚拟内存: 86%");
+        });
     }
 
     #[test]
-    fn format_memory_tooltip_omits_virtual_memory_when_absent() {
-        let physical = section("物理内存", 46.0);
-        assert_eq!(format_memory_tooltip(&physical, None), "物理内存: 46%");
+    fn format_memory_tooltip_includes_virtual_memory_when_present_en() {
+        with_locale("en", || {
+            let physical = section("Physical Memory", 46.0);
+            let virtual_mem = section("Virtual Memory", 86.0);
+            let tooltip = format_memory_tooltip(&physical, Some(&virtual_mem));
+            assert_eq!(tooltip, "Physical: 46%\nVirtual: 86%");
+        });
+    }
+
+    #[test]
+    fn format_memory_tooltip_omits_virtual_memory_when_absent_zh() {
+        with_locale("zh-CN", || {
+            let physical = section("物理内存", 46.0);
+            assert_eq!(format_memory_tooltip(&physical, None), "物理内存: 46%");
+        });
+    }
+
+    #[test]
+    fn format_memory_tooltip_omits_virtual_memory_when_absent_en() {
+        with_locale("en", || {
+            let physical = section("Physical Memory", 46.0);
+            assert_eq!(format_memory_tooltip(&physical, None), "Physical: 46%");
+        });
     }
 }

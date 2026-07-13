@@ -1,3 +1,5 @@
+use rust_i18n::t;
+
 use gpui::*;
 use gpui_component::{
     ActiveTheme, Icon, IconName, Sizable, Size, h_flex, label::Label, progress::ProgressCircle,
@@ -70,7 +72,7 @@ pub fn render_memory_card(
     let ring = render_usage_ring(id, section, cx);
 
     let summary = if unavailable {
-        "无法读取内存信息".into()
+        t!("memory.unavailable").to_string()
     } else {
         section.usage_summary()
     };

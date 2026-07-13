@@ -41,6 +41,7 @@ fn settings_save_and_load_roundtrip_in_temp_config_dir() {
             close_to_notification_area: false,
             show_virtual_memory: false,
             memory_areas: MemoryAreas::WORKING_SET.bits(),
+            language: "zh-CN".into(),
             debug_logging: true,
             ..Settings::default()
         };
@@ -51,6 +52,7 @@ fn settings_save_and_load_roundtrip_in_temp_config_dir() {
         assert_eq!(loaded.close_to_notification_area, false);
         assert_eq!(loaded.show_virtual_memory, false);
         assert_eq!(loaded.memory_areas, MemoryAreas::WORKING_SET.bits());
+        assert_eq!(loaded.language, "zh-CN");
         assert_eq!(loaded.debug_logging, true);
     });
 }

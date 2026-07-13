@@ -1,3 +1,5 @@
+use rust_i18n::t;
+
 use anyhow::{Context, Result, bail};
 use windows::Win32::Foundation::CloseHandle;
 use windows::Win32::Foundation::{GENERIC_READ, GENERIC_WRITE, GetLastError};
@@ -15,7 +17,7 @@ use crate::win32::nt::{
 
 type OptimizeFn = fn() -> Result<()>;
 pub type OptimizeStepFn = OptimizeFn;
-type StepPlan = Vec<(&'static str, OptimizeFn)>;
+type StepPlan = Vec<(String, OptimizeFn)>;
 
 bitflags::bitflags! {
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -39,18 +41,24 @@ impl MemoryAreas {
         .union(Self::COMBINED_PAGE_LIST)
         .union(Self::MODIFIED_FILE_CACHE);
 
-    pub const fn label(self) -> &'static str {
+    /// Returns the i18n key for this memory area's display name.
+    pub const fn label_key(self) -> &'static str {
         match self {
-            Self::WORKING_SET => "工作集",
-            Self::SYSTEM_FILE_CACHE => "系统文件缓存",
-            Self::MODIFIED_PAGE_LIST => "已修改页面",
-            Self::STANDBY_LIST => "待机列表",
-            Self::STANDBY_LIST_LOW_PRIORITY => "待机列表(低优先级)",
-            Self::COMBINED_PAGE_LIST => "合并页面",
-            Self::MODIFIED_FILE_CACHE => "已修改文件",
-            Self::REGISTRY_CACHE => "注册表缓存",
-            _ => "未知区域",
+            Self::WORKING_SET => "area.working_set",
+            Self::SYSTEM_FILE_CACHE => "area.system_file_cache",
+            Self::MODIFIED_PAGE_LIST => "area.modified_page_list",
+            Self::STANDBY_LIST => "area.standby_list",
+            Self::STANDBY_LIST_LOW_PRIORITY => "area.standby_list_low_priority",
+            Self::COMBINED_PAGE_LIST => "area.combined_page_list",
+            Self::MODIFIED_FILE_CACHE => "area.modified_file_cache",
+            Self::REGISTRY_CACHE => "area.registry_cache",
+            _ => "area.unknown",
         }
+    }
+
+    /// Returns the localized display name for this memory area.
+    pub fn label(self) -> String {
+        t!(self.label_key()).to_string()
     }
 }
 
@@ -109,6 +117,7 @@ pub fn step_plan(areas: MemoryAreas) -> Result<StepPlan> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::locale::with_locale;
 
     #[test]
     fn step_plan_rejects_empty_selection() {
@@ -116,17 +125,39 @@ mod tests {
     }
 
     #[test]
-    fn step_plan_preserves_optimize_order() {
-        let areas = MemoryAreas::MODIFIED_FILE_CACHE | MemoryAreas::WORKING_SET;
-        let plan = step_plan(areas).expect("plan");
-        let labels: Vec<_> = plan.into_iter().map(|(label, _)| label).collect();
-        assert_eq!(labels, vec!["工作集", "已修改文件"]);
+    fn step_plan_preserves_optimize_order_zh() {
+        with_locale("zh-CN", || {
+            let areas = MemoryAreas::MODIFIED_FILE_CACHE | MemoryAreas::WORKING_SET;
+            let plan = step_plan(areas).expect("plan");
+            let labels: Vec<_> = plan.into_iter().map(|(label, _)| label).collect();
+            assert_eq!(labels, vec!["工作集", "已修改文件"]);
+        });
     }
 
     #[test]
-    fn memory_area_labels_are_stable() {
-        assert_eq!(MemoryAreas::WORKING_SET.label(), "工作集");
-        assert_eq!(MemoryAreas::REGISTRY_CACHE.label(), "注册表缓存");
+    fn step_plan_preserves_optimize_order_en() {
+        with_locale("en", || {
+            let areas = MemoryAreas::MODIFIED_FILE_CACHE | MemoryAreas::WORKING_SET;
+            let plan = step_plan(areas).expect("plan");
+            let labels: Vec<_> = plan.into_iter().map(|(label, _)| label).collect();
+            assert_eq!(labels, vec!["Working Set", "Modified File Cache"]);
+        });
+    }
+
+    #[test]
+    fn memory_area_labels_are_stable_zh() {
+        with_locale("zh-CN", || {
+            assert_eq!(MemoryAreas::WORKING_SET.label(), "工作集");
+            assert_eq!(MemoryAreas::REGISTRY_CACHE.label(), "注册表缓存");
+        });
+    }
+
+    #[test]
+    fn memory_area_labels_are_stable_en() {
+        with_locale("en", || {
+            assert_eq!(MemoryAreas::WORKING_SET.label(), "Working Set");
+            assert_eq!(MemoryAreas::REGISTRY_CACHE.label(), "Registry Cache");
+        });
     }
 }
 

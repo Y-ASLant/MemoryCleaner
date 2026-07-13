@@ -1,0 +1,187 @@
+_version: 2
+
+# Memory area labels
+area.working_set:
+  zh-CN: "工作集"
+  en: "Working Set"
+area.system_file_cache:
+  zh-CN: "系统文件缓存"
+  en: "System File Cache"
+area.modified_page_list:
+  zh-CN: "已修改页面"
+  en: "Modified Page List"
+area.standby_list:
+  zh-CN: "待机列表"
+  en: "Standby List"
+area.standby_list_low_priority:
+  zh-CN: "待机列表(低优先级)"
+  en: "Standby List (Low)"
+area.combined_page_list:
+  zh-CN: "合并页面"
+  en: "Combined Page List"
+area.modified_file_cache:
+  zh-CN: "已修改文件"
+  en: "Modified File Cache"
+area.registry_cache:
+  zh-CN: "注册表缓存"
+  en: "Registry Cache"
+area.unknown:
+  zh-CN: "未知区域"
+  en: "Unknown"
+
+# Memory sections
+memory.physical:
+  zh-CN: "物理内存"
+  en: "Physical Memory"
+memory.virtual:
+  zh-CN: "虚拟内存"
+  en: "Virtual Memory"
+
+# Tray menu
+tray.hide_window:
+  zh-CN: "隐藏窗口"
+  en: "Hide Window"
+tray.show_window:
+  zh-CN: "显示窗口"
+  en: "Show Window"
+tray.optimize:
+  zh-CN: "优化内存"
+  en: "Optimize Memory"
+tray.quit:
+  zh-CN: "退出程序"
+  en: "Quit"
+tray.tooltip:
+  zh-CN: "物理内存: %{percent}"
+  en: "Physical: %{percent}"
+tray.tooltip_virtual:
+  zh-CN: "虚拟内存: %{percent}"
+  en: "Virtual: %{percent}"
+
+# Settings / Window behavior dialog
+dialog.window_behavior:
+  zh-CN: "窗口行为"
+  en: "Window Behavior"
+settings.always_on_top:
+  zh-CN: "窗口置顶"
+  en: "Always on Top"
+settings.always_on_top_desc:
+  zh-CN: "窗口始终保持在最前面"
+  en: "Keep window always in front"
+settings.close_to_tray:
+  zh-CN: "关闭时隐藏到托盘"
+  en: "Minimize to Tray on Close"
+settings.close_to_tray_desc:
+  zh-CN: "点击关闭按钮时最小化到系统托盘"
+  en: "Minimize to system tray when closing"
+settings.debug_logging:
+  zh-CN: "调试日志"
+  en: "Debug Logging"
+settings.debug_logging_desc:
+  zh-CN: "将详细运行信息写入程序目录下的 App.log（自动清理 7 天前的记录）"
+  en: "Write detailed logs to App.log next to the executable (auto-purges entries older than 7 days)"
+settings.cleanup_areas:
+  zh-CN: "清理区域"
+  en: "Cleanup Areas"
+settings.cleanup_areas_hint:
+  zh-CN: "提示：「待机列表」与「待机列表(低优先级)」只能勾选其一"
+  en: "Tip: \"Standby List\" and \"Standby List (Low)\" are mutually exclusive"
+settings.language:
+  zh-CN: "语言"
+  en: "Language"
+settings.language_auto:
+  zh-CN: "跟随系统"
+  en: "Auto"
+settings.language_zh:
+  zh-CN: "简体中文"
+  en: "简体中文"
+settings.language_en:
+  zh-CN: "English"
+  en: "English"
+
+# Cleanup button / status
+button.cleanup:
+  zh-CN: "一键清理"
+  en: "Clean Up"
+button.cleanup_preparing:
+  zh-CN: "准备清理…"
+  en: "Preparing…"
+tooltip.select_areas:
+  zh-CN: "请先选择清理区域"
+  en: "Please select cleanup areas first"
+tooltip.start_cleanup:
+  zh-CN: "开始清理内存"
+  en: "Start memory cleanup"
+
+# Optimize progress
+optimize.step:
+  zh-CN: "正在清理 %{name}..."
+  en: "Cleaning %{name}..."
+optimize.step_with_progress:
+  zh-CN: "正在清理 %{name} (%{drive}:) [%{current}/%{total}]..."
+  en: "Cleaning %{name} (%{drive}:) [%{current}/%{total}]..."
+
+# Cleanup result messages
+cleanup.none:
+  zh-CN: "未执行清理"
+  en: "No cleanup performed"
+cleanup.failed:
+  zh-CN: "清理失败：%{errors}"
+  en: "Cleanup failed: %{errors}"
+cleanup.completed:
+  zh-CN: "清理完成（%{count} 项）"
+  en: "Completed (%{count} items)"
+cleanup.completed_detail:
+  zh-CN: "清理完成 · %{detail}"
+  en: "Completed · %{detail}"
+cleanup.partial:
+  zh-CN: "完成 %{count} 项，失败：%{errors}"
+  en: "%{count} done, failed: %{errors}"
+
+# Icon cache refresh
+icon_cache.confirm_title:
+  zh-CN: "刷新桌面图标缓存"
+  en: "Refresh Desktop Icon Cache"
+icon_cache.confirm_desc:
+  zh-CN: "将短暂结束并重启资源管理器，桌面与任务栏会闪断。是否继续？"
+  en: "Explorer will be briefly restarted. The desktop and taskbar will flash. Continue?"
+icon_cache.refreshing:
+  zh-CN: "正在刷新桌面图标缓存…"
+  en: "Refreshing desktop icon cache…"
+icon_cache.tooltip:
+  zh-CN: "刷新桌面图标缓存"
+  en: "Refresh Desktop Icon Cache"
+icon_cache.error.restart_explorer:
+  zh-CN: "刷新失败：无法重启资源管理器"
+  en: "Failed: could not restart Explorer"
+icon_cache.success:
+  zh-CN: "桌面图标缓存已刷新"
+  en: "Desktop icon cache refreshed"
+icon_cache.partial:
+  zh-CN: "已刷新，部分缓存未能清理"
+  en: "Refreshed, but some cache files could not be cleaned"
+
+# Common dialog buttons
+dialog.confirm:
+  zh-CN: "确认"
+  en: "OK"
+dialog.cancel:
+  zh-CN: "取消"
+  en: "Cancel"
+
+# Memory card
+memory.unavailable:
+  zh-CN: "无法读取内存信息"
+  en: "Unable to read memory info"
+memory.used_avail:
+  zh-CN: "已用 %{used} · 可用 %{avail}"
+  en: "Used %{used} · Available %{avail}"
+
+# Debug log messages (keep bilingual for log readability)
+log.debug_enabled:
+  zh-CN: "调试日志已启用，输出路径: %{path}"
+  en: "Debug logging enabled, output path: %{path}"
+
+# Window title
+app.title:
+  zh-CN: "Memory Cleanr"
+  en: "Memory Cleanr"

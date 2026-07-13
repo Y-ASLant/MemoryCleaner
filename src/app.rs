@@ -1,3 +1,5 @@
+use rust_i18n::t;
+
 use std::time::Duration;
 
 use anyhow::Result;
@@ -6,6 +8,7 @@ use gpui_component::ActiveTheme;
 use gpui_component::WindowExt;
 use smol::Timer;
 
+use crate::locale;
 use crate::memory::{MemorySection, MemoryStatus};
 use crate::messages::{build_cleanup_result_message, format_freed_message};
 use crate::optimize::{self, MemoryAreas};
@@ -43,7 +46,7 @@ fn query_sections(show_virtual: bool) -> Result<(MemorySection, Option<MemorySec
     let status = MemoryStatus::query()?;
 
     let physical = MemorySection {
-        title: "物理内存".into(),
+        title: t!("memory.physical").to_string(),
         total: status.total_phys,
         used: status.used_phys(),
         avail: status.avail_phys,
@@ -60,7 +63,7 @@ fn query_sections(show_virtual: bool) -> Result<(MemorySection, Option<MemorySec
             0
         };
         Some(MemorySection {
-            title: "虚拟内存".into(),
+            title: t!("memory.virtual").to_string(),
             total: status.total_page_file,
             used: virt_used,
             avail: status.avail_page_file,
@@ -84,6 +87,7 @@ pub struct MemoryCleanerApp {
     pub optimize_step: String,
     pub optimize_percent: f32,
     pub optimize_status: String,
+    pub optimize_has_errors: bool,
     pub icon_cache_status: String,
     pub settings_expanded: bool,
 }
@@ -97,9 +101,9 @@ impl MemoryCleanerApp {
     ) -> Self {
         crate::log::set_debug_enabled(settings.debug_logging);
         if settings.debug_logging {
-            crate::log::write(&format!(
-                "调试日志已启用，输出路径: {}",
-                crate::log::log_file_path().display()
+            crate::log::write(&t!(
+                "log.debug_enabled",
+                path = crate::log::log_file_path().display().to_string()
             ));
         }
 
@@ -107,9 +111,9 @@ impl MemoryCleanerApp {
         let (physical, virtual_mem) = query_sections(show_virtual).unwrap_or_else(|e| {
             crate::log_msg(&format!("[memory] initial query failed: {e}"));
             (
-                MemorySection::unavailable("物理内存"),
+                MemorySection::unavailable(&t!("memory.physical")),
                 if show_virtual {
-                    Some(MemorySection::unavailable("虚拟内存"))
+                    Some(MemorySection::unavailable(&t!("memory.virtual")))
                 } else {
                     None
                 },
@@ -148,6 +152,7 @@ impl MemoryCleanerApp {
             optimize_step: String::new(),
             optimize_percent: 0.0,
             optimize_status: String::new(),
+            optimize_has_errors: false,
             icon_cache_status: String::new(),
             settings_expanded: false,
         };
@@ -174,7 +179,16 @@ impl MemoryCleanerApp {
         crate::tray::sync_display(&self.physical, virtual_mem, self.window_visible(cx));
     }
 
-    fn queue_settings_save(&mut self, cx: &mut Context<Self>) {
+    fn set_unavailable_sections(&mut self, show_virtual: bool) {
+        self.physical = MemorySection::unavailable(&t!("memory.physical"));
+        self.virtual_mem = if show_virtual {
+            Some(MemorySection::unavailable(&t!("memory.virtual")))
+        } else {
+            None
+        };
+    }
+
+    pub(crate) fn queue_settings_save(&mut self, cx: &mut Context<Self>) {
         self.settings_save_gen = self.settings_save_gen.wrapping_add(1);
         let generation = self.settings_save_gen;
 
@@ -197,12 +211,7 @@ impl MemoryCleanerApp {
             {
                 false
             } else {
-                self.physical = MemorySection::unavailable("物理内存");
-                self.virtual_mem = if show_virtual {
-                    Some(MemorySection::unavailable("虚拟内存"))
-                } else {
-                    None
-                };
+                self.set_unavailable_sections(show_virtual);
                 true
             };
             return degraded;
@@ -237,6 +246,28 @@ impl MemoryCleanerApp {
             let _ = win32::window::hide_to_tray(window);
         });
         self.sync_tray(cx);
+    }
+
+    pub fn apply_locale(&mut self, cx: &mut Context<Self>) {
+        locale::apply(&self.settings);
+        let show_virtual = self.settings.show_virtual_memory;
+        if let Ok((physical, virtual_mem)) = query_sections(show_virtual) {
+            self.physical = physical;
+            self.virtual_mem = virtual_mem;
+        } else {
+            self.set_unavailable_sections(show_virtual);
+        }
+        if !self.is_optimizing {
+            self.optimize_status.clear();
+            self.optimize_has_errors = false;
+            self.optimize_step.clear();
+        }
+        if !self.is_refreshing_icon_cache {
+            self.icon_cache_status.clear();
+        }
+        self.sync_tray(cx);
+        self.queue_settings_save(cx);
+        cx.notify();
     }
 
     pub fn set_memory_area(&mut self, area: MemoryAreas, enabled: bool, cx: &mut Context<Self>) {
@@ -277,7 +308,7 @@ impl MemoryCleanerApp {
                 TITLE_BAR_H,
             );
             dialog
-                .title("窗口行为")
+                .title(t!("dialog.window_behavior"))
                 .w(px(WINDOW_BEHAVIOR_DIALOG_WIDTH))
                 .margin_top(margin_top)
                 .pt(px(DIALOG_PADDING_TOP))
@@ -322,9 +353,9 @@ impl MemoryCleanerApp {
         self.settings.debug_logging = enabled;
         crate::log::set_debug_enabled(enabled);
         if enabled {
-            crate::log::write(&format!(
-                "调试日志已启用，输出路径: {}",
-                crate::log::log_file_path().display()
+            crate::log::write(&t!(
+                "log.debug_enabled",
+                path = crate::log::log_file_path().display().to_string()
             ));
         }
         self.queue_settings_save(cx);
@@ -394,7 +425,7 @@ impl MemoryCleanerApp {
     async fn run_optimize_step(
         this: WeakEntity<Self>,
         cx: &mut AsyncApp,
-        name: &'static str,
+        name: String,
         run: optimize::OptimizeStepFn,
         step_index: usize,
         total_steps: usize,
@@ -403,7 +434,7 @@ impl MemoryCleanerApp {
         let step_span = 1.0 / total_steps as f32;
 
         let _ = this.update(cx, |app, cx| {
-            app.optimize_step = format!("正在清理 {name}...");
+            app.optimize_step = t!("optimize.step", name = name.clone()).to_string();
             app.optimize_percent = step_base * 100.0;
             cx.notify();
         });
@@ -413,7 +444,7 @@ impl MemoryCleanerApp {
         let result = smol::unblock(run).await;
 
         if let Err(e) = &result {
-            crate::log::write(&format!("[optimize] {name} 失败: {e:#}"));
+            crate::log::write(&format!("[optimize] {name} failed: {e:#}"));
         }
 
         let _ = this.update(cx, |app, cx| {
@@ -438,7 +469,7 @@ impl MemoryCleanerApp {
         let drives = match smol::unblock(optimize::fixed_drives).await {
             drives if drives.is_empty() => {
                 let _ = this.update(cx, |app, cx| {
-                    app.optimize_step = format!("正在清理 {name}...");
+                    app.optimize_step = t!("optimize.step", name = name.clone()).to_string();
                     app.optimize_percent = (step_base + step_span) * 100.0;
                     cx.notify();
                 });
@@ -454,11 +485,14 @@ impl MemoryCleanerApp {
             let sub_base = drive_index as f32 / drive_total as f32;
 
             let _ = this.update(cx, |app, cx| {
-                app.optimize_step = format!(
-                    "正在清理 {name} ({drive}:) [{}/{}]...",
-                    drive_index + 1,
-                    drive_total
-                );
+                app.optimize_step = t!(
+                    "optimize.step_with_progress",
+                    name = name.clone(),
+                    drive = drive.to_string(),
+                    current = (drive_index + 1).to_string(),
+                    total = drive_total.to_string()
+                )
+                .to_string();
                 app.optimize_percent = (step_base + sub_base * step_span) * 100.0;
                 cx.notify();
             });
@@ -466,7 +500,7 @@ impl MemoryCleanerApp {
             let drive_result = smol::unblock(move || optimize::optimize_drive_cache(drive)).await;
             if let Err(e) = drive_result {
                 crate::log::write(&format!(
-                    "[optimize] 已修改文件 驱动器 {drive}: 失败: {e:#}"
+                    "[optimize] modified file cache drive {drive}: failed: {e:#}"
                 ));
                 failed.push(drive);
             }
@@ -488,12 +522,12 @@ impl MemoryCleanerApp {
 
         let areas = self.settings.memory_areas();
         let Ok(steps) = optimize::step_plan(areas) else {
-            self.optimize_status = "请先选择清理区域".into();
+            self.optimize_status = t!("tooltip.select_areas").to_string();
             cx.notify();
             return;
         };
         if steps.is_empty() {
-            self.optimize_status = "请先选择清理区域".into();
+            self.optimize_status = t!("tooltip.select_areas").to_string();
             cx.notify();
             return;
         }
@@ -501,25 +535,26 @@ impl MemoryCleanerApp {
         let avail_before = self.physical.avail;
         let total = steps.len();
         self.is_optimizing = true;
-        self.optimize_step = "准备清理...".into();
+        self.optimize_step = t!("button.cleanup_preparing").to_string();
         self.optimize_percent = 0.0;
         self.optimize_status.clear();
+        self.optimize_has_errors = false;
         cx.notify();
 
         cx.spawn(async move |this, cx| {
-            let mut completed = Vec::new();
-            let mut errors = Vec::new();
+            let mut completed: Vec<String> = Vec::new();
+            let mut errors: Vec<String> = Vec::new();
 
             for (index, (name, run)) in steps.into_iter().enumerate() {
                 let ok = if name == MemoryAreas::MODIFIED_FILE_CACHE.label() {
                     Self::run_modified_file_cache_step(this.clone(), cx, index, total).await
                 } else {
-                    Self::run_optimize_step(this.clone(), cx, name, run, index, total).await
+                    Self::run_optimize_step(this.clone(), cx, name.clone(), run, index, total).await
                 };
 
                 if ok {
-                    completed.push(name);
-                    crate::log::write(&format!("[optimize] {name} 成功"));
+                    completed.push(name.clone());
+                    crate::log::write(&format!("[optimize] {name} succeeded"));
                 } else {
                     errors.push(name);
                 }
@@ -532,9 +567,12 @@ impl MemoryCleanerApp {
                 app.optimize_step.clear();
                 app.is_optimizing = false;
                 app.optimize_percent = 0.0;
+                let completed_refs: Vec<&str> = completed.iter().map(|s| s.as_str()).collect();
+                let errors_refs: Vec<&str> = errors.iter().map(|s| s.as_str()).collect();
+                app.optimize_has_errors = !errors.is_empty();
                 app.optimize_status =
-                    build_cleanup_result_message(&completed, &errors, &freed_detail);
-                crate::log::write(&format!("[optimize] 结果: {}", app.optimize_status));
+                    build_cleanup_result_message(&completed_refs, &errors_refs, &freed_detail);
+                crate::log::write(&format!("[optimize] result: {}", app.optimize_status));
                 cx.notify();
             });
 
@@ -542,6 +580,7 @@ impl MemoryCleanerApp {
 
             let _ = this.update(cx, |app, cx| {
                 app.optimize_status.clear();
+                app.optimize_has_errors = false;
                 cx.notify();
             });
         })
@@ -559,13 +598,13 @@ impl MemoryCleanerApp {
         let weak = cx.weak_entity();
         window.open_alert_dialog(cx, move |alert, _window, _cx| {
             alert
-                .title("刷新桌面图标缓存")
-                .description("将短暂结束并重启资源管理器，桌面与任务栏会闪断。是否继续？")
+                .title(t!("icon_cache.confirm_title"))
+                .description(t!("icon_cache.confirm_desc"))
                 .overlay_closable(false)
                 .button_props(
                     DialogButtonProps::default()
-                        .ok_text("确认")
-                        .cancel_text("取消")
+                        .ok_text(t!("dialog.confirm"))
+                        .cancel_text(t!("dialog.cancel"))
                         .show_cancel(true),
                 )
                 .on_ok({
@@ -584,7 +623,7 @@ impl MemoryCleanerApp {
         }
 
         self.is_refreshing_icon_cache = true;
-        self.icon_cache_status = "正在刷新桌面图标缓存…".into();
+        self.icon_cache_status = t!("icon_cache.refreshing").to_string();
         cx.notify();
 
         cx.spawn(async move |this, cx| {

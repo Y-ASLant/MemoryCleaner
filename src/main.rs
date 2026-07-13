@@ -3,7 +3,9 @@
 use gpui::{actions, *};
 use gpui_component::{Root, TitleBar};
 
-use memory_cleanr::{app, log_msg, settings::Settings, tray::Tray, ui, version::APP_NAME, win32};
+use memory_cleanr::{
+    app, locale, log_msg, settings::Settings, tray::Tray, ui, version::APP_NAME, win32,
+};
 
 actions!(wmc_gpui, [Quit]);
 
@@ -92,6 +94,9 @@ fn main() {
         std::process::exit(0);
     }
 
+    let settings = Settings::load();
+    locale::apply(&settings);
+
     let tray_rx = Tray::install().unwrap_or_else(|e| {
         log_msg(&format!("Failed to install tray icon: {e}"));
         let (_tx, rx) = std::sync::mpsc::channel();
@@ -117,7 +122,6 @@ fn main() {
             cx.open_window(window_options, |window, cx| {
                 window.set_window_title(APP_NAME);
 
-                let settings = Settings::load();
                 let app_entity = cx.new(|cx| {
                     let view = app::MemoryCleanerApp::new(window, cx, settings, tray_rx);
                     window.activate_window();

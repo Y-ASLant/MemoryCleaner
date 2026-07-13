@@ -35,6 +35,7 @@ raw-window-handle = "0.6"
 tray-icon = { version = "0.24", default-features = false }
 image = { version = "0.25", default-features = false, features = ["png"] }
 toml = { version = "1", default-features = false, features = ["parse", "display", "serde"] }
+rust-i18n = "4"
 windows = { version = "0.62", features = [
     "Win32_Foundation",
     "Win32_Security",
@@ -46,6 +47,7 @@ windows = { version = "0.62", features = [
     "Win32_System_Diagnostics_ToolHelp",
     "Win32_UI_Shell",
     "Win32_UI_WindowsAndMessaging",
+    "Win32_Globalization",
     "Wdk_System_SystemServices",
 ] }
 

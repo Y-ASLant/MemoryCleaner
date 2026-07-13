@@ -1,5 +1,8 @@
+rust_i18n::i18n!("locales", fallback = "zh-CN");
+
 pub mod app;
 pub mod icon_cache;
+pub mod locale;
 pub mod log;
 pub mod memory;
 pub mod messages;

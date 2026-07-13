@@ -19,6 +19,8 @@ pub struct Settings {
     pub tray_icon_use_transparent_background: bool,
     pub tray_icon_warning_level: u8,
     pub tray_icon_danger_level: u8,
+    /// UI language: "auto", "zh-CN", or "en".
+    pub language: String,
     /// Write debug output to `App.log` next to the executable.
     pub debug_logging: bool,
 }
@@ -37,6 +39,7 @@ impl Default for Settings {
             tray_icon_use_transparent_background: false,
             tray_icon_warning_level: 80,
             tray_icon_danger_level: 90,
+            language: "auto".into(),
             debug_logging: false,
         }
     }
@@ -75,7 +78,14 @@ impl Settings {
             }
         };
         settings.normalize_memory_areas();
+        settings.normalize_language();
         settings
+    }
+
+    fn normalize_language(&mut self) {
+        if !matches!(self.language.as_str(), "auto" | "zh-CN" | "en") {
+            self.language = "auto".into();
+        }
     }
 
     fn normalize_memory_areas(&mut self) {
@@ -92,6 +102,7 @@ impl Settings {
     pub(crate) fn from_toml(content: &str) -> Self {
         let mut settings: Settings = toml::from_str(content).expect("valid settings toml");
         settings.normalize_memory_areas();
+        settings.normalize_language();
         settings
     }
 
@@ -129,6 +140,15 @@ impl Settings {
         }
         areas
     }
+
+    /// Returns the effective locale string for `rust_i18n::set_locale`.
+    pub fn effective_locale(&self) -> &'static str {
+        match self.language.as_str() {
+            "zh-CN" => "zh-CN",
+            "en" => "en",
+            _ => crate::win32::os::system_ui_locale(),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -142,6 +162,7 @@ mod tests {
         assert!(settings.close_to_notification_area);
         assert!(settings.show_virtual_memory);
         assert_eq!(settings.memory_areas, MemoryAreas::DEFAULT.bits());
+        assert_eq!(settings.language, "auto");
     }
 
     #[test]
@@ -149,13 +170,36 @@ mod tests {
         let original = Settings {
             always_on_top: true,
             debug_logging: true,
+            language: "en".into(),
             memory_areas: MemoryAreas::WORKING_SET.bits(),
             ..Default::default()
         };
         let restored: Settings = toml::from_str(&toml::to_string(&original).unwrap()).unwrap();
         assert_eq!(restored.always_on_top, true);
         assert_eq!(restored.debug_logging, true);
+        assert_eq!(restored.language, "en");
         assert_eq!(restored.memory_areas, MemoryAreas::WORKING_SET.bits());
+    }
+
+    #[test]
+    fn effective_locale_resolves_explicit_values() {
+        let mut settings = Settings::default();
+        settings.language = "en".into();
+        assert_eq!(settings.effective_locale(), "en");
+        settings.language = "zh-CN".into();
+        assert_eq!(settings.effective_locale(), "zh-CN");
+    }
+
+    #[test]
+    fn effective_locale_auto_returns_supported_locale() {
+        let settings = Settings::default();
+        assert!(matches!(settings.effective_locale(), "zh-CN" | "en"));
+    }
+
+    #[test]
+    fn normalize_language_resets_unknown_values() {
+        let settings = Settings::from_toml("language = \"fr\"");
+        assert_eq!(settings.language, "auto");
     }
 
     #[test]

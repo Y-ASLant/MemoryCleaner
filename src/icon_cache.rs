@@ -1,3 +1,5 @@
+use rust_i18n::t;
+
 use std::ffi::OsStr;
 use std::os::windows::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
@@ -23,11 +25,11 @@ pub struct RefreshOutcome {
 impl RefreshOutcome {
     pub fn user_message(&self) -> String {
         if !self.explorer_restarted {
-            "刷新失败：无法重启资源管理器".into()
+            t!("icon_cache.error.restart_explorer").to_string()
         } else if self.failures.is_empty() {
-            "桌面图标缓存已刷新".into()
+            t!("icon_cache.success").to_string()
         } else {
-            "已刷新，部分缓存未能清理".into()
+            t!("icon_cache.partial").to_string()
         }
     }
 }
@@ -168,25 +170,54 @@ fn to_wide(value: &str) -> Vec<u16> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::locale::with_locale;
 
     #[test]
-    fn user_message_reflects_restart_and_failures() {
-        let ok = RefreshOutcome {
-            explorer_restarted: true,
-            failures: vec![],
-        };
-        assert_eq!(ok.user_message(), "桌面图标缓存已刷新");
+    fn user_message_reflects_restart_and_failures_zh() {
+        with_locale("zh-CN", || {
+            let ok = RefreshOutcome {
+                explorer_restarted: true,
+                failures: vec![],
+            };
+            assert_eq!(ok.user_message(), "桌面图标缓存已刷新");
 
-        let partial = RefreshOutcome {
-            explorer_restarted: true,
-            failures: vec!["删除失败: foo".into()],
-        };
-        assert_eq!(partial.user_message(), "已刷新，部分缓存未能清理");
+            let partial = RefreshOutcome {
+                explorer_restarted: true,
+                failures: vec!["删除失败: foo".into()],
+            };
+            assert_eq!(partial.user_message(), "已刷新，部分缓存未能清理");
 
-        let failed = RefreshOutcome {
-            explorer_restarted: false,
-            failures: vec!["重启 explorer 失败".into()],
-        };
-        assert_eq!(failed.user_message(), "刷新失败：无法重启资源管理器");
+            let failed = RefreshOutcome {
+                explorer_restarted: false,
+                failures: vec!["重启 explorer 失败".into()],
+            };
+            assert_eq!(failed.user_message(), "刷新失败：无法重启资源管理器");
+        });
+    }
+
+    #[test]
+    fn user_message_reflects_restart_and_failures_en() {
+        with_locale("en", || {
+            let ok = RefreshOutcome {
+                explorer_restarted: true,
+                failures: vec![],
+            };
+            assert_eq!(ok.user_message(), "Desktop icon cache refreshed");
+
+            let partial = RefreshOutcome {
+                explorer_restarted: true,
+                failures: vec!["delete failed: foo".into()],
+            };
+            assert_eq!(
+                partial.user_message(),
+                "Refreshed, but some cache files could not be cleaned"
+            );
+
+            let failed = RefreshOutcome {
+                explorer_restarted: false,
+                failures: vec!["restart explorer failed".into()],
+            };
+            assert_eq!(failed.user_message(), "Failed: could not restart Explorer");
+        });
     }
 }

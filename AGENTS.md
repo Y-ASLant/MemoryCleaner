@@ -11,6 +11,7 @@ main.rs  →  ensure_elevated() → single-instance check → tray install → G
                 │
                 ├─ app.rs          (core state, polling loop, optimization dispatch)
                 ├─ log.rs          (optional App.log file output, timestamp-based retention)
+                ├─ locale.rs       (rust-i18n locale apply, list separator, lang-id mapping)
                 ├─ memory.rs       (GlobalMemoryStatusEx → MemoryStatus)
                 ├─ optimize.rs     (MemoryAreas bitflags → NT cache-purge steps)
                 ├─ settings.rs     (TOML persistence at %APPDATA%\MemoryCleaner\settings.toml)
@@ -21,7 +22,8 @@ main.rs  →  ensure_elevated() → single-instance check → tray install → G
                 └─ win32/          (nt.rs, os.rs, single_instance.rs, window.rs)
 ```
 
-- **Entry flow:** `main.rs` → elevation → single-instance mutex → install tray → run GPUI app → `ui::theme::init_light_theme` → open window with saved settings.
+- **Entry flow:** `main.rs` → elevation → single-instance mutex → `locale::apply` → install tray → run GPUI app → `ui::theme::init_light_theme` → open window with saved settings.
+- **i18n:** `rust-i18n` with `locales/zh-CN.yml` (single file, `_version: 2`, zh-CN + en). `rust_i18n::i18n!` is invoked once in `lib.rs`. `settings.language` is `auto` | `zh-CN` | `en`; `auto` uses `GetUserDefaultUILanguage` via `win32::os::system_ui_locale()`. Language changes call `MemoryCleanerApp::apply_locale()` to refresh memory labels and tray menu text immediately.
 - **Async runtime:** `smol` for async task execution (optimization progress updates).
 - **UI stack:** GPUI + `gpui-component` (Button, Checkbox, Switch, GroupBox, ProgressCircle).
 - **Native layer:** `src/win32/` wraps low-level Windows APIs; `src/optimize.rs` orchestrates the cleanup steps.
@@ -33,6 +35,7 @@ main.rs  →  ensure_elevated() → single-instance check → tray install → G
 |---|---|
 | `src/` | Application source (binary crate, main.rs entry point) |
 | `src/ui/` | GPUI UI components (layout, memory_card, settings_page, theme, title_bar) |
+| `locales/` | rust-i18n translation YAML (`zh-CN.yml`, zh-CN + en strings) |
 | `src/win32/` | Win32/NT API bindings (nt, os, single_instance, window) |
 | `vendor/proc-macro-error2/` | Vendored patch for Rust 1.97+ compatibility (see below) |
 | `.codegraph/` | Codegraph index (gitignored) |
@@ -62,7 +65,7 @@ cargo run --release
 make clean                # cargo clean
 ```
 
-**Tests:** `make test` / `cargo test` — 18 unit tests in `src/` plus 2 integration tests in `tests/settings_persistence.rs`. Pure logic (memory formatting, cleanup messages, settings TOML, tray tooltip text, optimize step plan, layout metrics) is covered; Win32/GPUI paths remain manual QA.
+**Tests:** `make test` / `cargo test` — 30 unit tests in `src/` plus 2 integration tests in `tests/settings_persistence.rs`. Pure logic (memory formatting, cleanup messages, settings TOML/locale, tray tooltip text, optimize step plan, layout metrics, icon-cache outcomes) is covered; Win32/GPUI paths remain manual QA.
 
 ## Code Conventions & Common Patterns
 
@@ -86,7 +89,8 @@ make clean                # cargo clean
 | `src/app.rs` | Core application state and render logic (~25 KB, largest file) |
 | `src/log.rs` | Optional `App.log` file output with timestamp-based line retention |
 | `src/ui/theme.rs` | Light theme init + Win10 square-corner chrome |
-| `src/win32/os.rs` | Windows build detection (Win10 vs Win11) |
+| `src/locale.rs` | rust-i18n locale apply, list separator, lang-id mapping |
+| `src/win32/os.rs` | Windows build detection (Win10 vs Win11), system UI locale |
 | `src/optimize.rs` | Memory cleanup orchestration (8 cleaning regions) |
 | `src/settings.rs` | TOML settings schema and persistence |
 | `src/win32/nt.rs` | Raw NT API bindings (`NtSetSystemInformation`, structs, enums) |
@@ -99,7 +103,7 @@ make clean                # cargo clean
 - **Window size:** fixed width 520px; collapsed height ~294px, expanded ~456px (`src/app.rs` + `src/ui/layout.rs`).
 - **Collapsed view:** memory cards + cleanup button.
 - **Expanded view:** adds cleanup-area checkboxes panel (`settings_page::render_settings_content`).
-- **Window behavior dialog** (always on top, close-to-tray, debug logging): opened from title-bar gear icon; `overlay_closable(false)` — clicking the backdrop does not close it.
+- **Window behavior dialog** (always on top, close-to-tray, debug logging, language): opened from title-bar gear icon; `overlay_closable(false)` — clicking the backdrop does not close it.
 - **Optimization feedback:** progress and result text render inside the cleanup button; result clears after 5 seconds (`OPTIMIZE_RESULT_DISPLAY`).
 - **Platform chrome:** Win10 (build &lt; 22000) uses square corners via theme tokens; Win11 keeps gpui-component defaults. Dialog centering uses `layout::centered_dialog_margin_top` with `WINDOW_BEHAVIOR_DIALOG_WIDTH` (480px).
 

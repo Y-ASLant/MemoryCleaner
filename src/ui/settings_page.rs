@@ -5,10 +5,12 @@ use gpui_component::{
     checkbox::Checkbox,
     h_flex,
     label::Label,
+    menu::{DropdownMenu, PopupMenuItem},
     progress::ProgressCircle,
     switch::Switch,
     v_flex,
 };
+use rust_i18n::t;
 
 use crate::app::{CONTENT_PADDING, MemoryCleanerApp};
 use crate::optimize::MemoryAreas;
@@ -17,7 +19,15 @@ use crate::ui::layout::{CLEANUP_BUTTON_H, SECTION_GAP};
 const ROW_GAP: f32 = 6.;
 const BUTTON_STATUS_TRUNCATE_CHARS: usize = 24;
 
-fn panel_section_title(icon: IconName, label: &'static str) -> impl IntoElement {
+fn language_options() -> [(&'static str, String); 3] {
+    [
+        ("auto", t!("settings.language_auto").to_string()),
+        ("zh-CN", t!("settings.language_zh").to_string()),
+        ("en", t!("settings.language_en").to_string()),
+    ]
+}
+
+fn panel_section_title(icon: IconName, label: String) -> impl IntoElement {
     h_flex()
         .w_full()
         .items_center()
@@ -81,7 +91,7 @@ fn render_cleanup_areas(
                 .py_1()
                 .bg(muted.opacity(0.12))
                 .child(
-                    Label::new("提示：「待机列表」与「待机列表(低优先级)」只能勾选其一")
+                    Label::new(t!("settings.cleanup_areas_hint").to_string())
                         .text_xs()
                         .text_color(muted),
                 ),
@@ -115,8 +125,8 @@ fn render_cleanup_areas(
 struct SwitchRowConfig {
     id: &'static str,
     icon: IconName,
-    title: &'static str,
-    description: &'static str,
+    title: String,
+    description: String,
     checked: bool,
 }
 
@@ -207,6 +217,83 @@ fn render_version_row(cx: &App) -> impl IntoElement {
     )
 }
 
+fn render_language_selector(
+    weak: &WeakEntity<MemoryCleanerApp>,
+    muted: Hsla,
+    foreground: Hsla,
+    cx: &App,
+) -> impl IntoElement {
+    let current = {
+        let app = weak.upgrade();
+        app.as_ref()
+            .map(|a| a.read(cx).settings.language.clone())
+            .unwrap_or_else(|| "auto".into())
+    };
+
+    let options = language_options();
+    let current_label = options
+        .iter()
+        .find(|(k, _)| *k == current.as_str())
+        .map(|(_, l)| l.clone())
+        .unwrap_or_else(|| t!("settings.language_auto").to_string());
+
+    h_flex()
+        .w_full()
+        .items_center()
+        .justify_between()
+        .gap_3()
+        .py(px(3.))
+        .child(
+            v_flex().flex_1().min_w_0().gap(px(1.)).child(
+                h_flex()
+                    .w_full()
+                    .items_center()
+                    .gap_2()
+                    .child(
+                        div()
+                            .flex_shrink_0()
+                            .flex()
+                            .items_center()
+                            .child(Icon::new(IconName::Globe).small().text_color(muted)),
+                    )
+                    .child(
+                        Label::new(t!("settings.language").to_string())
+                            .text_sm()
+                            .font_weight(FontWeight::MEDIUM)
+                            .text_color(foreground),
+                    ),
+            ),
+        )
+        .child({
+            let weak = weak.clone();
+            Button::new("language-select")
+                .ghost()
+                .min_w(px(128.))
+                .label(current_label)
+                .dropdown_caret(true)
+                .dropdown_menu_with_anchor(Anchor::TopRight, move |menu, _, _| {
+                    let weak = weak.clone();
+                    let current = current.clone();
+                    options.iter().fold(menu, |menu, (value, label)| {
+                        let value = (*value).to_string();
+                        let label = label.clone();
+                        let checked = current == value;
+                        let weak = weak.clone();
+                        menu.item(PopupMenuItem::new(label).checked(checked).on_click(
+                            move |_, _, cx| {
+                                let _ = weak.update(cx, |app, cx| {
+                                    if app.settings.language != value {
+                                        app.settings.language = value.clone();
+                                        app.apply_locale(cx);
+                                    }
+                                });
+                            },
+                        ))
+                    })
+                })
+        })
+}
+
 pub fn render_window_behavior_dialog(
     weak: WeakEntity<MemoryCleanerApp>,
     cx: &App,
@@ -229,8 +316,8 @@ pub fn render_window_behavior_dialog(
             SwitchRowConfig {
                 id: "dialog-switch-always-on-top",
                 icon: IconName::Star,
-                title: "窗口置顶",
-                description: "窗口始终保持在最前面",
+                title: t!("settings.always_on_top").to_string(),
+                description: t!("settings.always_on_top_desc").to_string(),
                 checked: settings.always_on_top,
             },
             muted,
@@ -248,8 +335,8 @@ pub fn render_window_behavior_dialog(
             SwitchRowConfig {
                 id: "dialog-switch-close-to-tray",
                 icon: IconName::Minimize,
-                title: "关闭时隐藏到托盘",
-                description: "点击关闭按钮时最小化到系统托盘",
+                title: t!("settings.close_to_tray").to_string(),
+                description: t!("settings.close_to_tray_desc").to_string(),
                 checked: settings.close_to_notification_area,
             },
             muted,
@@ -267,8 +354,8 @@ pub fn render_window_behavior_dialog(
             SwitchRowConfig {
                 id: "dialog-switch-debug-logging",
                 icon: IconName::Settings2,
-                title: "调试日志",
-                description: "将详细运行信息写入程序目录下的 App.log（自动清理 7 天前的记录）",
+                title: t!("settings.debug_logging").to_string(),
+                description: t!("settings.debug_logging_desc").to_string(),
                 checked: settings.debug_logging,
             },
             muted,
@@ -282,6 +369,7 @@ pub fn render_window_behavior_dialog(
                 }
             },
         ))
+        .child(render_language_selector(&weak, muted, foreground, cx))
         .child(
             div()
                 .w_full()
@@ -303,7 +391,7 @@ fn truncate_chars(text: &str, max_chars: usize) -> String {
 
 fn cleanup_step_text(app: &MemoryCleanerApp) -> String {
     if app.optimize_step.is_empty() {
-        "准备清理…".into()
+        t!("button.cleanup_preparing").to_string()
     } else {
         app.optimize_step.clone()
     }
@@ -314,7 +402,7 @@ fn cleanup_result_text(app: &MemoryCleanerApp) -> String {
 }
 
 fn cleanup_button_is_danger(app: &MemoryCleanerApp) -> bool {
-    !app.optimize_status.is_empty() && app.optimize_status.starts_with("清理失败")
+    !app.optimize_status.is_empty() && app.optimize_has_errors
 }
 
 fn cleanup_button_text_color(app: &MemoryCleanerApp, cx: &App) -> Hsla {
@@ -367,7 +455,7 @@ fn render_cleanup_button_content(
             .into_any_element();
     }
 
-    Label::new("一键清理")
+    Label::new(t!("button.cleanup").to_string())
         .text_sm()
         .font_weight(FontWeight::MEDIUM)
         .text_color(color)
@@ -396,11 +484,11 @@ pub fn render_cleanup_footer(
     };
 
     if areas_empty {
-        button.tooltip("请先选择清理区域")
+        button.tooltip(t!("tooltip.select_areas").to_string())
     } else if app.is_optimizing {
         button.tooltip(cleanup_step_text(app))
     } else if app.optimize_status.is_empty() {
-        button.tooltip("开始清理内存")
+        button.tooltip(t!("tooltip.start_cleanup").to_string())
     } else {
         button.tooltip(app.optimize_status.clone())
     }
@@ -433,7 +521,10 @@ fn render_settings_details(
                 .w_full()
                 .p(px(CONTENT_PADDING))
                 .gap(px(SECTION_GAP))
-                .child(panel_section_title(IconName::Settings, "清理区域"))
+                .child(panel_section_title(
+                    IconName::Settings,
+                    t!("settings.cleanup_areas").to_string(),
+                ))
                 .child(render_cleanup_areas(app, muted, cx)),
         )
 }

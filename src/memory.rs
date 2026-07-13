@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use rust_i18n::t;
 use windows::Win32::System::SystemInformation::{GlobalMemoryStatusEx, MEMORYSTATUSEX};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -23,11 +24,12 @@ impl MemorySection {
         if self.total == 0 {
             return "—".into();
         }
-        format!(
-            "已用 {} · 可用 {}",
-            MemoryStatus::format_bytes(self.used),
-            MemoryStatus::format_bytes(self.avail),
+        t!(
+            "memory.used_avail",
+            used = MemoryStatus::format_bytes(self.used),
+            avail = MemoryStatus::format_bytes(self.avail),
         )
+        .to_string()
     }
 
     pub fn unavailable(title: &str) -> Self {
@@ -101,6 +103,7 @@ impl MemoryStatus {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::locale::with_locale;
 
     fn sample_section(used_percent: f32) -> MemorySection {
         MemorySection {
@@ -129,10 +132,25 @@ mod tests {
     }
 
     #[test]
-    fn usage_summary_formats_used_and_available() {
-        let summary = sample_section(50.0).usage_summary();
-        assert!(summary.contains("已用 4.00 GB"));
-        assert!(summary.contains("可用 4.00 GB"));
-        assert_eq!(MemorySection::unavailable("物理内存").usage_summary(), "—");
+    fn usage_summary_formats_used_and_available_zh() {
+        with_locale("zh-CN", || {
+            let summary = sample_section(50.0).usage_summary();
+            assert!(summary.contains("已用 4.00 GB"));
+            assert!(summary.contains("可用 4.00 GB"));
+            assert_eq!(MemorySection::unavailable("物理内存").usage_summary(), "—");
+        });
+    }
+
+    #[test]
+    fn usage_summary_formats_used_and_available_en() {
+        with_locale("en", || {
+            let summary = sample_section(50.0).usage_summary();
+            assert!(summary.contains("Used 4.00 GB"));
+            assert!(summary.contains("Available 4.00 GB"));
+            assert_eq!(
+                MemorySection::unavailable("Physical Memory").usage_summary(),
+                "—"
+            );
+        });
     }
 }
