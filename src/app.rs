@@ -23,6 +23,12 @@ const SETTINGS_SAVE_DEBOUNCE: Duration = Duration::from_millis(300);
 const OPTIMIZE_RESULT_DISPLAY: Duration = Duration::from_secs(5);
 const MEMORY_REFRESH_INTERVAL: Duration = Duration::from_secs(1);
 
+async fn show_toast(title: String, body: String) {
+    if let Err(e) = smol::unblock(move || win32::notification::show(&title, &body)).await {
+        crate::log_msg(&format!("[notification] failed: {e:#}"));
+    }
+}
+
 const WINDOW_WIDTH: f32 = 520.;
 const WINDOW_MIN_WIDTH: f32 = 520.;
 pub const CONTENT_PADDING: f32 = 6.;
@@ -697,13 +703,11 @@ impl MemoryCleanerApp {
 
         cx.spawn(async move |this, cx| {
             if notify {
-                let title = t!("notification.optimize_start_title").to_string();
-                let body = t!("notification.optimize_start_body").to_string();
-                if let Err(e) =
-                    smol::unblock(move || win32::notification::show(&title, &body)).await
-                {
-                    crate::log_msg(&format!("[notification] start failed: {e:#}"));
-                }
+                show_toast(
+                    t!("notification.optimize_start_title").to_string(),
+                    t!("notification.optimize_start_body").to_string(),
+                )
+                .await;
             }
 
             let mut completed: Vec<String> = Vec::new();
@@ -751,11 +755,8 @@ impl MemoryCleanerApp {
                 .ok()
                 .flatten();
 
-            if let Some((title, body)) = notification
-                && let Err(e) =
-                    smol::unblock(move || win32::notification::show(&title, &body)).await
-            {
-                crate::log_msg(&format!("[notification] failed: {e:#}"));
+            if let Some((title, body)) = notification {
+                show_toast(title, body).await;
             }
 
             Timer::after(OPTIMIZE_RESULT_DISPLAY).await;

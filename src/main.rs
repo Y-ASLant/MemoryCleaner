@@ -110,7 +110,7 @@ fn main() {
     Tray::install(command_tx.clone()).unwrap_or_else(|e| {
         log_msg(&format!("Failed to install tray icon: {e}"));
     });
-    win32::hotkey::init(&settings);
+    win32::hotkey::sync(&settings);
 
     let app = gpui_platform::application()
         .with_assets(gpui_component_assets::Assets)

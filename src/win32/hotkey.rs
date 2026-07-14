@@ -11,9 +11,9 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
     UnregisterHotKey, VIRTUAL_KEY,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetMessageW, HWND_MESSAGE, MSG,
-    PostQuitMessage, PostThreadMessageW, RegisterClassW, TranslateMessage, WM_DESTROY, WM_HOTKEY,
-    WNDCLASSW, WINDOW_EX_STYLE, WINDOW_STYLE,
+    CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetMessageW, HWND_MESSAGE,
+    MSG, PostQuitMessage, PostThreadMessageW, RegisterClassW, TranslateMessage, WINDOW_EX_STYLE,
+    WINDOW_STYLE, WM_DESTROY, WM_HOTKEY, WNDCLASSW,
 };
 
 use crate::settings::Settings;
@@ -36,17 +36,17 @@ pub struct HotkeyBinding {
 impl HotkeyBinding {
     pub const DEFAULT_CLEANUP: &'static str = "Alt+Shift+C";
 
-    pub fn default_cleanup() -> Self {
-        Self::parse(Self::DEFAULT_CLEANUP).expect("default cleanup hotkey is valid")
-    }
-
     pub fn parse(chord: &str) -> Option<Self> {
         let chord = chord.trim();
         if chord.is_empty() {
             return None;
         }
 
-        let parts: Vec<&str> = chord.split('+').map(str::trim).filter(|p| !p.is_empty()).collect();
+        let parts: Vec<&str> = chord
+            .split('+')
+            .map(str::trim)
+            .filter(|p| !p.is_empty())
+            .collect();
         if parts.len() < 2 {
             return None;
         }
@@ -99,12 +99,7 @@ struct HotkeyWorker {
 impl Drop for HotkeyWorker {
     fn drop(&mut self) {
         unsafe {
-            let _ = PostThreadMessageW(
-                self.thread_id,
-                WM_APP_SHUTDOWN,
-                WPARAM(0),
-                LPARAM(0),
-            );
+            let _ = PostThreadMessageW(self.thread_id, WM_APP_SHUTDOWN, WPARAM(0), LPARAM(0));
         }
         if let Some(join_handle) = self.join_handle.take() {
             let _ = join_handle.join();
@@ -117,10 +112,6 @@ struct HotkeyService {
 }
 
 impl HotkeyService {
-    fn new() -> Self {
-        Self { worker: None }
-    }
-
     fn apply(&mut self, settings: &Settings) {
         self.worker = None;
 
@@ -134,17 +125,14 @@ impl HotkeyService {
             return;
         };
 
-        let Some(tx) = COMMAND_TX.get() else {
+        if COMMAND_TX.get().is_none() {
             crate::log_msg("[hotkey] command channel unavailable");
             return;
-        };
+        }
 
-        match spawn_hotkey_worker(tx.clone(), binding) {
+        match spawn_hotkey_worker(binding) {
             Ok(worker) => {
-                crate::log_msg(&format!(
-                    "[hotkey] registered {}",
-                    settings.cleanup_hotkey
-                ));
+                crate::log_msg(&format!("[hotkey] registered {}", settings.cleanup_hotkey));
                 self.worker = Some(worker);
             }
             Err(e) => crate::log_msg(&format!("[hotkey] register failed: {e:#}")),
@@ -152,7 +140,7 @@ impl HotkeyService {
     }
 }
 
-fn spawn_hotkey_worker(_tx: Sender<TrayCommand>, binding: HotkeyBinding) -> Result<HotkeyWorker> {
+fn spawn_hotkey_worker(binding: HotkeyBinding) -> Result<HotkeyWorker> {
     let (ready_tx, ready_rx) = std::sync::mpsc::sync_channel::<Result<u32>>(1);
 
     let join_handle = std::thread::Builder::new()
@@ -160,9 +148,12 @@ fn spawn_hotkey_worker(_tx: Sender<TrayCommand>, binding: HotkeyBinding) -> Resu
         .spawn(move || {
             let thread_id = unsafe { GetCurrentThreadId() };
             let setup = run_hotkey_setup(binding);
-            let _ = ready_tx.send(setup.as_ref().map(|_| thread_id).map_err(|e| {
-                anyhow::anyhow!("{e:#}")
-            }));
+            let _ = ready_tx.send(
+                setup
+                    .as_ref()
+                    .map(|_| thread_id)
+                    .map_err(|e| anyhow::anyhow!("{e:#}")),
+            );
 
             let Ok(hwnd) = setup else {
                 return;
@@ -190,19 +181,9 @@ pub fn bind_command_sender(tx: Sender<TrayCommand>) {
     let _ = COMMAND_TX.set(tx);
 }
 
-pub fn init(settings: &Settings) {
-    let service = SERVICE.get_or_init(|| Mutex::new(HotkeyService::new()));
-    service
-        .lock()
-        .expect("hotkey service mutex poisoned")
-        .apply(settings);
-}
-
 pub fn sync(settings: &Settings) {
-    let Some(service) = SERVICE.get() else {
-        return;
-    };
-    service
+    SERVICE
+        .get_or_init(|| Mutex::new(HotkeyService { worker: None }))
         .lock()
         .expect("hotkey service mutex poisoned")
         .apply(settings);
@@ -335,17 +316,11 @@ mod tests {
     #[test]
     fn parse_supports_alt_and_win_modifiers() {
         let binding = HotkeyBinding::parse("Ctrl+Alt+O").expect("valid chord");
-        assert_eq!(
-            binding.modifiers,
-            MOD_CONTROL | MOD_ALT | MOD_NOREPEAT
-        );
+        assert_eq!(binding.modifiers, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT);
         assert_eq!(binding.virtual_key, VIRTUAL_KEY(b'O' as u16));
 
         let binding = HotkeyBinding::parse("Win+Shift+C").expect("valid chord");
-        assert_eq!(
-            binding.modifiers,
-            MOD_WIN | MOD_SHIFT | MOD_NOREPEAT
-        );
+        assert_eq!(binding.modifiers, MOD_WIN | MOD_SHIFT | MOD_NOREPEAT);
         assert_eq!(binding.virtual_key, VIRTUAL_KEY(b'C' as u16));
     }
 }
