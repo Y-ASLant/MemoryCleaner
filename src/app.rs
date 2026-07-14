@@ -19,6 +19,7 @@ use crate::win32;
 
 const SETTINGS_SAVE_DEBOUNCE: Duration = Duration::from_millis(300);
 const OPTIMIZE_RESULT_DISPLAY: Duration = Duration::from_secs(5);
+const MEMORY_REFRESH_INTERVAL: Duration = Duration::from_secs(1);
 
 const WINDOW_WIDTH: f32 = 520.;
 const WINDOW_MIN_WIDTH: f32 = 520.;
@@ -384,6 +385,7 @@ impl MemoryCleanerApp {
         cx: &mut Context<Self>,
         mut tray_rx: std::sync::mpsc::Receiver<TrayCommand>,
     ) {
+        // 托盘命令监听
         cx.spawn(async move |this, cx| {
             loop {
                 let (command, rx) = smol::unblock(move || {
@@ -405,6 +407,25 @@ impl MemoryCleanerApp {
                 {
                     break;
                 }
+            }
+        })
+        .detach();
+
+        // 周期性内存刷新（仅窗口可见时）
+        cx.spawn(async move |this, cx| {
+            loop {
+                Timer::after(MEMORY_REFRESH_INTERVAL).await;
+                let Ok(()) = this.update(cx, |app, cx| {
+                    if !app.window_visible(cx) {
+                        return;
+                    }
+                    if app.refresh_memory(cx) {
+                        cx.notify();
+                        app.sync_tray(cx);
+                    }
+                }) else {
+                    break;
+                };
             }
         })
         .detach();
