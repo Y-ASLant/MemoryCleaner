@@ -73,6 +73,62 @@ impl HotkeyBinding {
             virtual_key,
         })
     }
+
+    /// Build a settings chord such as `Alt+Shift+C` from modifier flags and a key token.
+    pub fn format_chord(
+        control: bool,
+        alt: bool,
+        shift: bool,
+        win: bool,
+        key: &str,
+    ) -> Option<String> {
+        if is_modifier_key(key) {
+            return None;
+        }
+        let key = normalize_key_token(key)?;
+        if !control && !alt && !shift && !win {
+            return None;
+        }
+
+        let mut parts = Vec::<String>::new();
+        if control {
+            parts.push("Ctrl".into());
+        }
+        if alt {
+            parts.push("Alt".into());
+        }
+        if shift {
+            parts.push("Shift".into());
+        }
+        if win {
+            parts.push("Win".into());
+        }
+        parts.push(key);
+        let chord = parts.join("+");
+        Self::parse(&chord).map(|_| chord)
+    }
+}
+
+fn is_modifier_key(key: &str) -> bool {
+    matches!(
+        key.trim().to_ascii_lowercase().as_str(),
+        "shift" | "alt" | "control" | "ctrl" | "win" | "windows" | "super" | "cmd" | "meta"
+            | "fn" | "capslock" | "caps lock"
+    )
+}
+
+fn normalize_key_token(key: &str) -> Option<String> {
+    let key = key.trim();
+    if key.len() == 1 {
+        let ch = key.chars().next()?;
+        if ch.is_ascii_alphabetic() {
+            return Some(ch.to_ascii_uppercase().to_string());
+        }
+        if ch.is_ascii_digit() {
+            return Some(ch.to_string());
+        }
+    }
+    None
 }
 
 fn parse_virtual_key(key: &str) -> Option<VIRTUAL_KEY> {
@@ -298,6 +354,20 @@ unsafe fn message_loop(hwnd: HWND) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn format_chord_builds_register_hotkey_compatible_chords() {
+        let chord = HotkeyBinding::format_chord(false, true, true, false, "c")
+            .expect("valid chord");
+        assert_eq!(chord, "Alt+Shift+C");
+        assert!(HotkeyBinding::parse(&chord).is_some());
+    }
+
+    #[test]
+    fn format_chord_rejects_modifier_only_and_unmodified_keys() {
+        assert!(HotkeyBinding::format_chord(false, true, false, false, "shift").is_none());
+        assert!(HotkeyBinding::format_chord(false, false, false, false, "c").is_none());
+    }
 
     #[test]
     fn parse_default_cleanup_hotkey() {

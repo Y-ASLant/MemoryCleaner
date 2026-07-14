@@ -1,4 +1,5 @@
 use gpui::*;
+use gpui::prelude::FluentBuilder;
 use gpui_component::{
     ActiveTheme, Disableable, Icon, IconName, Sizable,
     button::{Button, ButtonVariants},
@@ -295,6 +296,146 @@ fn render_language_selector(
         })
 }
 
+fn render_cleanup_hotkey_row(
+    weak: &WeakEntity<MemoryCleanerApp>,
+    muted: Hsla,
+    foreground: Hsla,
+    cx: &App,
+) -> impl IntoElement {
+    let Some(app) = weak.upgrade() else {
+        return div();
+    };
+
+    let app = app.read(cx);
+    let enabled = app.settings.cleanup_hotkey_enabled;
+    let recording = app.cleanup_hotkey_recording;
+    let chord = app.settings.cleanup_hotkey.clone();
+    let focus = app.hotkey_capture_focus.clone();
+    let primary = cx.theme().primary;
+    let radius = cx.theme().radius;
+
+    let button_label = if recording {
+        t!("settings.cleanup_hotkey_recording").to_string()
+    } else {
+        chord
+    };
+
+    let weak_switch = weak.clone();
+    let weak_capture = weak.clone();
+    let focus_capture = focus.clone();
+
+    h_flex()
+        .w_full()
+        .items_center()
+        .justify_between()
+        .gap_3()
+        .py(px(3.))
+        .child(
+            v_flex()
+                .flex_1()
+                .min_w_0()
+                .gap(px(1.))
+                .child(
+                    h_flex()
+                        .w_full()
+                        .items_center()
+                        .gap_2()
+                        .child(
+                            div()
+                                .flex_shrink_0()
+                                .flex()
+                                .items_center()
+                                .child(
+                                    Icon::new(IconName::ALargeSmall)
+                                        .small()
+                                        .text_color(muted),
+                                ),
+                        )
+                        .child(
+                            Label::new(t!("settings.cleanup_hotkey").to_string())
+                                .text_sm()
+                                .font_weight(FontWeight::MEDIUM)
+                                .text_color(foreground),
+                        ),
+                )
+                .child(
+                    h_flex()
+                        .w_full()
+                        .items_start()
+                        .gap_2()
+                        .child(
+                            div()
+                                .flex_shrink_0()
+                                .invisible()
+                                .flex()
+                                .items_center()
+                                .child(Icon::new(IconName::ALargeSmall).small()),
+                        )
+                        .child(
+                            Label::new(t!("settings.cleanup_hotkey_desc").to_string())
+                                .text_xs()
+                                .text_color(muted)
+                                .flex_1()
+                                .min_w_0(),
+                        ),
+                ),
+        )
+        .child(
+            v_flex()
+                .flex_shrink_0()
+                .items_end()
+                .gap_2()
+                .child(
+                    Switch::new("dialog-switch-cleanup-hotkey")
+                        .checked(enabled)
+                        .on_click({
+                            let weak = weak_switch;
+                            move |checked, _, cx| {
+                                let _ = weak.update(cx, |app, cx| {
+                                    app.set_cleanup_hotkey_enabled(*checked, cx);
+                                });
+                            }
+                        }),
+                )
+                .child(
+                    div()
+                        .id("cleanup-hotkey-capture")
+                        .track_focus(&focus)
+                        .when(recording, |this| {
+                            this.rounded(radius)
+                                .px_1()
+                                .py_0p5()
+                                .border_1()
+                                .border_color(primary)
+                        })
+                        .on_key_down({
+                            let weak = weak_capture.clone();
+                            move |event, _, cx| {
+                                let _ = weak.update(cx, |app, cx| {
+                                    app.handle_cleanup_hotkey_key(event, cx);
+                                });
+                            }
+                        })
+                        .child({
+                            let weak = weak_capture;
+                            Button::new("cleanup-hotkey-record")
+                                .ghost()
+                                .small()
+                                .min_w(px(128.))
+                                .disabled(!enabled)
+                                .when(recording, |button| button.primary())
+                                .label(button_label)
+                                .on_click(move |_, window, cx| {
+                                    let _ = weak.update(cx, |app, cx| {
+                                        app.start_cleanup_hotkey_recording(window, cx);
+                                    });
+                                    window.focus(&focus_capture, cx);
+                                })
+                        }),
+                ),
+        )
+}
+
 pub fn render_window_behavior_dialog(
     weak: WeakEntity<MemoryCleanerApp>,
     cx: &App,
@@ -313,6 +454,7 @@ pub fn render_window_behavior_dialog(
     v_flex()
         .w_full()
         .gap(px(2.))
+        .child(render_language_selector(&weak, muted, foreground, cx))
         .child(switch_row_app(
             SwitchRowConfig {
                 id: "dialog-switch-always-on-top",
@@ -370,29 +512,7 @@ pub fn render_window_behavior_dialog(
                 }
             },
         ))
-        .child(switch_row_app(
-            SwitchRowConfig {
-                id: "dialog-switch-cleanup-hotkey",
-                icon: IconName::ALargeSmall,
-                title: t!("settings.cleanup_hotkey").to_string(),
-                description: t!(
-                    "settings.cleanup_hotkey_desc",
-                    shortcut = settings.cleanup_hotkey
-                )
-                .to_string(),
-                checked: settings.cleanup_hotkey_enabled,
-            },
-            muted,
-            foreground,
-            {
-                let weak = weak.clone();
-                move |checked, _window, cx| {
-                    let _ = weak.update(cx, |app, cx| {
-                        app.set_cleanup_hotkey_enabled(*checked, cx);
-                    });
-                }
-            },
-        ))
+        .child(render_cleanup_hotkey_row(&weak, muted, foreground, cx))
         .child(switch_row_app(
             SwitchRowConfig {
                 id: "dialog-switch-debug-logging",
@@ -412,7 +532,6 @@ pub fn render_window_behavior_dialog(
                 }
             },
         ))
-        .child(render_language_selector(&weak, muted, foreground, cx))
         .child(
             div()
                 .w_full()

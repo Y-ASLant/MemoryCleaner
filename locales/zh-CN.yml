@@ -89,8 +89,11 @@ settings.cleanup_hotkey:
   zh-CN: "全局快捷键"
   en: "Global Hotkey"
 settings.cleanup_hotkey_desc:
-  zh-CN: "按 %{shortcut} 触发内存清理"
-  en: "Press %{shortcut} to run memory cleanup"
+  zh-CN: "点击右侧按钮录入快捷键，Esc 取消"
+  en: "Click the button to record a shortcut; Esc cancels"
+settings.cleanup_hotkey_recording:
+  zh-CN: "按下快捷键…"
+  en: "Press shortcut…"
 settings.cleanup_areas:
   zh-CN: "清理区域"
   en: "Cleanup Areas"

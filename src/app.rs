@@ -132,6 +132,8 @@ pub struct MemoryCleanerApp {
     pub icon_cache_status: String,
     pub settings_expanded: bool,
     window_shown: bool,
+    pub cleanup_hotkey_recording: bool,
+    pub(crate) hotkey_capture_focus: FocusHandle,
 }
 
 impl MemoryCleanerApp {
@@ -179,6 +181,8 @@ impl MemoryCleanerApp {
             icon_cache_status: String::new(),
             settings_expanded: false,
             window_shown: true,
+            cleanup_hotkey_recording: false,
+            hotkey_capture_focus: cx.focus_handle(),
         };
 
         cx.set_global(AppEntityHolder(cx.entity()));
@@ -459,6 +463,8 @@ impl MemoryCleanerApp {
         };
         use crate::ui::settings_page::render_window_behavior_dialog;
 
+        self.cancel_cleanup_hotkey_recording(cx);
+
         let weak = cx.weak_entity();
         window.open_dialog(cx, move |dialog, _window, _cx| {
             let weak = weak.clone();
@@ -511,9 +517,57 @@ impl MemoryCleanerApp {
 
     pub fn set_cleanup_hotkey_enabled(&mut self, enabled: bool, cx: &mut Context<Self>) {
         self.settings.cleanup_hotkey_enabled = enabled;
+        if !enabled {
+            self.cleanup_hotkey_recording = false;
+        }
         win32::hotkey::sync(&self.settings);
         self.queue_settings_save(cx);
         cx.notify();
+    }
+
+    pub fn start_cleanup_hotkey_recording(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.settings.cleanup_hotkey_enabled {
+            return;
+        }
+        self.cleanup_hotkey_recording = true;
+        window.focus(&self.hotkey_capture_focus, cx);
+        cx.notify();
+    }
+
+    pub fn handle_cleanup_hotkey_key(&mut self, event: &KeyDownEvent, cx: &mut Context<Self>) {
+        if !self.cleanup_hotkey_recording {
+            return;
+        }
+
+        if event.keystroke.key.eq_ignore_ascii_case("escape") {
+            self.cleanup_hotkey_recording = false;
+            cx.notify();
+            return;
+        }
+
+        let keystroke = &event.keystroke;
+        let Some(chord) = win32::hotkey::HotkeyBinding::format_chord(
+            keystroke.modifiers.control,
+            keystroke.modifiers.alt,
+            keystroke.modifiers.shift,
+            keystroke.modifiers.platform,
+            &keystroke.key,
+        ) else {
+            return;
+        };
+
+        self.settings.cleanup_hotkey = chord;
+        self.cleanup_hotkey_recording = false;
+        win32::hotkey::sync(&self.settings);
+        self.queue_settings_save(cx);
+        cx.notify();
+    }
+
+    pub fn cancel_cleanup_hotkey_recording(&mut self, cx: &mut Context<Self>) {
+        if self.cleanup_hotkey_recording {
+            self.cleanup_hotkey_recording = false;
+            cx.notify();
+        }
     }
 
     pub fn set_debug_logging(&mut self, enabled: bool, cx: &mut Context<Self>) {
