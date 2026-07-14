@@ -268,6 +268,7 @@ fn render_language_selector(
             let weak = weak.clone();
             Button::new("language-select")
                 .ghost()
+                .small()
                 .min_w(px(128.))
                 .label(current_label)
                 .dropdown_caret(true)

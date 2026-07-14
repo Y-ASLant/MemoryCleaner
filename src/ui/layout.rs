@@ -1,14 +1,10 @@
 //! Shared layout metrics for window sizing and spacing.
 
-use gpui::{Pixels, px};
-
 pub const SECTION_GAP: f32 = 6.;
 pub const DIALOG_PADDING_TOP: f32 = 16.;
 pub const DIALOG_PADDING_HORIZONTAL: f32 = 16.;
 /// 「窗口行为」对话框宽度（相对 520px 主窗口左右各留 20px）。
 pub const WINDOW_BEHAVIOR_DIALOG_WIDTH: f32 = 480.;
-/// 「窗口行为」对话框估算高度，用于垂直居中定位。
-pub const WINDOW_BEHAVIOR_DIALOG_ESTIMATED_HEIGHT: f32 = 248.;
 pub const TITLE_BAR_H: f32 = 34.;
 pub const CLEANUP_BUTTON_H: f32 = 48.;
 
@@ -72,17 +68,6 @@ pub fn expanded_window_height(content_padding: f32) -> f32 {
         + EXPANDED_WINDOW_HEIGHT_ADJUSTMENT
 }
 
-/// Vertically center a dialog in the client area below the app title bar.
-pub fn centered_dialog_margin_top(
-    viewport_height: Pixels,
-    dialog_height: f32,
-    title_bar_height: f32,
-) -> Pixels {
-    let usable = viewport_height - px(title_bar_height);
-    let offset = (usable - px(dialog_height)) / 2.;
-    (px(title_bar_height) + offset.max(px(0.))).max(px(title_bar_height))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -92,11 +77,5 @@ mod tests {
         let collapsed = collapsed_window_height(6.);
         let expanded = expanded_window_height(6.);
         assert!(expanded > collapsed);
-    }
-
-    #[test]
-    fn centered_dialog_margin_top_stays_below_title_bar() {
-        let margin = centered_dialog_margin_top(px(600.), 248., TITLE_BAR_H);
-        assert!(margin >= px(TITLE_BAR_H));
     }
 }

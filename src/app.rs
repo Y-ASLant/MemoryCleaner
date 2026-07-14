@@ -449,24 +449,16 @@ impl MemoryCleanerApp {
 
     pub fn open_window_behavior_dialog(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         use crate::ui::layout::{
-            DIALOG_PADDING_HORIZONTAL, DIALOG_PADDING_TOP, TITLE_BAR_H,
-            WINDOW_BEHAVIOR_DIALOG_ESTIMATED_HEIGHT, WINDOW_BEHAVIOR_DIALOG_WIDTH,
-            centered_dialog_margin_top,
+            DIALOG_PADDING_HORIZONTAL, DIALOG_PADDING_TOP, WINDOW_BEHAVIOR_DIALOG_WIDTH,
         };
         use crate::ui::settings_page::render_window_behavior_dialog;
 
         let weak = cx.weak_entity();
-        window.open_dialog(cx, move |dialog, window, _cx| {
+        window.open_dialog(cx, move |dialog, _window, _cx| {
             let weak = weak.clone();
-            let margin_top = centered_dialog_margin_top(
-                window.viewport_size().height,
-                WINDOW_BEHAVIOR_DIALOG_ESTIMATED_HEIGHT,
-                TITLE_BAR_H,
-            );
             dialog
                 .title(t!("dialog.window_behavior"))
                 .w(px(WINDOW_BEHAVIOR_DIALOG_WIDTH))
-                .margin_top(margin_top)
                 .pt(px(DIALOG_PADDING_TOP))
                 .pb(px(CONTENT_PADDING))
                 .pl(px(DIALOG_PADDING_HORIZONTAL))

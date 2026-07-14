@@ -3,18 +3,19 @@ use std::os::windows::ffi::OsStringExt;
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
-use windows::core::{Interface, HSTRING};
 use windows::Data::Xml::Dom::XmlDocument;
 use windows::UI::Notifications::{ToastNotification, ToastNotificationManager};
 use windows::Win32::Foundation::MAX_PATH;
 use windows::Win32::Storage::EnhancedStorage::PKEY_AppUserModel_ID;
-use windows::Win32::System::Com::{
-    CoCreateInstance, CoInitializeEx, IPersistFile, CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED,
-};
 use windows::Win32::System::Com::StructuredStorage::InitPropVariantFromStringAsVector;
-use windows::Win32::UI::Shell::{
-    PropertiesSystem::IPropertyStore, IShellLinkW, SetCurrentProcessExplicitAppUserModelID, ShellLink,
+use windows::Win32::System::Com::{
+    CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED, CoCreateInstance, CoInitializeEx, IPersistFile,
 };
+use windows::Win32::UI::Shell::{
+    IShellLinkW, PropertiesSystem::IPropertyStore, SetCurrentProcessExplicitAppUserModelID,
+    ShellLink,
+};
+use windows::core::{HSTRING, Interface};
 
 pub const APP_USER_MODEL_ID: &str = "MemoryCleanr.App";
 
@@ -73,14 +74,14 @@ fn ensure_start_menu_shortcut() -> Result<()> {
             .context("SetArguments failed")?;
 
         let property_store: IPropertyStore = link.cast().context("IPropertyStore cast failed")?;
-        let app_id =
-            InitPropVariantFromStringAsVector(&HSTRING::from(APP_USER_MODEL_ID)).context(
-                "InitPropVariantFromStringAsVector failed",
-            )?;
+        let app_id = InitPropVariantFromStringAsVector(&HSTRING::from(APP_USER_MODEL_ID))
+            .context("InitPropVariantFromStringAsVector failed")?;
         property_store
             .SetValue(&PKEY_AppUserModel_ID, &app_id)
             .context("SetValue PKEY_AppUserModel_ID failed")?;
-        property_store.Commit().context("property store Commit failed")?;
+        property_store
+            .Commit()
+            .context("property store Commit failed")?;
 
         let persist_file: IPersistFile = link.cast().context("IPersistFile cast failed")?;
         persist_file
