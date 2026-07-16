@@ -254,40 +254,45 @@ fn render_process_exclusion(
                 .w_full()
                 .items_center()
                 .gap_3()
-                .child({
-                    let weak = weak.clone();
-                    let available = available.clone();
-                    let pick = pick.clone();
-                    Button::new("process-exclusion-select")
-                        .outline()
-                        .small()
+                .child(
+                    div()
                         .flex_1()
                         .min_w_0()
-                        .h(selector_h)
-                        .when(app.is_optimizing, |this| this.disabled(true))
-                        .label(pick_label)
-                        .dropdown_caret(true)
-                        .dropdown_menu_with_anchor(Anchor::BottomLeft, move |menu, _, _| {
-                            let menu = available.iter().fold(menu, |menu, name| {
-                                let name = name.clone();
-                                let checked = pick.as_deref() == Some(name.as_str());
-                                let weak = weak.clone();
-                                menu.item(
-                                    PopupMenuItem::new(name.clone()).checked(checked).on_click(
-                                        move |_, _, cx| {
-                                            let _ = weak.update(cx, |app, cx| {
-                                                app.set_process_exclusion_pick(
-                                                    Some(name.clone()),
-                                                    cx,
-                                                );
-                                            });
-                                        },
-                                    ),
-                                )
-                            });
-                            menu.scrollable(true).max_h(px(PROCESS_PICKER_MENU_MAX_H))
-                        })
-                })
+                        .w_full()
+                        .child({
+                            let weak = weak.clone();
+                            let available = available.clone();
+                            let pick = pick.clone();
+                            Button::new("process-exclusion-select")
+                                .outline()
+                                .small()
+                                .w_full()
+                                .h(selector_h)
+                                .when(app.is_optimizing, |this| this.disabled(true))
+                                .label(pick_label)
+                                .dropdown_caret(true)
+                                .dropdown_menu_with_anchor(Anchor::BottomLeft, move |menu, _, _| {
+                                    let menu = available.iter().fold(menu, |menu, name| {
+                                        let name = name.clone();
+                                        let checked = pick.as_deref() == Some(name.as_str());
+                                        let weak = weak.clone();
+                                        menu.item(
+                                            PopupMenuItem::new(name.clone()).checked(checked).on_click(
+                                                move |_, _, cx| {
+                                                    let _ = weak.update(cx, |app, cx| {
+                                                        app.set_process_exclusion_pick(
+                                                            Some(name.clone()),
+                                                            cx,
+                                                        );
+                                                    });
+                                                },
+                                            ),
+                                        )
+                                    });
+                                    menu.scrollable(true).max_h(px(PROCESS_PICKER_MENU_MAX_H))
+                                })
+                        }),
+                )
                 .child({
                     let mut button = Button::new("process-exclusion-add")
                         .outline()
