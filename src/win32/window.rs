@@ -4,9 +4,8 @@ use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use windows::Win32::Foundation::HWND;
 use windows::Win32::UI::WindowsAndMessaging::{
     GWL_EXSTYLE, GWL_STYLE, GetWindowLongPtrW, HWND_NOTOPMOST, HWND_TOPMOST, IsIconic,
-    SHOW_WINDOW_CMD, SW_HIDE, SW_RESTORE, SW_SHOW, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE,
-    SWP_NOSIZE, SetWindowLongPtrW, SetWindowPos, ShowWindow, WS_EX_APPWINDOW, WS_EX_TOOLWINDOW,
-    WS_MAXIMIZEBOX,
+    SHOW_WINDOW_CMD, SW_RESTORE, SW_SHOW, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
+    SetWindowLongPtrW, SetWindowPos, ShowWindow, WS_EX_APPWINDOW, WS_EX_TOOLWINDOW, WS_MAXIMIZEBOX,
 };
 
 fn show_window(hwnd: HWND, cmd: SHOW_WINDOW_CMD) -> Result<()> {
@@ -42,16 +41,6 @@ pub(crate) fn hwnd_from_window(window: &Window) -> Result<HWND> {
     };
 
     Ok(HWND(win32.hwnd.get() as _))
-}
-
-/// Hide the window and remove it from the taskbar (tray-only visibility).
-pub fn hide_to_tray(window: &Window) -> Result<()> {
-    let hwnd = hwnd_from_window(window)?;
-    apply_extended_style(hwnd, |style| {
-        (style | WS_EX_TOOLWINDOW.0) & !WS_EX_APPWINDOW.0
-    })?;
-    show_window(hwnd, SW_HIDE)?;
-    Ok(())
 }
 
 /// Restore the window from tray-only hidden state.
