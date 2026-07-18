@@ -294,23 +294,6 @@ pub fn apply_spin_frame(quarters: u32) {
     }
 }
 
-pub fn dispatch_gui_command(
-    app: &mut crate::app::MemoryCleanerApp,
-    command: TrayCommand,
-    cx: &mut gpui::Context<crate::app::MemoryCleanerApp>,
-) {
-    match command {
-        TrayCommand::ActivateWindow => app.activate_window(cx),
-        TrayCommand::RefreshTooltip => {
-            app.refresh_memory();
-            app.sync_tray();
-        }
-        TrayCommand::Optimize => app.run_optimize(cx),
-        TrayCommand::MenuAction(action) => app.handle_tray_action(&action, cx),
-        TrayCommand::SetSpinFrame(quarters) => apply_spin_frame(quarters),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -24,6 +24,16 @@ pub fn run<F>(settings: &Settings, avail_before: u64, mut on_progress: F) -> Opt
 where
     F: FnMut(OptimizeStepUpdate),
 {
+    let Some(_lock) = crate::win32::optimize_lock::OptimizeLock::try_acquire() else {
+        return OptimizeRunResult {
+            completed: Vec::new(),
+            errors: Vec::new(),
+            freed_detail: String::new(),
+            status_message: t!("optimize.already_running").to_string(),
+            has_errors: false,
+        };
+    };
+
     let areas = settings.memory_areas();
     let excluded = &settings.excluded_processes;
     let steps = match optimize::step_plan(areas, excluded) {

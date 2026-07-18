@@ -2,16 +2,15 @@ use anyhow::Result;
 use gpui::{KeyBinding, QuitMode, actions, *};
 
 use crate::app::{self, AppEntityHolder};
-use crate::runtime::TrayReceiver;
 use crate::settings::Settings;
 
 actions!(wmc_gpui, [Quit]);
 
-pub fn run(settings: Settings, tray_rx: TrayReceiver) -> Result<()> {
-    run_gpui(settings, tray_rx)
+pub fn run(settings: Settings) -> Result<()> {
+    run_gpui(settings)
 }
 
-fn run_gpui(settings: Settings, tray_rx: TrayReceiver) -> Result<()> {
+fn run_gpui(settings: Settings) -> Result<()> {
     gpui_platform::application()
         .with_assets(gpui_component_assets::Assets)
         .with_quit_mode(QuitMode::Explicit)
@@ -31,7 +30,7 @@ fn run_gpui(settings: Settings, tray_rx: TrayReceiver) -> Result<()> {
             });
 
             cx.spawn(async move |cx| {
-                app::open_main_window(cx, settings, tray_rx).expect("Failed to open window");
+                app::open_main_window(cx, settings).expect("Failed to open window");
             })
             .detach();
         });

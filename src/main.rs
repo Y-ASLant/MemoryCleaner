@@ -137,10 +137,7 @@ fn run_gui_session(settings: &mut Settings) {
     *settings = Settings::load();
     locale::apply(settings);
 
-    let (_command_tx, command_rx) = std::sync::mpsc::channel();
-    let tray_rx = std::sync::Arc::new(std::sync::Mutex::new(command_rx));
-
-    if let Err(error) = runtime::run_gui(settings.clone(), std::sync::Arc::clone(&tray_rx)) {
+    if let Err(error) = runtime::run_gui(settings.clone()) {
         log_msg(&format!("[gui] failed: {error:#}"));
     }
 }

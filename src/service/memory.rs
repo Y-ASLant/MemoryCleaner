@@ -47,3 +47,46 @@ pub fn unavailable_sections(show_virtual: bool) -> (MemorySection, Option<Memory
         },
     )
 }
+
+/// Load physical/virtual sections, falling back to unavailable placeholders on error.
+pub fn initial_sections(show_virtual: bool) -> (MemorySection, Option<MemorySection>) {
+    query_sections(show_virtual).unwrap_or_else(|error| {
+        crate::log_msg(&format!("[memory] initial query failed: {error}"));
+        unavailable_sections(show_virtual)
+    })
+}
+
+/// Refresh cached sections. Returns `true` when displayed values changed.
+pub fn refresh_sections(
+    physical: &mut MemorySection,
+    virtual_mem: &mut Option<MemorySection>,
+    show_virtual: bool,
+) -> bool {
+    let Ok((next_physical, next_virtual)) = query_sections(show_virtual) else {
+        if physical.is_unavailable() && virtual_mem.as_ref().is_none_or(|v| v.is_unavailable()) {
+            return false;
+        }
+        let (next_physical, next_virtual) = unavailable_sections(show_virtual);
+        *physical = next_physical;
+        *virtual_mem = next_virtual;
+        return true;
+    };
+
+    let changed = *physical != next_physical || *virtual_mem != next_virtual;
+    if changed {
+        *physical = next_physical;
+        *virtual_mem = next_virtual;
+    }
+    changed
+}
+
+pub fn virtual_for_display(
+    virtual_mem: &Option<MemorySection>,
+    show_virtual: bool,
+) -> Option<&MemorySection> {
+    if show_virtual {
+        virtual_mem.as_ref()
+    } else {
+        None
+    }
+}

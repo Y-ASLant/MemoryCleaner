@@ -7,10 +7,20 @@ Memory Cleanr is a **Windows-only** GUI memory-optimization tool written in Rust
 ## Architecture & Data Flow
 
 ```
-main.rs → ensure_elevated() → single-instance check → notification::init
-       → tray install + hotkey::sync → GPUI app launch
+main.rs → ensure_elevated() → notification::init
  │
- ├─ app.rs (core state, memory refresh, optimization, window hide/restore)
+ ├─ --startup → Tray Host 会话（常驻）
+ │    runtime/tray_host.rs → Win32 MessageLoop + tray + hotkey + IPC 服务端
+ │    service/optimize_runner.rs（托盘菜单/热键触发清理）
+ │
+ └─ 普通启动 → ensure_tray_host_running() → GUI 单例 → GPUI 会话
+      runtime/gui_app.rs → app.rs（主窗口、设置、清理进度 UI）
+      win32/ipc.rs（Named Pipe：RegisterGui / Spin / SettingsChanged）
+ │
+ ├─ app.rs (GUI 状态、内存刷新、优化进度、窗口隐藏/恢复)
+ ├─ runtime/tray_host.rs (Tray Host 状态、托盘同步、后台清理)
+ ├─ service/memory.rs (共享内存查询/刷新 helpers)
+ ├─ service/optimize_runner.rs (GUI 与 Tray 共用的清理编排)
  ├─ log.rs (optional App.log file output, timestamp-based retention)
  ├─ locale.rs (rust-i18n locale apply, list separator, lang-id mapping)
  ├─ memory.rs (GlobalMemoryStatusEx → MemoryStatus)
@@ -21,27 +31,33 @@ main.rs → ensure_elevated() → single-instance check → notification::init
  ├─ icon_cache.rs (Explorer icon cache purge)
  ├─ version.rs (version constant)
  ├─ ui/ (GPUI components: layout, memory_card, settings_page, theme, title_bar)
- └─ win32/ (hotkey, notification, nt, os, process, single_instance, startup, volume, window)
+ └─ win32/ (hotkey, ipc, message_loop, optimize_lock, notification, nt, os, process, single_instance, startup, volume, window)
 ```
 
-- **Entry flow:** `main.rs` → elevation → single-instance mutex → `locale::apply` → `notification::init` → install tray + bind hotkey sender → `hotkey::sync` → GPUI app with `QuitMode::Explicit` → `open_main_window`.
-- **i18n:** `rust-i18n` with `locales/zh-CN.yml` (single file, `_version: 2`, zh-CN + en). `rust_i18n::i18n!` is invoked once in `lib.rs`. `settings.language` is `auto` | `zh-CN` | `en`; `auto` uses `GetUserDefaultUILanguage` via `win32::os::system_ui_locale()`. Language changes call `MemoryCleanerApp::apply_locale()` to refresh memory labels and tray menu text immediately.
-- **Async runtime:** `smol` for async task execution (optimization progress updates, memory polling, toast display).
+- **双进程模型：** 同一可执行文件，Tray Host（`--startup`）负责托盘、全局热键、IPC 服务端与无 GUI 时的清理；GUI 进程按需拉起，通过 Named Pipe 向 Tray Host 注册窗口句柄、同步设置变更、驱动托盘图标旋转。两进程各持独立 Mutex 单例（`single_instance.rs`）。
+- **Entry flow:** `main.rs` → elevation → `locale::apply` → `notification::init` →（startup）`ensure_tray_singleton` + `run_tray_session`；或（GUI）`ensure_tray_host_running` + `ensure_gui_singleton` + `run_gui_session` → GPUI `QuitMode::Explicit` → `open_main_window`。
+- **跨进程清理互斥：** `win32/optimize_lock.rs` 命名 Mutex，防止 GUI 与 Tray Host 同时执行 NT 清理。
+- **IPC 协议（GUI → Tray）：** 长度前缀帧 + 单字节 tag：`RegisterGui`、`UnregisterGui`、`SpinStart`、`SpinStop`、`SettingsChanged`。Tray 就绪通过 `MemoryCleanr_TrayReady_v1` 事件握手。
+- **Tray 命令通道：** Tray Host 内 `mpsc` 承载托盘菜单/热键命令；转发线程 `PostMessage(WM_APP_TRAY_CMD)` 汇入 Win32 消息循环（`message_loop.rs`），避免在非托盘线程调用 `set_icon`。
+- **内存状态：** GUI 与 Tray Host 各自轮询 `GlobalMemoryStatusEx`（GUI 1 s、Tray 500 ms）；共享逻辑在 `service/memory.rs::refresh_sections`。
+- **i18n:** `rust-i18n` with `locales/zh-CN.yml` (single file, `_version: 2`, zh-CN + en). `settings.language` is `auto` | `zh-CN` | `en`; `auto` uses `GetUserDefaultUILanguage` via `win32::os::system_ui_locale()`. Language changes call `MemoryCleanerApp::apply_locale()` to refresh memory labels and tray menu text immediately.
+- **Async runtime:** `smol` 用于 GPUI 侧异步（内存轮询、清理进度、Toast）；Tray Host 以 Win32 消息循环 + 普通线程为主。
 - **UI stack:** GPUI + `gpui-component` (Button, Checkbox, Switch, GroupBox, ProgressCircle, Kbd).
 - **Native layer:** `src/win32/` wraps low-level Windows APIs; `src/optimize.rs` orchestrates the cleanup steps.
 - **Console suppression:** `main.rs` uses `#![windows_subsystem = "windows"]`; diagnostics go to `OutputDebugStringA` (viewable via DebugView). Optional file logging via `src/log.rs` when `debug_logging` is enabled.
-- **Tray command channel:** A single `mpsc` channel carries `TrayCommand` from tray events, global hotkeys, and (future) background tasks into `app.rs` via blocking `recv()` — no idle polling loop.
-- **Window lifecycle:** Closing with `close_to_notification_area` hides the GPUI window to tray and may destroy the window handle; `activate_window` reopens it. Memory polling pauses while hidden.
+- **Window lifecycle:** Closing with `close_to_notification_area` hides the GPUI window and exits the GUI process; Tray Host keeps running. `activate_or_spawn_gui()` reopens or spawns GUI. Memory polling in GUI pauses when the window closes.
 
 ## Key Directories
 
 | Path | Purpose |
 |---|---|
 | `src/` | Application source (binary crate, main.rs entry point) |
+| `src/runtime/` | Tray Host / GUI 会话入口（`tray_host.rs`, `gui_app.rs`） |
+| `src/service/` | 共享业务逻辑（内存查询 helpers、`optimize_runner`） |
 | `src/ui/` | GPUI UI components (layout, memory_card, settings_page, theme, title_bar) |
 | `locales/` | rust-i18n translation YAML (`zh-CN.yml`, zh-CN + en strings) |
 | `docs/` | Project docs (`CHANGELOG.md`, technical comparisons) |
-| `src/win32/` | Win32/NT API bindings (hotkey, notification, nt, os, process, single_instance, startup, volume, window) |
+| `src/win32/` | Win32/NT API bindings (hotkey, ipc, message_loop, optimize_lock, notification, nt, os, process, single_instance, startup, volume, window) |
 | `vendor/proc-macro-error2/` | Vendored patch for Rust 1.97+ compatibility (see below) |
 | `.codegraph/` | Codegraph index (gitignored) |
 

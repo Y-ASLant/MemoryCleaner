@@ -28,6 +28,6 @@ pub fn run_tray(settings: &Settings, tray_rx: TrayReceiver) -> Result<()> {
     Ok(())
 }
 
-pub fn run_gui(settings: crate::settings::Settings, tray_rx: TrayReceiver) -> Result<()> {
-    gui_app::run(settings, tray_rx)
+pub fn run_gui(settings: crate::settings::Settings) -> Result<()> {
+    gui_app::run(settings)
 }

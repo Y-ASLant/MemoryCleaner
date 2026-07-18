@@ -13,12 +13,11 @@ use smol::Timer;
 use crate::locale;
 use crate::memory::MemorySection;
 use crate::optimize::{self, MemoryAreas};
-use crate::runtime::TrayReceiver;
 use crate::service::{memory, optimize_runner};
 use crate::settings::Settings;
-use crate::tray::dispatch_gui_command;
 use crate::ui::layout::SECTION_GAP;
 use crate::win32;
+use crate::win32::ipc::IpcMessage;
 
 const SETTINGS_SAVE_DEBOUNCE: Duration = Duration::from_millis(300);
 const OPTIMIZE_RESULT_DISPLAY: Duration = Duration::from_secs(5);
@@ -79,16 +78,12 @@ pub fn resolve_close_action(close_to_notification_area: bool) -> CloseAction {
     }
 }
 
-pub fn open_main_window(
-    cx: &mut AsyncApp,
-    settings: Settings,
-    tray_rx: TrayReceiver,
-) -> Result<()> {
+pub fn open_main_window(cx: &mut AsyncApp, settings: Settings) -> Result<()> {
     let options = cx.update(|app| window_options(false, app));
     cx.open_window(options, |window, cx| {
         window.set_window_title(crate::version::APP_NAME);
 
-        let app_entity = cx.new(|cx| MemoryCleanerApp::new(window, cx, settings, tray_rx));
+        let app_entity = cx.new(|cx| MemoryCleanerApp::new(window, cx, settings));
         let _ = win32::window::remove_maximize_button(window);
         crate::ui::theme::init_light_theme(window, cx);
 
@@ -117,17 +112,11 @@ pub struct MemoryCleanerApp {
     pub settings_expanded: bool,
     pub cleanup_hotkey_recording: bool,
     pub(crate) hotkey_capture_focus: FocusHandle,
-    tray_listener_active: Arc<std::sync::atomic::AtomicBool>,
     is_closing: Arc<AtomicBool>,
 }
 
 impl MemoryCleanerApp {
-    pub fn new(
-        window: &mut Window,
-        cx: &mut Context<Self>,
-        settings: Settings,
-        tray_rx: TrayReceiver,
-    ) -> Self {
+    pub fn new(window: &mut Window, cx: &mut Context<Self>, settings: Settings) -> Self {
         crate::log::set_debug_enabled(settings.debug_logging);
         if settings.debug_logging {
             crate::log::write(&t!(
@@ -137,12 +126,7 @@ impl MemoryCleanerApp {
         }
 
         let show_virtual = settings.show_virtual_memory;
-        let (physical, virtual_mem) = memory::query_sections(show_virtual).unwrap_or_else(|e| {
-            crate::log_msg(&format!("[memory] initial query failed: {e}"));
-            memory::unavailable_sections(show_virtual)
-        });
-
-        let tray_listener_active = Arc::new(AtomicBool::new(true));
+        let (physical, virtual_mem) = memory::initial_sections(show_virtual);
         let is_closing = Arc::new(AtomicBool::new(false));
 
         let mut app = Self {
@@ -163,14 +147,11 @@ impl MemoryCleanerApp {
             settings_expanded: false,
             cleanup_hotkey_recording: false,
             hotkey_capture_focus: cx.focus_handle(),
-            tray_listener_active: Arc::clone(&tray_listener_active),
             is_closing: Arc::clone(&is_closing),
         };
 
         cx.set_global(AppEntityHolder(cx.entity()));
         app.attach_window(window, cx);
-        app.start_background_tasks(cx, tray_rx, tray_listener_active);
-        app.sync_tray();
 
         app
     }
@@ -219,7 +200,6 @@ impl MemoryCleanerApp {
                 let Ok(()) = this.update(cx, |app, cx| {
                     if app.refresh_memory() {
                         cx.notify();
-                        app.sync_tray();
                     }
                 }) else {
                     break;
@@ -227,24 +207,6 @@ impl MemoryCleanerApp {
             }
         })
         .detach();
-    }
-
-    pub(crate) fn sync_tray(&self) {
-        if !crate::tray::is_installed() {
-            return;
-        }
-        let virtual_mem = if self.settings.show_virtual_memory {
-            self.virtual_mem.as_ref()
-        } else {
-            None
-        };
-        crate::tray::sync_display(&self.physical, virtual_mem, true);
-    }
-
-    fn set_unavailable_sections(&mut self, show_virtual: bool) {
-        let (physical, virtual_mem) = memory::unavailable_sections(show_virtual);
-        self.physical = physical;
-        self.virtual_mem = virtual_mem;
     }
 
     pub(crate) fn queue_settings_save(&mut self, cx: &mut Context<Self>) {
@@ -256,9 +218,10 @@ impl MemoryCleanerApp {
             let _ = this.update(cx, |app, _| {
                 if app.settings_save_gen == generation {
                     app.settings.save();
-                    if !crate::tray::is_installed() {
-                        win32::ipc::notify_settings_changed();
-                    }
+                    win32::ipc::send_to_tray_logged(
+                        IpcMessage::SettingsChanged,
+                        "settings notify",
+                    );
                 }
             });
         })
@@ -266,23 +229,11 @@ impl MemoryCleanerApp {
     }
 
     pub fn refresh_memory(&mut self) -> bool {
-        let show_virtual = self.settings.show_virtual_memory;
-        let Ok((physical, virtual_mem)) = memory::query_sections(show_virtual) else {
-            if self.physical.is_unavailable()
-                && self.virtual_mem.as_ref().is_none_or(|v| v.is_unavailable())
-            {
-                return false;
-            }
-            self.set_unavailable_sections(show_virtual);
-            return true;
-        };
-
-        let changed = self.physical != physical || self.virtual_mem != virtual_mem;
-        if changed {
-            self.physical = physical;
-            self.virtual_mem = virtual_mem;
-        }
-        changed
+        memory::refresh_sections(
+            &mut self.physical,
+            &mut self.virtual_mem,
+            self.settings.show_virtual_memory,
+        )
     }
 
     pub fn close_action(&mut self, source: &str) -> CloseAction {
@@ -310,23 +261,19 @@ impl MemoryCleanerApp {
         }
 
         let action = self.close_action(source);
-        self.stop_background_tasks();
+        self.stop_memory_refresh();
         self.hide_main_window();
         match action {
             CloseAction::ReturnToTray => {
                 crate::log_msg("[close] hide_to_tray");
-                if !crate::tray::is_installed() {
-                    win32::ipc::unregister_gui();
-                }
+                win32::ipc::send_to_tray_logged(IpcMessage::UnregisterGui, "unregister GUI");
                 if let Err(error) = win32::process::ensure_tray_host_running() {
                     crate::log_msg(&format!("[close] tray host unavailable: {error:#}"));
                 }
             }
             CloseAction::ExitApp => {
                 crate::log_msg("[close] quit_app");
-                if !crate::tray::is_installed() {
-                    win32::ipc::unregister_gui();
-                }
+                win32::ipc::send_to_tray_logged(IpcMessage::UnregisterGui, "unregister GUI");
             }
         }
         cx.defer(|cx| {
@@ -348,23 +295,9 @@ impl MemoryCleanerApp {
         }
     }
 
-    fn stop_background_tasks(&self) {
-        self.tray_listener_active.store(false, Ordering::Release);
+    fn stop_memory_refresh(&self) {
         self.memory_refresh_generation
             .fetch_add(1, Ordering::Relaxed);
-    }
-
-    fn quit_app(&mut self, cx: &mut Context<Self>) {
-        if self
-            .is_closing
-            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
-            .is_err()
-        {
-            return;
-        }
-        self.settings.save();
-        self.stop_background_tasks();
-        cx.defer(|cx| cx.quit());
     }
 
     pub fn activate_window(&mut self, cx: &mut Context<Self>) {
@@ -386,7 +319,7 @@ impl MemoryCleanerApp {
         {
             return;
         }
-        self.stop_background_tasks();
+        self.stop_memory_refresh();
         self.hide_main_window();
         crate::log_msg("[close] hide_to_tray source=tray_menu");
         if let Err(error) = win32::process::ensure_tray_host_running() {
@@ -401,12 +334,11 @@ impl MemoryCleanerApp {
     pub fn apply_locale(&mut self, cx: &mut Context<Self>) {
         locale::apply(&self.settings);
         let show_virtual = self.settings.show_virtual_memory;
-        if let Ok((physical, virtual_mem)) = memory::query_sections(show_virtual) {
-            self.physical = physical;
-            self.virtual_mem = virtual_mem;
-        } else {
-            self.set_unavailable_sections(show_virtual);
-        }
+        let (physical, virtual_mem) = memory::query_sections(show_virtual).unwrap_or_else(|_| {
+            memory::unavailable_sections(show_virtual)
+        });
+        self.physical = physical;
+        self.virtual_mem = virtual_mem;
         if !self.is_optimizing {
             self.optimize_status.clear();
             self.optimize_has_errors = false;
@@ -415,7 +347,6 @@ impl MemoryCleanerApp {
         if !self.is_refreshing_icon_cache {
             self.icon_cache_status.clear();
         }
-        self.sync_tray();
         self.queue_settings_save(cx);
         cx.notify();
     }
@@ -614,76 +545,6 @@ impl MemoryCleanerApp {
         cx.notify();
     }
 
-    pub fn handle_tray_action(&mut self, action: &str, cx: &mut Context<Self>) {
-        match action {
-            "optimize" => self.run_optimize(cx),
-            "toggle_window" => self.hide_to_tray(cx),
-            "quit" => self.quit_app(cx),
-            _ => {}
-        }
-    }
-
-    pub fn start_background_tasks(
-        &self,
-        cx: &mut Context<Self>,
-        tray_rx: TrayReceiver,
-        tray_listener_active: Arc<AtomicBool>,
-    ) {
-        if !crate::tray::is_installed() {
-            return;
-        }
-
-        cx.spawn(async move |this, cx| {
-            loop {
-                if !tray_listener_active.load(Ordering::Acquire) {
-                    break;
-                }
-
-                let tray_rx_for_wait = Arc::clone(&tray_rx);
-                let active = Arc::clone(&tray_listener_active);
-                let (command, rx) = smol::unblock(move || {
-                    if !active.load(Ordering::Acquire) {
-                        return (Err(std::sync::mpsc::RecvError), tray_rx_for_wait);
-                    }
-                    let result = tray_rx_for_wait
-                        .lock()
-                        .expect("tray receiver mutex poisoned")
-                        .recv_timeout(Duration::from_millis(100));
-                    match result {
-                        Ok(command) => (Ok(command), tray_rx_for_wait),
-                        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-                            (Err(std::sync::mpsc::RecvError), tray_rx_for_wait)
-                        }
-                        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
-                            (Err(std::sync::mpsc::RecvError), tray_rx_for_wait)
-                        }
-                    }
-                })
-                .await;
-                let _ = rx;
-
-                if !tray_listener_active.load(Ordering::Acquire) {
-                    break;
-                }
-
-                let Ok(command) = command else {
-                    continue;
-                };
-
-                if this
-                    .update(cx, |this, cx| {
-                        dispatch_gui_command(this, command, cx);
-                    })
-                    .is_err()
-                {
-                    break;
-                }
-            }
-            crate::log_msg("[gui] tray command listener stopped");
-        })
-        .detach();
-    }
-
     pub(crate) fn is_busy(&self) -> bool {
         self.is_refreshing_icon_cache || self.is_optimizing
     }
@@ -715,11 +576,7 @@ impl MemoryCleanerApp {
         self.optimize_percent = 0.0;
         self.optimize_status.clear();
         self.optimize_has_errors = false;
-        if crate::tray::is_installed() {
-            crate::tray::start_spin();
-        } else {
-            win32::ipc::notify_spin_start();
-        }
+        win32::ipc::send_to_tray_logged(IpcMessage::SpinStart, "spin start");
         cx.notify();
 
         cx.spawn(async move |this, cx| {
@@ -769,11 +626,7 @@ impl MemoryCleanerApp {
                     app.optimize_step.clear();
                     app.is_optimizing = false;
                     app.optimize_percent = 0.0;
-                    if crate::tray::is_installed() {
-                        crate::tray::stop_spin();
-                    } else {
-                        win32::ipc::notify_spin_stop();
-                    }
+                    win32::ipc::send_to_tray_logged(IpcMessage::SpinStop, "spin stop");
                     app.optimize_has_errors = result.has_errors;
                     app.optimize_status = result.status_message.clone();
                     crate::log::write(&format!("[optimize] result: {}", app.optimize_status));

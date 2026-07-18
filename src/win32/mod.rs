@@ -1,6 +1,7 @@
 pub mod hotkey;
 pub mod ipc;
 pub mod message_loop;
+pub mod optimize_lock;
 pub mod notification;
 pub mod nt;
 pub mod os;

@@ -13,7 +13,7 @@ use crate::runtime::TrayReceiver;
 use crate::service::{memory, optimize_runner};
 use crate::settings::Settings;
 use crate::tray::{self, TrayCommand};
-use crate::win32::ipc::{self, IpcIncoming};
+use crate::win32::ipc::{self, IpcMessage};
 use crate::win32::message_loop::MessageLoop;
 
 const FORWARDER_POLL_MS: u64 = 100;
@@ -43,10 +43,7 @@ impl TrayHostState {
         }
 
         let show_virtual = settings.show_virtual_memory;
-        let (physical, virtual_mem) = memory::query_sections(show_virtual).unwrap_or_else(|e| {
-            crate::log_msg(&format!("[memory] initial query failed: {e}"));
-            memory::unavailable_sections(show_virtual)
-        });
+        let (physical, virtual_mem) = memory::initial_sections(show_virtual);
 
         Self {
             settings,
@@ -59,11 +56,8 @@ impl TrayHostState {
     }
 
     fn sync_tray(&self) {
-        let virtual_mem = if self.settings.show_virtual_memory {
-            self.virtual_mem.as_ref()
-        } else {
-            None
-        };
+        let virtual_mem =
+            memory::virtual_for_display(&self.virtual_mem, self.settings.show_virtual_memory);
         let window_visible = ipc::gui_session()
             .is_some_and(|session| crate::win32::window::is_hwnd_visible(session.hwnd))
             || crate::win32::window::is_gui_window_visible();
@@ -71,25 +65,11 @@ impl TrayHostState {
     }
 
     fn refresh_memory(&mut self) -> bool {
-        let show_virtual = self.settings.show_virtual_memory;
-        let Ok((physical, virtual_mem)) = memory::query_sections(show_virtual) else {
-            if self.physical.is_unavailable()
-                && self.virtual_mem.as_ref().is_none_or(|v| v.is_unavailable())
-            {
-                return false;
-            }
-            let (physical, virtual_mem) = memory::unavailable_sections(show_virtual);
-            self.physical = physical;
-            self.virtual_mem = virtual_mem;
-            return true;
-        };
-
-        let changed = self.physical != physical || self.virtual_mem != virtual_mem;
-        if changed {
-            self.physical = physical;
-            self.virtual_mem = virtual_mem;
-        }
-        changed
+        memory::refresh_sections(
+            &mut self.physical,
+            &mut self.virtual_mem,
+            self.settings.show_virtual_memory,
+        )
     }
 
     fn spawn_optimize(&mut self) {
@@ -160,7 +140,7 @@ pub fn run(settings: &Settings, tray_rx: TrayReceiver) -> Result<()> {
     message_loop.start_timer();
 
     let pending = Arc::new(std::sync::Mutex::new(Vec::<TrayCommand>::new()));
-    let ipc_pending = Arc::new(std::sync::Mutex::new(Vec::<IpcIncoming>::new()));
+    let ipc_pending = Arc::new(std::sync::Mutex::new(Vec::<IpcMessage>::new()));
     let mut state = TrayHostState::new(
         settings.clone(),
         Arc::clone(&pending),
@@ -215,7 +195,7 @@ pub fn run(settings: &Settings, tray_rx: TrayReceiver) -> Result<()> {
                 .lock()
                 .map(|mut queue| queue.drain(..).collect())
                 .unwrap_or_default();
-            let ipc_messages: Vec<IpcIncoming> = ipc_pending
+            let ipc_messages: Vec<IpcMessage> = ipc_pending
                 .lock()
                 .map(|mut queue| queue.drain(..).collect())
                 .unwrap_or_default();
@@ -255,18 +235,18 @@ fn reload_settings(state: &mut TrayHostState) {
     state.sync_tray();
 }
 
-fn dispatch_ipc(state: &mut TrayHostState, message: IpcIncoming) {
+fn dispatch_ipc(state: &mut TrayHostState, message: IpcMessage) {
     match message {
-        IpcIncoming::RegisterGui { .. } | IpcIncoming::UnregisterGui => {
+        IpcMessage::RegisterGui { .. } | IpcMessage::UnregisterGui => {
             state.sync_tray();
         }
-        IpcIncoming::SpinStart => {
+        IpcMessage::SpinStart => {
             tray::start_spin();
         }
-        IpcIncoming::SpinStop => {
+        IpcMessage::SpinStop => {
             tray::stop_spin();
         }
-        IpcIncoming::SettingsChanged => {
+        IpcMessage::SettingsChanged => {
             reload_settings(state);
         }
     }

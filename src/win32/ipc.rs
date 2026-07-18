@@ -34,16 +34,7 @@ pub struct GuiSession {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum IpcIncoming {
-    RegisterGui { pid: u32, hwnd: isize },
-    UnregisterGui,
-    SpinStart,
-    SpinStop,
-    SettingsChanged,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum IpcOutgoing {
+pub enum IpcMessage {
     RegisterGui { pid: u32, hwnd: isize },
     UnregisterGui,
     SpinStart,
@@ -62,23 +53,23 @@ fn wide_name(name: &str) -> Vec<u16> {
     name.encode_utf16().chain(std::iter::once(0)).collect()
 }
 
-pub fn encode_outgoing(message: &IpcOutgoing) -> Vec<u8> {
+pub fn encode_message(message: &IpcMessage) -> Vec<u8> {
     match message {
-        IpcOutgoing::RegisterGui { pid, hwnd } => {
+        IpcMessage::RegisterGui { pid, hwnd } => {
             let mut payload = Vec::with_capacity(1 + 4 + 8);
             payload.push(TAG_REGISTER_GUI);
             payload.extend_from_slice(&pid.to_le_bytes());
             payload.extend_from_slice(&hwnd.to_le_bytes());
             payload
         }
-        IpcOutgoing::UnregisterGui => vec![TAG_UNREGISTER_GUI],
-        IpcOutgoing::SpinStart => vec![TAG_SPIN_START],
-        IpcOutgoing::SpinStop => vec![TAG_SPIN_STOP],
-        IpcOutgoing::SettingsChanged => vec![TAG_SETTINGS_CHANGED],
+        IpcMessage::UnregisterGui => vec![TAG_UNREGISTER_GUI],
+        IpcMessage::SpinStart => vec![TAG_SPIN_START],
+        IpcMessage::SpinStop => vec![TAG_SPIN_STOP],
+        IpcMessage::SettingsChanged => vec![TAG_SETTINGS_CHANGED],
     }
 }
 
-pub fn decode_incoming(payload: &[u8]) -> Result<IpcIncoming> {
+pub fn decode_message(payload: &[u8]) -> Result<IpcMessage> {
     let Some(&tag) = payload.first() else {
         bail!("empty IPC payload");
     };
@@ -89,12 +80,12 @@ pub fn decode_incoming(payload: &[u8]) -> Result<IpcIncoming> {
             }
             let pid = u32::from_le_bytes(payload[1..5].try_into().expect("pid bytes"));
             let hwnd = isize::from_le_bytes(payload[5..13].try_into().expect("hwnd bytes"));
-            Ok(IpcIncoming::RegisterGui { pid, hwnd })
+            Ok(IpcMessage::RegisterGui { pid, hwnd })
         }
-        TAG_UNREGISTER_GUI => Ok(IpcIncoming::UnregisterGui),
-        TAG_SPIN_START => Ok(IpcIncoming::SpinStart),
-        TAG_SPIN_STOP => Ok(IpcIncoming::SpinStop),
-        TAG_SETTINGS_CHANGED => Ok(IpcIncoming::SettingsChanged),
+        TAG_UNREGISTER_GUI => Ok(IpcMessage::UnregisterGui),
+        TAG_SPIN_START => Ok(IpcMessage::SpinStart),
+        TAG_SPIN_STOP => Ok(IpcMessage::SpinStop),
+        TAG_SETTINGS_CHANGED => Ok(IpcMessage::SettingsChanged),
         _ => bail!("unknown IPC tag {tag}"),
     }
 }
@@ -243,8 +234,8 @@ impl GuiIpcWriter {
         }
     }
 
-    pub fn send(&self, message: IpcOutgoing) -> Result<()> {
-        let payload = encode_outgoing(&message);
+    fn send(&self, message: IpcMessage) -> Result<()> {
+        let payload = encode_message(&message);
         let frame = encode_frame(&payload);
         let guard = self
             .pipe
@@ -256,7 +247,7 @@ impl GuiIpcWriter {
 
 pub fn init_gui_writer(session: GuiSession) -> Result<()> {
     let writer = Arc::new(GuiIpcWriter::connect(TRAY_READY_WAIT_MS)?);
-    writer.send(IpcOutgoing::RegisterGui {
+    writer.send(IpcMessage::RegisterGui {
         pid: session.pid,
         hwnd: session.hwnd,
     })?;
@@ -265,41 +256,22 @@ pub fn init_gui_writer(session: GuiSession) -> Result<()> {
     Ok(())
 }
 
-pub fn send_gui_message(message: IpcOutgoing) -> Result<()> {
+pub fn send_to_tray(message: IpcMessage) -> Result<()> {
     let Some(writer) = GUI_WRITER.get() else {
         bail!("GUI IPC writer is not initialized");
     };
     writer.send(message)
 }
 
-pub fn notify_settings_changed() {
-    let _ = send_gui_message(IpcOutgoing::SettingsChanged).map_err(|error| {
-        crate::log_msg(&format!("[ipc] settings notify failed: {error:#}"));
-    });
-}
-
-pub fn notify_spin_start() {
-    let _ = send_gui_message(IpcOutgoing::SpinStart).map_err(|error| {
-        crate::log_msg(&format!("[ipc] spin start failed: {error:#}"));
-    });
-}
-
-pub fn notify_spin_stop() {
-    let _ = send_gui_message(IpcOutgoing::SpinStop).map_err(|error| {
-        crate::log_msg(&format!("[ipc] spin stop failed: {error:#}"));
-    });
-}
-
-pub fn unregister_gui() {
-    let _ = send_gui_message(IpcOutgoing::UnregisterGui).map_err(|error| {
-        crate::log_msg(&format!("[ipc] unregister failed: {error:#}"));
-    });
-    set_gui_session(None);
+pub fn send_to_tray_logged(message: IpcMessage, context: &str) {
+    if let Err(error) = send_to_tray(message) {
+        crate::log_msg(&format!("[ipc] {context} failed: {error:#}"));
+    }
 }
 
 pub fn spawn_tray_server(
     notify_hwnd: isize,
-    pending: Arc<Mutex<Vec<IpcIncoming>>>,
+    pending: Arc<Mutex<Vec<IpcMessage>>>,
 ) -> JoinHandle<()> {
     thread::Builder::new()
         .name("tray-ipc-server".into())
@@ -311,7 +283,7 @@ pub fn spawn_tray_server(
         .expect("spawn tray IPC server")
 }
 
-fn run_tray_server_loop(notify_hwnd: isize, pending: Arc<Mutex<Vec<IpcIncoming>>>) -> Result<()> {
+fn run_tray_server_loop(notify_hwnd: isize, pending: Arc<Mutex<Vec<IpcMessage>>>) -> Result<()> {
     signal_tray_ready();
     loop {
         let pipe = unsafe { create_server_pipe()? };
@@ -358,7 +330,7 @@ unsafe fn create_server_pipe() -> Result<HANDLE> {
 
 fn read_messages_from_pipe(
     pipe: HANDLE,
-    pending: &Arc<Mutex<Vec<IpcIncoming>>>,
+    pending: &Arc<Mutex<Vec<IpcMessage>>>,
     notify_hwnd: isize,
 ) -> Result<()> {
     loop {
@@ -366,11 +338,11 @@ fn read_messages_from_pipe(
             Ok(payload) => payload,
             Err(_) => break,
         };
-        let message = decode_incoming(&payload)?;
-        if let IpcIncoming::RegisterGui { pid, hwnd } = message {
+        let message = decode_message(&payload)?;
+        if let IpcMessage::RegisterGui { pid, hwnd } = message {
             set_gui_session(Some(GuiSession { pid, hwnd }));
         }
-        if matches!(message, IpcIncoming::UnregisterGui) {
+        if matches!(message, IpcMessage::UnregisterGui) {
             set_gui_session(None);
         }
         if let Ok(mut queue) = pending.lock() {
@@ -398,14 +370,14 @@ mod tests {
 
     #[test]
     fn register_gui_payload_roundtrip() {
-        let payload = encode_outgoing(&IpcOutgoing::RegisterGui {
+        let payload = encode_message(&IpcMessage::RegisterGui {
             pid: 4242,
             hwnd: 0x1234,
         });
-        let decoded = decode_incoming(&payload).expect("decode");
+        let decoded = decode_message(&payload).expect("decode");
         assert_eq!(
             decoded,
-            IpcIncoming::RegisterGui {
+            IpcMessage::RegisterGui {
                 pid: 4242,
                 hwnd: 0x1234
             }
@@ -415,21 +387,13 @@ mod tests {
     #[test]
     fn simple_ipc_tags_roundtrip() {
         for message in [
-            IpcOutgoing::UnregisterGui,
-            IpcOutgoing::SpinStart,
-            IpcOutgoing::SpinStop,
-            IpcOutgoing::SettingsChanged,
+            IpcMessage::UnregisterGui,
+            IpcMessage::SpinStart,
+            IpcMessage::SpinStop,
+            IpcMessage::SettingsChanged,
         ] {
-            let payload = encode_outgoing(&message);
-            let decoded = decode_incoming(&payload).expect("decode");
-            let expected = match message {
-                IpcOutgoing::UnregisterGui => IpcIncoming::UnregisterGui,
-                IpcOutgoing::SpinStart => IpcIncoming::SpinStart,
-                IpcOutgoing::SpinStop => IpcIncoming::SpinStop,
-                IpcOutgoing::SettingsChanged => IpcIncoming::SettingsChanged,
-                IpcOutgoing::RegisterGui { .. } => unreachable!(),
-            };
-            assert_eq!(decoded, expected);
+            let payload = encode_message(&message);
+            assert_eq!(decode_message(&payload).expect("decode"), message);
         }
     }
 

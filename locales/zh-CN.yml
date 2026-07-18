@@ -161,6 +161,9 @@ tooltip.start_cleanup:
 optimize.step:
   zh-CN: "正在清理 %{name}..."
   en: "Cleaning %{name}..."
+optimize.already_running:
+  zh-CN: "内存清理正在进行中"
+  en: "Memory cleanup is already in progress"
 optimize.step_with_progress:
   zh-CN: "正在清理 %{name} (%{volume}) [%{current}/%{total}]..."
   en: "Cleaning %{name} (%{volume}) [%{current}/%{total}]..."
