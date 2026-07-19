@@ -10,8 +10,8 @@ use crate::clipboard::{ClipboardItem, ContentType};
 
 /// Max preview lines shown on a card.
 pub const MAX_DISPLAY_LINES: usize = 4;
-/// Min card height for single-line items.
-pub const ITEM_MIN_HEIGHT: f32 = 56.;
+/// Fixed card height (keeps drag reorder layout stable).
+pub const ITEM_HEIGHT: f32 = 96.;
 /// Drag ghost width (matches list content area).
 pub const DRAG_CARD_WIDTH: f32 = 488.;
 
@@ -32,10 +32,12 @@ struct DragPreviewCard {
 
 impl Render for DragPreviewCard {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // Keep the ghost non-interactive so list `on_drag_move` still receives pointer events
+        // (same idea as dnd-kit DragOverlay not blocking collision).
         let theme = cx.theme();
         h_flex()
             .w(px(DRAG_CARD_WIDTH))
-            .min_h(px(ITEM_MIN_HEIGHT))
+            .h(px(ITEM_HEIGHT))
             .py_2()
             .px_2()
             .gap_2()
@@ -76,22 +78,28 @@ pub fn render_clipboard_item(
     item: &ClipboardItem,
     index: usize,
     is_selected: bool,
-    drop_target: bool,
     app: &MemoryCleanerApp,
     cx: &mut Context<MemoryCleanerApp>,
 ) -> impl IntoElement {
     let theme = cx.theme();
     let is_dragging = app.clipboard_dragging_id == Some(item.id);
-    let bg = if drop_target {
-        theme.primary.opacity(0.12)
-    } else if is_selected {
+
+    // ElegantClipboard: source stays in the list at opacity 0 (layout hole follows via arrayMove).
+    if is_dragging {
+        return div()
+            .id(("clipboard-item-slot", item.id as u32))
+            .w_full()
+            .h(px(ITEM_HEIGHT))
+            .opacity(0.)
+            .into_any_element();
+    }
+
+    let bg = if is_selected {
         theme.selection
-    } else if is_dragging {
-        theme.background.opacity(0.35)
     } else {
         theme.background
     };
-    let border_color = if drop_target || is_selected {
+    let border_color = if is_selected {
         theme.primary
     } else {
         theme.border
@@ -117,7 +125,7 @@ pub fn render_clipboard_item(
     h_flex()
         .id(("clipboard-item", item_id as u32))
         .w_full()
-        .min_h(px(ITEM_MIN_HEIGHT))
+        .h(px(ITEM_HEIGHT))
         .py_2()
         .px_2()
         .gap_2()
@@ -127,28 +135,6 @@ pub fn render_clipboard_item(
         .border_1()
         .border_color(border_color)
         .rounded_md()
-        .on_drop(cx.listener({
-            let target_id = item_id;
-            move |app, drag: &DragClipboardItem, _, cx| {
-                app.clipboard_drop_target_id = None;
-                app.clipboard_dragging_id = None;
-                if drag.id != target_id {
-                    app.move_clipboard_item(drag.id, target_id, cx);
-                } else {
-                    cx.notify();
-                }
-            }
-        }))
-        .on_drag_move(cx.listener({
-            let target_id = item_id;
-            move |app, e: &DragMoveEvent<DragClipboardItem>, _, cx| {
-                let drag = e.drag(cx);
-                if drag.id != target_id && app.clipboard_drop_target_id != Some(target_id) {
-                    app.clipboard_drop_target_id = Some(target_id);
-                    cx.notify();
-                }
-            }
-        }))
         .child(
             div()
                 .id(("clipboard-drag", item_id as u32))
@@ -162,6 +148,8 @@ pub fn render_clipboard_item(
                     move |item, _offset, _window, cx| {
                         app_entity.update(cx, |app, cx| {
                             app.clipboard_dragging_id = Some(item.id);
+                            // Start with over = self so the hole begins under the card.
+                            app.clipboard_drop_target_id = Some(item.id);
                             cx.notify();
                         });
                         let preview = preview.clone();
@@ -193,6 +181,7 @@ pub fn render_clipboard_item(
                     cx,
                 )),
         )
+        .into_any_element()
 }
 
 fn drag_handle_icon(muted: Hsla) -> impl IntoElement {

@@ -219,30 +219,39 @@ impl ClipboardStorage {
         Ok(count as usize)
     }
 
-    /// Swap sort order between two items (manual reorder).
+    /// Move `from_id` to the index of `to_id` (dnd-kit `arrayMove`), then reassign sort orders.
     pub fn move_item_by_id(&self, from_id: i64, to_id: i64) -> Result<()> {
         if from_id == to_id {
             return Ok(());
         }
         let conn = self.conn.lock().unwrap();
-        let from_sort_order: i64 = conn.query_row(
-            "SELECT sort_order FROM clipboard_items WHERE id = ?1",
-            params![from_id],
-            |row| row.get(0),
+        let mut stmt = conn.prepare(
+            "SELECT id FROM clipboard_items
+             ORDER BY is_pinned DESC, sort_order DESC, created_at DESC",
         )?;
-        let to_sort_order: i64 = conn.query_row(
-            "SELECT sort_order FROM clipboard_items WHERE id = ?1",
-            params![to_id],
-            |row| row.get(0),
-        )?;
-        conn.execute(
-            "UPDATE clipboard_items SET sort_order = ?1 WHERE id = ?2",
-            params![to_sort_order, from_id],
-        )?;
-        conn.execute(
-            "UPDATE clipboard_items SET sort_order = ?1 WHERE id = ?2",
-            params![from_sort_order, to_id],
-        )?;
+        let mut ids: Vec<i64> = stmt
+            .query_map([], |row| row.get(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+        drop(stmt);
+
+        let Some(from) = ids.iter().position(|&id| id == from_id) else {
+            return Ok(());
+        };
+        let Some(to) = ids.iter().position(|&id| id == to_id) else {
+            return Ok(());
+        };
+        let item = ids.remove(from);
+        // Same semantics as JS `arrayMove(from, to)` after the removal splice.
+        ids.insert(to, item);
+
+        let n = ids.len() as i64;
+        for (i, id) in ids.iter().enumerate() {
+            let order = n - i as i64;
+            conn.execute(
+                "UPDATE clipboard_items SET sort_order = ?1 WHERE id = ?2",
+                params![order, id],
+            )?;
+        }
         Ok(())
     }
 
@@ -471,7 +480,7 @@ mod tests {
     }
 
     #[test]
-    fn move_item_by_id_swaps_order() {
+    fn move_item_by_id_array_moves_to_target_index() {
         let s = test_storage();
         let id1 = s
             .insert(
@@ -495,10 +504,33 @@ mod tests {
                 None,
             )
             .unwrap();
+        let id3 = s
+            .insert(
+                ContentType::Text,
+                Some("third"),
+                "third",
+                None,
+                "hash3",
+                5,
+                None,
+            )
+            .unwrap();
 
-        s.move_item_by_id(id1, id2).unwrap();
+        // Query order is newest first: id3, id2, id1
+        // arrayMove(id1 → id3's index): [id1, id3, id2]
+        s.move_item_by_id(id1, id3).unwrap();
         let items = s.query(None, None, 100, 0).unwrap();
-        assert_eq!(items[0].id, id1);
-        assert_eq!(items[1].id, id2);
+        assert_eq!(
+            items.iter().map(|i| i.id).collect::<Vec<_>>(),
+            vec![id1, id3, id2]
+        );
+
+        // arrayMove(id3 → id2's index) on [id1, id3, id2]: [id1, id2, id3]
+        s.move_item_by_id(id3, id2).unwrap();
+        let items = s.query(None, None, 100, 0).unwrap();
+        assert_eq!(
+            items.iter().map(|i| i.id).collect::<Vec<_>>(),
+            vec![id1, id2, id3]
+        );
     }
 }
