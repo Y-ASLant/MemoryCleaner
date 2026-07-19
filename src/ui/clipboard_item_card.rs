@@ -127,6 +127,10 @@ pub fn render_clipboard_item(
     } else {
         theme.border
     };
+    // Same tokens as gpui-component ListItem so hover/press reads clearly.
+    let hover_bg = theme.list_hover;
+    let active_bg = theme.list_active;
+    let hover_border = theme.primary.opacity(0.55);
 
     let time_text = format_time_ago(&item.created_at);
     let item_id = item.id;
@@ -158,13 +162,32 @@ pub fn render_clipboard_item(
         .border_1()
         .border_color(border_color)
         .rounded_md()
+        .cursor_pointer()
+        .when(!is_selected, |el| {
+            el.hover(move |style| style.bg(hover_bg).border_color(hover_border))
+                .active(move |style| style.bg(active_bg).border_color(hover_border))
+        })
+        .when(is_selected, |el| el.active(move |style| style.bg(active_bg)))
+        .on_click(cx.listener(move |app, _, _, cx| {
+            app.clipboard_selected = Some(index);
+            app.paste_clipboard_item(item_id, cx);
+        }))
+        .on_double_click(cx.listener(move |app, _, _, cx| {
+            app.delete_clipboard_item(item_id, cx);
+        }))
         .child(
             div()
                 .id(("clipboard-drag", item_id as u32))
                 .w(px(20.))
+                .h_full()
                 .flex_shrink_0()
                 .pt_1()
+                .rounded_sm()
                 .cursor_grab()
+                .hover(move |style| style.bg(hover_bg))
+                .active(move |style| style.bg(active_bg))
+                // Keep clicks on the handle from also triggering paste on the card.
+                .on_click(|_, _, cx| cx.stop_propagation())
                 .on_drag(drag_payload, {
                     let preview = drag_preview.clone();
                     let app_entity = app_entity.clone();
@@ -182,19 +205,13 @@ pub fn render_clipboard_item(
                 .child(drag_handle_icon(theme.muted_foreground)),
         )
         .child(
-            h_flex()
-                .id(("clipboard-body", item_id as u32))
+            // Content-only region: click/hover live on the card shell so feedback covers
+            // the full row (labels/icons don't need their own hit targets).
+            div()
                 .flex_1()
                 .min_w_0()
+                .h_full()
                 .overflow_hidden()
-                .cursor_pointer()
-                .on_click(cx.listener(move |app, _, _, cx| {
-                    app.clipboard_selected = Some(index);
-                    app.paste_clipboard_item(item_id, cx);
-                }))
-                .on_double_click(cx.listener(move |app, _, _, cx| {
-                    app.delete_clipboard_item(item_id, cx);
-                }))
                 .child(card_content(
                     item.content_type,
                     &preview_lines,
