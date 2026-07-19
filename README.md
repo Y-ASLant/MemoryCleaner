@@ -109,7 +109,7 @@ cargo run --release
 >
 > **磁盘影响：** 8 个清理区域中，仅「已修改文件」「已修改页面」「注册表缓存」涉及磁盘写入；其余 5 项（工作集、系统文件缓存、待机列表、待机列表低优先级、合并页面）均为纯 RAM 操作，不写磁盘。详见下方 FAQ。
 
-默认启用的区域：工作集、系统文件缓存、已修改页面、待机列表、合并页面、已修改文件（位掩码 `111`）。
+默认启用的区域：工作集、系统文件缓存、待机列表、合并页面（位掩码 `42`）。已修改页面、已修改文件和注册表缓存因涉及磁盘写入，默认不启用。
 
 ## 配置项
 
@@ -120,7 +120,7 @@ cargo run --release
 | `always_on_top` | bool | `false` | 窗口始终置顶 |
 | `close_to_notification_area` | bool | `true` | 点击关闭时隐藏到托盘而非退出 |
 | `show_virtual_memory` | bool | `true` | 显示虚拟内存卡片（仅配置文件，暂无 UI 开关） |
-| `memory_areas` | u32 | `111` | 清理区域位掩码（各 `MemoryAreas` 标志位之和） |
+| `memory_areas` | u32 | `42` | 清理区域位掩码（各 `MemoryAreas` 标志位之和） |
 | `language` | string | `"auto"` | 界面语言：`auto`（跟随系统）、`zh-CN`、`en` |
 | `debug_logging` | bool | `false` | 将详细运行信息写入程序目录下的 `App.log` |
 | `show_optimization_notifications` | bool | `true` | 清理开始/完成时弹出 Windows Toast |

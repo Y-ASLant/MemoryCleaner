@@ -109,7 +109,7 @@ Buttons, GroupBox cards, switches, checkboxes, dialogs, settings panels, etc. al
 >
 > **Disk impact:** Of the 8 cleanup regions, only "Modified Files", "Modified Pages", and "Registry Cache" involve disk writes; the remaining 5 (Working Set, System File Cache, Standby List, Standby List Low Priority, Merged Pages) are pure RAM operations. See FAQ below.
 
-Default enabled regions: Working Set, System File Cache, Modified Pages, Standby List, Merged Pages, Modified Files (bitmask `111`).
+Default enabled regions: Working Set, System File Cache, Standby List, Merged Pages (bitmask `42`). Modified Pages, Modified Files, and Registry Cache are disabled by default as they involve disk writes.
 
 ## Configuration
 
@@ -120,7 +120,7 @@ Config file: `%APPDATA%\MemoryCleaner\settings.toml`
 | `always_on_top` | bool | `false` | Window always on top |
 | `close_to_notification_area` | bool | `true` | Hide to tray on close instead of exiting |
 | `show_virtual_memory` | bool | `true` | Show virtual memory card (config file only, no UI toggle yet) |
-| `memory_areas` | u32 | `111` | Cleanup region bitmask (sum of `MemoryAreas` flag bits) |
+| `memory_areas` | u32 | `42` | Cleanup region bitmask (sum of `MemoryAreas` flag bits) |
 | `language` | string | `"auto"` | Interface language: `auto` (follow system), `zh-CN`, `en` |
 | `debug_logging` | bool | `false` | Write detailed runtime info to `App.log` in the application directory |
 | `show_optimization_notifications` | bool | `true` | Show Windows Toast on cleanup start/completion |
