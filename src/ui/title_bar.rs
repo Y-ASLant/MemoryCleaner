@@ -178,6 +178,20 @@ fn window_settings_control(
     )
 }
 
+fn clipboard_control(
+    colors: TitleBarActionColors,
+    app_cx: &mut Context<MemoryCleanerApp>,
+) -> impl IntoElement {
+    title_bar_action_control(
+        "titlebar-clipboard",
+        IconName::Copy,
+        colors,
+        false,
+        app_cx,
+        |app, window, cx| app.set_clipboard_visible(true, window, cx),
+    )
+}
+
 fn title_bar_drag_area(
     app: &MemoryCleanerApp,
     window: &mut Window,
@@ -289,9 +303,12 @@ pub fn render_title_bar(
                         action_colors,
                         false,
                         cx,
-                        |app, _, cx| app.show_clipboard_window(cx),
+                        |app, window, cx| app.set_clipboard_visible(false, window, cx),
                     ));
                 } else {
+                    if app.settings.clipboard_enabled {
+                        actions = actions.child(clipboard_control(action_colors, cx));
+                    }
                     actions = actions.child(icon_cache_control(app, action_colors, cx));
                     if app.settings_expanded {
                         actions = actions.child(window_settings_control(action_colors, cx));

@@ -45,7 +45,10 @@ pub(crate) fn hwnd_from_window(window: &Window) -> Result<HWND> {
 
 /// Restore the window from tray-only hidden state.
 pub fn show_from_tray(window: &Window) -> Result<()> {
+    // Capture the app the user was in before we take focus (needed for paste).
+    crate::win32::focus::save_current_focus();
     let hwnd = hwnd_from_window(window)?;
+    crate::win32::focus::set_our_hwnd(hwnd);
     apply_extended_style(hwnd, |style| {
         (style & !WS_EX_TOOLWINDOW.0) | WS_EX_APPWINDOW.0
     })?;

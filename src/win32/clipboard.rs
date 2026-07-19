@@ -1,9 +1,13 @@
-//! Write to the system clipboard and simulate paste (Ctrl+V).
+//! Write to the system clipboard and paste into the previous foreground window.
+//!
+//! Elevated processes cannot `SendInput` into medium-IL apps (UIPI). After writing
+//! the clipboard we restore the target HWND and post `WM_PASTE`, with `SendInput`
+//! as a best-effort fallback for elevated targets.
 
 use std::mem::size_of;
 
 use anyhow::{Context, Result};
-use windows::Win32::Foundation::{HANDLE, POINT};
+use windows::Win32::Foundation::{HANDLE, HWND, LPARAM, POINT, WPARAM};
 use windows::Win32::System::DataExchange::{
     CloseClipboard, EmptyClipboard, OpenClipboard, SetClipboardData,
 };
@@ -12,9 +16,13 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
     INPUT, INPUT_KEYBOARD, KEYBD_EVENT_FLAGS, KEYBDINPUT, KEYEVENTF_KEYUP, SendInput, VK_CONTROL,
     VK_LWIN, VK_MENU, VK_RWIN, VK_SHIFT, VK_V, VIRTUAL_KEY,
 };
+use windows::Win32::UI::WindowsAndMessaging::{PostMessageW, SendMessageTimeoutW, SMTO_ABORTIFHUNG};
+
+use crate::win32::focus;
 
 const CF_UNICODETEXT: u32 = 13;
 const CF_HDROP: u32 = 15;
+const WM_PASTE: u32 = 0x0302;
 
 #[repr(C)]
 struct DropFiles {
@@ -100,7 +108,48 @@ pub fn set_files(paths: &[String]) -> Result<()> {
     }
 }
 
-/// Simulate Ctrl+V to paste into the active window.
+/// Paste into the previously focused window (after our UI has been hidden).
+pub fn paste_to_previous_window() -> Result<()> {
+    let _ = focus::restore_previous_foreground();
+    std::thread::sleep(std::time::Duration::from_millis(60));
+
+    let target = focus::paste_target_hwnd();
+    if let Some(hwnd) = target {
+        // Cross-integrity paste: WM_PASTE is not blocked by UIPI the way SendInput is.
+        if post_paste(hwnd) {
+            crate::log_msg("[clipboard] WM_PASTE posted");
+            // Give the target a moment; some apps still want a key chord.
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        } else {
+            crate::log_msg("[clipboard] WM_PASTE post failed, trying SendInput");
+        }
+    } else {
+        crate::log_msg("[clipboard] no paste target hwnd");
+    }
+
+    // Best-effort for elevated targets / apps that ignore WM_PASTE.
+    simulate_paste()?;
+    Ok(())
+}
+
+fn post_paste(hwnd: HWND) -> bool {
+    unsafe {
+        // Prefer SendMessageTimeout so hung targets don't block us forever.
+        let mut result: usize = 0;
+        let sent = SendMessageTimeoutW(
+            hwnd,
+            WM_PASTE,
+            WPARAM(0),
+            LPARAM(0),
+            SMTO_ABORTIFHUNG,
+            200,
+            Some(&mut result),
+        );
+        sent.0 != 0 || PostMessageW(Some(hwnd), WM_PASTE, WPARAM(0), LPARAM(0)).is_ok()
+    }
+}
+
+/// Simulate Ctrl+V (may be blocked by UIPI when we are elevated).
 pub fn simulate_paste() -> Result<()> {
     release_if_held(VK_MENU.0);
     release_if_held(VK_SHIFT.0);
@@ -143,7 +192,10 @@ fn send_key(vk: u16, up: bool) {
         },
     };
     unsafe {
-        SendInput(&[input], size_of::<INPUT>() as i32);
+        let sent = SendInput(&[input], size_of::<INPUT>() as i32);
+        if sent == 0 {
+            crate::log_msg("[clipboard] SendInput returned 0 (UIPI may block elevated→medium)");
+        }
     }
 }
 

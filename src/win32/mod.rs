@@ -1,4 +1,5 @@
 pub mod clipboard;
+pub mod focus;
 pub mod hotkey;
 pub mod notification;
 pub mod nt;
