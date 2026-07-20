@@ -10,6 +10,7 @@ use gpui_component::ActiveTheme;
 use gpui_component::{Root, TitleBar, WindowExt};
 use smol::Timer;
 
+use crate::anim::{ANIM_INTERVAL, AnimatedValue};
 use crate::locale;
 use crate::memory::{MemorySection, MemoryStatus};
 use crate::messages::{build_cleanup_result_message, format_freed_message};
@@ -22,41 +23,6 @@ use crate::win32;
 const SETTINGS_SAVE_DEBOUNCE: Duration = Duration::from_millis(300);
 const OPTIMIZE_RESULT_DISPLAY: Duration = Duration::from_secs(5);
 const MEMORY_REFRESH_INTERVAL: Duration = Duration::from_secs(1);
-/// Animation tick interval (~60 fps).
-const ANIM_INTERVAL: Duration = Duration::from_millis(16);
-/// Exponential smoothing speed.  ~12.0 ⇒ ~300 ms to reach 95 % of target.
-const ANIM_SPEED: f64 = 12.0;
-/// Below this delta the value snaps to target (avoids endless micro-ticks).
-const ANIM_SNAP_EPSILON: f32 = 0.05;
-
-/// Lightweight per-value interpolator — no allocations, no traits, no async.
-#[derive(Clone, Debug)]
-struct AnimatedValue {
-    current: f32,
-    target: f32,
-}
-
-impl AnimatedValue {
-    const fn new(value: f32) -> Self {
-        Self {
-            current: value,
-            target: value,
-        }
-    }
-
-    /// Advance one frame.  Returns `true` when `current` moved meaningfully.
-    #[inline]
-    fn tick(&mut self) -> bool {
-        let diff = self.target - self.current;
-        if diff.abs() < ANIM_SNAP_EPSILON {
-            let moved = self.current != self.target;
-            self.current = self.target;
-            return moved;
-        }
-        self.current += diff * (1.0 - (-ANIM_SPEED * ANIM_INTERVAL.as_secs_f64()).exp()) as f32;
-        true
-    }
-}
 
 async fn show_toast(title: String, body: String) {
     if let Err(e) = smol::unblock(move || win32::notification::show(&title, &body)).await {
@@ -170,6 +136,7 @@ pub struct MemoryCleanerApp {
     pub virtual_mem: Option<MemorySection>,
     settings_save_gen: u32,
     memory_refresh_generation: Arc<AtomicU32>,
+    anim_generation: Arc<AtomicU32>,
     window_opening: bool,
     pub is_optimizing: bool,
     pub is_refreshing_icon_cache: bool,
@@ -234,6 +201,7 @@ impl MemoryCleanerApp {
             virtual_mem,
             settings_save_gen: 0,
             memory_refresh_generation: Arc::new(AtomicU32::new(0)),
+            anim_generation: Arc::new(AtomicU32::new(0)),
             window_opening: false,
             is_optimizing: false,
             is_refreshing_icon_cache: false,
@@ -289,12 +257,57 @@ impl MemoryCleanerApp {
 
         if !launch_hidden {
             self.start_memory_refresh(cx);
+            self.start_anim(cx);
         }
     }
 
     fn pause_memory_refresh(&self) {
         self.memory_refresh_generation
             .fetch_add(1, Ordering::Relaxed);
+    }
+
+    fn pause_anim(&self) {
+        self.anim_generation.fetch_add(1, Ordering::Relaxed);
+    }
+
+    fn start_anim(&self, cx: &mut Context<Self>) {
+        if self.window.is_none() {
+            return;
+        }
+        let generation = self.anim_generation.load(Ordering::Relaxed);
+        let gen_arc = Arc::clone(&self.anim_generation);
+        cx.spawn(async move |this, cx| {
+            loop {
+                Timer::after(ANIM_INTERVAL).await;
+                if gen_arc.load(Ordering::Relaxed) != generation {
+                    break;
+                }
+                let Ok(animating) = this.update(cx, |app, cx| {
+                    if !app.anim_dirty {
+                        return false;
+                    }
+                    let a = app.anim_physical.tick();
+                    let b = app.anim_virtual.tick();
+                    let c = app.anim_optimize.tick();
+                    let d = app.anim_used_phys.tick();
+                    let e = app.anim_avail_phys.tick();
+                    let f = app.anim_used_virt.tick();
+                    let g = app.anim_avail_virt.tick();
+                    let still = a | b | c | d | e | f | g;
+                    app.anim_dirty = still;
+                    if still {
+                        cx.notify();
+                    }
+                    still
+                }) else {
+                    break;
+                };
+                if !animating {
+                    Timer::after(Duration::from_millis(50)).await;
+                }
+            }
+        })
+        .detach();
     }
 
     fn start_memory_refresh(&self, cx: &mut Context<Self>) {
@@ -470,9 +483,10 @@ impl MemoryCleanerApp {
                 Ok(())
             }) {
                 Ok(Ok(())) => {
-                    self.window_shown = true;
                     self.pause_memory_refresh();
+                    self.pause_anim();
                     self.start_memory_refresh(cx);
+                    self.start_anim(cx);
                     self.sync_tray();
                     return;
                 }
@@ -488,9 +502,8 @@ impl MemoryCleanerApp {
     /// `open_window()`.
     fn destroy_window_to_tray(&mut self, window: &mut Window, source: &str) {
         window.remove_window();
-        self.window = None;
-        self.window_shown = false;
         self.pause_memory_refresh();
+        self.pause_anim();
         crate::log_msg(&format!("[close] hide_to_tray destroy ok source={source}"));
     }
 
@@ -522,8 +535,8 @@ impl MemoryCleanerApp {
             crate::log_msg("[close] hide_to_tray no window handle");
         }
         self.window = None;
-        self.window_shown = false;
         self.pause_memory_refresh();
+        self.pause_anim();
         self.sync_tray();
     }
 
@@ -787,39 +800,6 @@ impl MemoryCleanerApp {
                     .is_err()
                 {
                     break;
-                }
-            }
-        })
-        .detach();
-
-        // Animation tick loop — drives smooth interpolation of memory / progress values.
-        // Parked (zero CPU) whenever all animated values have reached their targets.
-        cx.spawn(async move |this, cx| {
-            loop {
-                Timer::after(ANIM_INTERVAL).await;
-                let Ok(animating) = this.update(cx, |app, cx| {
-                    if !app.anim_dirty {
-                        return false;
-                    }
-                    let a = app.anim_physical.tick();
-                    let b = app.anim_virtual.tick();
-                    let c = app.anim_optimize.tick();
-                    let d = app.anim_used_phys.tick();
-                    let e = app.anim_avail_phys.tick();
-                    let f = app.anim_used_virt.tick();
-                    let g = app.anim_avail_virt.tick();
-                    let still = a | b | c | d | e | f | g;
-                    app.anim_dirty = still;
-                    if still {
-                        cx.notify();
-                    }
-                    still
-                }) else {
-                    break;
-                };
-                if !animating {
-                    // Park until a business-logic change sets anim_dirty = true.
-                    Timer::after(Duration::from_millis(50)).await;
                 }
             }
         })
