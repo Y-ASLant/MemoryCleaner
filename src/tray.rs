@@ -37,7 +37,10 @@ pub enum TrayCommand {
     Optimize,
     MenuAction(String),
     /// Tray icon spin animation frame (0 = upright). Handled on the GPUI thread only.
-    SetSpinFrame(u32),
+    SetSpinFrame {
+        quarters: u32,
+        generation: u32,
+    },
 }
 
 impl Tray {
@@ -134,10 +137,13 @@ fn set_tray_icon_rotation(quarters: u32) {
 }
 
 pub fn stop_spin() {
-    SPIN_GENERATION.fetch_add(1, Ordering::Relaxed);
+    let generation = SPIN_GENERATION.fetch_add(1, Ordering::Relaxed) + 1;
     SPIN_ACTIVE.store(false, Ordering::Relaxed);
     if let Some(tx) = CMD_TX.get() {
-        let _ = tx.send(TrayCommand::SetSpinFrame(0));
+        let _ = tx.send(TrayCommand::SetSpinFrame {
+            quarters: 0,
+            generation,
+        });
     }
 }
 
@@ -158,7 +164,10 @@ pub fn start_spin() {
                 }
 
                 if let Some(tx) = CMD_TX.get() {
-                    let _ = tx.send(TrayCommand::SetSpinFrame(quarters));
+                    let _ = tx.send(TrayCommand::SetSpinFrame {
+                        quarters,
+                        generation,
+                    });
                 }
                 quarters = quarters.wrapping_add(1);
 
@@ -288,7 +297,13 @@ pub fn dispatch_command(
         }
         TrayCommand::Optimize => app.run_optimize(cx),
         TrayCommand::MenuAction(action) => app.handle_tray_action(&action, cx),
-        TrayCommand::SetSpinFrame(quarters) => {
+        TrayCommand::SetSpinFrame {
+            quarters,
+            generation,
+        } => {
+            if generation != SPIN_GENERATION.load(Ordering::Relaxed) {
+                return;
+            }
             if quarters == 0 || SPIN_ACTIVE.load(Ordering::Relaxed) {
                 set_tray_icon_rotation(quarters);
             }

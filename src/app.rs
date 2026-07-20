@@ -251,8 +251,12 @@ impl MemoryCleanerApp {
             should_close
         });
 
-        if self.settings.always_on_top {
-            let _ = win32::window::set_always_on_top(window, true);
+        if self.settings.always_on_top
+            && let Err(error) = win32::window::set_always_on_top(window, true)
+        {
+            crate::log_msg(&format!(
+                "[window] set_always_on_top(true) failed: {error:#}"
+            ));
         }
 
         if !launch_hidden {
@@ -366,7 +370,10 @@ impl MemoryCleanerApp {
             });
 
             if opened.is_err() {
-                entity.update(cx, |app, _| app.window_opening = false);
+                entity.update(cx, |app, _| {
+                    app.window_opening = false;
+                    app.window_shown = false;
+                });
             } else {
                 entity.update(cx, |app, _| app.sync_tray());
             }
@@ -411,6 +418,25 @@ impl MemoryCleanerApp {
         .detach();
     }
 
+    fn sync_anim_targets_from_sections(&mut self) {
+        self.anim_physical.target = self.physical.used_percent;
+        self.anim_virtual.target = self
+            .virtual_mem
+            .as_ref()
+            .map_or(0.0, |section| section.used_percent);
+        self.anim_used_phys.target = self.physical.used as f32;
+        self.anim_avail_phys.target = self.physical.avail as f32;
+        self.anim_used_virt.target = self
+            .virtual_mem
+            .as_ref()
+            .map_or(0.0, |section| section.used as f32);
+        self.anim_avail_virt.target = self
+            .virtual_mem
+            .as_ref()
+            .map_or(0.0, |section| section.avail as f32);
+        self.anim_dirty = true;
+    }
+
     pub fn refresh_memory(&mut self) -> bool {
         let show_virtual = self.settings.show_virtual_memory;
         let Ok((physical, virtual_mem)) = query_sections(show_virtual) else {
@@ -420,33 +446,15 @@ impl MemoryCleanerApp {
                 return false;
             }
             self.set_unavailable_sections(show_virtual);
-            self.anim_physical.target = 0.0;
-            self.anim_virtual.target = 0.0;
-            self.anim_used_phys.target = 0.0;
-            self.anim_avail_phys.target = 0.0;
-            self.anim_used_virt.target = 0.0;
-            self.anim_avail_virt.target = 0.0;
-            self.anim_dirty = true;
+            self.sync_anim_targets_from_sections();
             return true;
         };
 
         let changed = self.physical != physical || self.virtual_mem != virtual_mem;
         if changed {
-            let phys_percent = physical.used_percent;
-            let phys_used = physical.used as f32;
-            let phys_avail = physical.avail as f32;
-            let virt_percent = virtual_mem.as_ref().map_or(0.0, |v| v.used_percent);
-            let virt_used = virtual_mem.as_ref().map_or(0.0, |v| v.used as f32);
-            let virt_avail = virtual_mem.as_ref().map_or(0.0, |v| v.avail as f32);
             self.physical = physical;
             self.virtual_mem = virtual_mem;
-            self.anim_physical.target = phys_percent;
-            self.anim_virtual.target = virt_percent;
-            self.anim_used_phys.target = phys_used;
-            self.anim_avail_phys.target = phys_avail;
-            self.anim_used_virt.target = virt_used;
-            self.anim_avail_virt.target = virt_avail;
-            self.anim_dirty = true;
+            self.sync_anim_targets_from_sections();
         }
         changed
     }
@@ -495,6 +503,9 @@ impl MemoryCleanerApp {
                 Err(_) => crate::log_msg("[window] activate_window handle update failed"),
             }
             self.window = None;
+            self.window_shown = false;
+            self.pause_memory_refresh();
+            self.pause_anim();
         }
         self.open_window(cx);
     }
@@ -538,6 +549,7 @@ impl MemoryCleanerApp {
             crate::log_msg("[close] hide_to_tray no window handle");
         }
         self.window = None;
+        self.window_shown = false;
         self.pause_memory_refresh();
         self.pause_anim();
         self.sync_tray();
@@ -552,6 +564,7 @@ impl MemoryCleanerApp {
         } else {
             self.set_unavailable_sections(show_virtual);
         }
+        self.sync_anim_targets_from_sections();
         if !self.is_optimizing {
             self.optimize_status.clear();
             self.optimize_has_errors = false;
@@ -660,8 +673,14 @@ impl MemoryCleanerApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if let Err(error) = win32::window::set_always_on_top(window, enabled) {
+            crate::log_msg(&format!(
+                "[window] set_always_on_top({enabled}) failed: {error:#}"
+            ));
+            cx.notify();
+            return;
+        }
         self.settings.always_on_top = enabled;
-        let _ = win32::window::set_always_on_top(window, enabled);
         self.queue_settings_save(cx);
         cx.notify();
     }
@@ -990,6 +1009,7 @@ impl MemoryCleanerApp {
                     app.optimize_status =
                         build_cleanup_result_message(&completed_refs, &errors_refs, &freed_detail);
                     crate::log::write(&format!("[optimize] result: {}", app.optimize_status));
+                    app.sync_tray();
                     cx.notify();
                     if app.settings.show_optimization_notifications {
                         Some((

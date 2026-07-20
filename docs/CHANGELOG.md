@@ -4,6 +4,22 @@
 
 **编写约定**（详见 `AGENTS.md` → Documentation & Changelog）：每个版本只记录相对上一 tag 的**最终差异**，不记录开发过程中的中间修改或逐步修复。
 
+
+## [1.0.3] - 2026-07-20
+
+相对 [1.0.2] 的最终变更如下。
+
+### 新增
+
+- **平滑动画**：内存使用率环形图、清理进度条、内存数值文字（已用/可用字节）在数据刷新时平滑过渡，而非直接跳变。动画采用指数衰减插值，~300ms 到达目标值的 95%。
+- **动画模块**：新增 `src/anim.rs`，`AnimatedValue` 插值器可供全 crate 复用。
+- **动画智能暂停**：窗口隐藏到托盘时动画循环完全停止（零 CPU），窗口恢复后自动重启。
+
+### 修复
+
+- **托盘菜单状态**：关闭窗口后右键托盘菜单正确显示「显示窗口」而非「隐藏窗口」；从托盘恢复窗口后正确显示「隐藏窗口」。
+- **窗口错误路径**：`activate_window` 和 `open_window` 失败时正确重置 `window_shown` 状态。
+- **优化完成后托盘同步**：内存清理完成后立即同步托盘提示文本，不再等待下次鼠标悬停。
 ## [1.0.2] - 2026-07-19
 
 相对 [1.0.1] 的最终变更如下。
@@ -39,6 +55,22 @@ Records Memory Cleaner releases. Format follows [Keep a Changelog](https://keepa
 
 **Writing rules** (see `AGENTS.md` → Documentation & Changelog): each release entry covers **only the final diff** vs the previous tag — not intermediate commits or step-by-step fixes during development.
 
+
+## [1.0.3] - 2026-07-20
+
+Final changes since [1.0.2].
+
+### Added
+
+- **Smooth animations** — Memory usage rings, cleanup progress bar, and memory text values (used/avail bytes) now transition smoothly between data refreshes instead of jumping. Uses exponential-decay interpolation, reaching 95% of target in ~300 ms.
+- **Animation module** — New `src/anim.rs` with reusable `AnimatedValue` interpolator for the entire crate.
+- **Smart animation pause** — Animation loop fully stops (zero CPU) when the window is hidden to tray; automatically restarts on restore.
+
+### Fixed
+
+- **Tray menu state** — After closing the window, the tray context menu correctly shows "Show Window" instead of "Hide Window"; after restoring from tray, it correctly shows "Hide Window".
+- **Window error paths** — `activate_window` and `open_window` failure paths now correctly reset `window_shown` state.
+- **Post-optimization tray sync** — Tray tooltip text updates immediately after cleanup completes, instead of waiting for the next mouse hover.
 ## [1.0.2] - 2026-07-19
 
 Final changes since [1.0.1].
@@ -66,6 +98,7 @@ Since [1.0.0]: process exclusion, global cleanup hotkey (default Ctrl+Alt+C) wit
 
 Initial public release: 8 memory cleanup regions, GPUI UI, system tray, administrator elevation, settings persistence.
 
+[1.0.3]: https://github.com/Y-ASLant/MemoryCleaner/compare/v1.0.2...v1.0.3
 [1.0.2]: https://github.com/Y-ASLant/MemoryCleaner/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/Y-ASLant/MemoryCleaner/releases/tag/v1.0.1
 [1.0.0]: https://github.com/Y-ASLant/MemoryCleaner/releases/tag/v1.0.0
