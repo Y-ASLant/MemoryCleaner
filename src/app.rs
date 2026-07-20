@@ -483,6 +483,7 @@ impl MemoryCleanerApp {
                 Ok(())
             }) {
                 Ok(Ok(())) => {
+                    self.window_shown = true;
                     self.pause_memory_refresh();
                     self.pause_anim();
                     self.start_memory_refresh(cx);
@@ -502,6 +503,8 @@ impl MemoryCleanerApp {
     /// `open_window()`.
     fn destroy_window_to_tray(&mut self, window: &mut Window, source: &str) {
         window.remove_window();
+        self.window = None;
+        self.window_shown = false;
         self.pause_memory_refresh();
         self.pause_anim();
         crate::log_msg(&format!("[close] hide_to_tray destroy ok source={source}"));
