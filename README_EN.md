@@ -119,7 +119,6 @@ Config file: `%APPDATA%\MemoryCleaner\settings.toml`
 |---------|------|---------|-------------|
 | `always_on_top` | bool | `false` | Window always on top |
 | `close_to_notification_area` | bool | `true` | Hide to tray on close instead of exiting |
-| `show_virtual_memory` | bool | `true` | Show virtual memory card (config file only, no UI toggle yet) |
 | `memory_areas` | u32 | `42` | Cleanup region bitmask (sum of `MemoryAreas` flag bits) |
 | `language` | string | `"auto"` | Interface language: `auto` (follow system), `zh-CN`, `en` |
 | `debug_logging` | bool | `false` | Write detailed runtime info to `App.log` in the application directory |

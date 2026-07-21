@@ -9,7 +9,6 @@ pub struct Settings {
     /// Launch with Windows via the current-user Run registry key.
     pub run_at_startup: bool,
     pub close_to_notification_area: bool,
-    pub show_virtual_memory: bool,
     pub memory_areas: u32,
     // 预留字段：自动优化功能（未实现）
     pub auto_optimization_interval: u32,
@@ -41,7 +40,6 @@ impl Default for Settings {
             auto_optimization_interval: 0,
             auto_optimization_memory_usage: 0,
             close_to_notification_area: true,
-            show_virtual_memory: true,
             show_optimization_notifications: true,
             memory_areas: MemoryAreas::DEFAULT.bits(),
             tray_icon_show_memory_usage: false,
@@ -198,7 +196,6 @@ mod tests {
         let settings = Settings::default();
         assert!(settings.close_to_notification_area);
         assert!(!settings.run_at_startup);
-        assert!(settings.show_virtual_memory);
         assert!(settings.show_optimization_notifications);
         assert_eq!(settings.memory_areas, MemoryAreas::DEFAULT.bits());
         assert_eq!(settings.language, "auto");

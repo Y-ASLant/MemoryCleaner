@@ -177,26 +177,21 @@ pub fn start_spin() {
         .ok();
 }
 
-pub fn format_memory_tooltip(
-    physical: &MemorySection,
-    virtual_mem: Option<&MemorySection>,
-) -> String {
+pub fn format_memory_tooltip(physical: &MemorySection, virtual_mem: &MemorySection) -> String {
     let mut lines = vec![t!("tray.tooltip", percent = physical.percent_label()).to_string()];
-    if let Some(virtual_mem) = virtual_mem {
-        lines.push(
-            t!(
-                "tray.tooltip_virtual",
-                percent = virtual_mem.percent_label()
-            )
-            .to_string(),
-        );
-    }
+    lines.push(
+        t!(
+            "tray.tooltip_virtual",
+            percent = virtual_mem.percent_label()
+        )
+        .to_string(),
+    );
     lines.join("\n")
 }
 
 pub fn sync_display(
     physical: &MemorySection,
-    virtual_mem: Option<&MemorySection>,
+    virtual_mem: &MemorySection,
     window_visible: bool,
 ) {
     let Some(tray) = tray() else {
@@ -337,38 +332,22 @@ mod tests {
     }
 
     #[test]
-    fn format_memory_tooltip_includes_virtual_memory_when_present_zh() {
+    fn format_memory_tooltip_includes_virtual_memory_zh() {
         with_locale("zh-CN", || {
             let physical = section("物理内存", 46.0);
             let virtual_mem = section("虚拟内存", 86.0);
-            let tooltip = format_memory_tooltip(&physical, Some(&virtual_mem));
+            let tooltip = format_memory_tooltip(&physical, &virtual_mem);
             assert_eq!(tooltip, "物理内存: 46%\n虚拟内存: 86%");
         });
     }
 
     #[test]
-    fn format_memory_tooltip_includes_virtual_memory_when_present_en() {
+    fn format_memory_tooltip_includes_virtual_memory_en() {
         with_locale("en", || {
             let physical = section("Physical Memory", 46.0);
             let virtual_mem = section("Virtual Memory", 86.0);
-            let tooltip = format_memory_tooltip(&physical, Some(&virtual_mem));
+            let tooltip = format_memory_tooltip(&physical, &virtual_mem);
             assert_eq!(tooltip, "Physical: 46%\nVirtual: 86%");
-        });
-    }
-
-    #[test]
-    fn format_memory_tooltip_omits_virtual_memory_when_absent_zh() {
-        with_locale("zh-CN", || {
-            let physical = section("物理内存", 46.0);
-            assert_eq!(format_memory_tooltip(&physical, None), "物理内存: 46%");
-        });
-    }
-
-    #[test]
-    fn format_memory_tooltip_omits_virtual_memory_when_absent_en() {
-        with_locale("en", || {
-            let physical = section("Physical Memory", 46.0);
-            assert_eq!(format_memory_tooltip(&physical, None), "Physical: 46%");
         });
     }
 

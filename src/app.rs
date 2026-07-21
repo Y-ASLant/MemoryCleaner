@@ -33,7 +33,6 @@ async fn show_toast(title: String, body: String) {
 const WINDOW_WIDTH: f32 = 520.;
 const WINDOW_MIN_WIDTH: f32 = 520.;
 pub const CONTENT_PADDING: f32 = 6.;
-const SINGLE_CARD_MAX_WIDTH: f32 = 360.;
 
 pub fn window_size(expanded: bool) -> Size<Pixels> {
     let height = if expanded {
@@ -95,7 +94,7 @@ pub fn open_main_window(
     Ok(())
 }
 
-fn query_sections(show_virtual: bool) -> Result<(MemorySection, Option<MemorySection>)> {
+fn query_sections() -> Result<(MemorySection, MemorySection)> {
     let status = MemoryStatus::query()?;
 
     let physical = MemorySection {
@@ -106,24 +105,20 @@ fn query_sections(show_virtual: bool) -> Result<(MemorySection, Option<MemorySec
         used_percent: status.memory_load as f32,
     };
 
-    let virtual_mem = if show_virtual {
-        let virt_used = status
-            .total_page_file
-            .saturating_sub(status.avail_page_file);
-        let virt_percent = if status.total_page_file > 0 {
-            (virt_used as f64 / status.total_page_file as f64 * 100.0).round() as u32
-        } else {
-            0
-        };
-        Some(MemorySection {
-            title: t!("memory.virtual").to_string(),
-            total: status.total_page_file,
-            used: virt_used,
-            avail: status.avail_page_file,
-            used_percent: virt_percent as f32,
-        })
+    let virt_used = status
+        .total_page_file
+        .saturating_sub(status.avail_page_file);
+    let virt_percent = if status.total_page_file > 0 {
+        (virt_used as f64 / status.total_page_file as f64 * 100.0).round() as u32
     } else {
-        None
+        0
+    };
+    let virtual_mem = MemorySection {
+        title: t!("memory.virtual").to_string(),
+        total: status.total_page_file,
+        used: virt_used,
+        avail: status.avail_page_file,
+        used_percent: virt_percent as f32,
     };
 
     Ok((physical, virtual_mem))
@@ -133,7 +128,7 @@ pub struct MemoryCleanerApp {
     pub window: Option<AnyWindowHandle>,
     pub settings: Settings,
     pub physical: MemorySection,
-    pub virtual_mem: Option<MemorySection>,
+    pub virtual_mem: MemorySection,
     settings_save_gen: u32,
     memory_refresh_generation: Arc<AtomicU32>,
     anim_generation: Arc<AtomicU32>,
@@ -175,25 +170,21 @@ impl MemoryCleanerApp {
             ));
         }
 
-        let show_virtual = settings.show_virtual_memory;
-        let (physical, virtual_mem) = query_sections(show_virtual).unwrap_or_else(|e| {
+        let (physical, virtual_mem) = query_sections().unwrap_or_else(|e| {
             crate::log_msg(&format!("[memory] initial query failed: {e}"));
             (
                 MemorySection::unavailable(&t!("memory.physical")),
-                if show_virtual {
-                    Some(MemorySection::unavailable(&t!("memory.virtual")))
-                } else {
-                    None
-                },
+                MemorySection::unavailable(&t!("memory.virtual")),
             )
         });
 
         let phys_percent = physical.used_percent;
         let phys_used = physical.used as f32;
         let phys_avail = physical.avail as f32;
-        let virt_percent = virtual_mem.as_ref().map_or(0.0, |v| v.used_percent);
-        let virt_used = virtual_mem.as_ref().map_or(0.0, |v| v.used as f32);
-        let virt_avail = virtual_mem.as_ref().map_or(0.0, |v| v.avail as f32);
+        let virt_percent = virtual_mem.used_percent;
+        let virt_used = virtual_mem.used as f32;
+        let virt_avail = virtual_mem.avail as f32;
+
         let mut app = Self {
             window: None,
             settings,
@@ -386,22 +377,9 @@ impl MemoryCleanerApp {
     }
 
     pub(crate) fn sync_tray(&self) {
-        let virtual_mem = if self.settings.show_virtual_memory {
-            self.virtual_mem.as_ref()
-        } else {
-            None
-        };
-        crate::tray::sync_display(&self.physical, virtual_mem, self.window_visible());
+        crate::tray::sync_display(&self.physical, &self.virtual_mem, self.window_visible());
     }
 
-    fn set_unavailable_sections(&mut self, show_virtual: bool) {
-        self.physical = MemorySection::unavailable(&t!("memory.physical"));
-        self.virtual_mem = if show_virtual {
-            Some(MemorySection::unavailable(&t!("memory.virtual")))
-        } else {
-            None
-        };
-    }
 
     pub(crate) fn queue_settings_save(&mut self, cx: &mut Context<Self>) {
         self.settings_save_gen = self.settings_save_gen.wrapping_add(1);
@@ -420,32 +398,21 @@ impl MemoryCleanerApp {
 
     fn sync_anim_targets_from_sections(&mut self) {
         self.anim_physical.target = self.physical.used_percent;
-        self.anim_virtual.target = self
-            .virtual_mem
-            .as_ref()
-            .map_or(0.0, |section| section.used_percent);
+        self.anim_virtual.target = self.virtual_mem.used_percent;
         self.anim_used_phys.target = self.physical.used as f32;
         self.anim_avail_phys.target = self.physical.avail as f32;
-        self.anim_used_virt.target = self
-            .virtual_mem
-            .as_ref()
-            .map_or(0.0, |section| section.used as f32);
-        self.anim_avail_virt.target = self
-            .virtual_mem
-            .as_ref()
-            .map_or(0.0, |section| section.avail as f32);
+        self.anim_used_virt.target = self.virtual_mem.used as f32;
+        self.anim_avail_virt.target = self.virtual_mem.avail as f32;
         self.anim_dirty = true;
     }
 
     pub fn refresh_memory(&mut self) -> bool {
-        let show_virtual = self.settings.show_virtual_memory;
-        let Ok((physical, virtual_mem)) = query_sections(show_virtual) else {
-            if self.physical.is_unavailable()
-                && self.virtual_mem.as_ref().is_none_or(|v| v.is_unavailable())
-            {
+        let Ok((physical, virtual_mem)) = query_sections() else {
+            if self.physical.is_unavailable() && self.virtual_mem.is_unavailable() {
                 return false;
             }
-            self.set_unavailable_sections(show_virtual);
+            self.physical = MemorySection::unavailable(&t!("memory.physical"));
+            self.virtual_mem = MemorySection::unavailable(&t!("memory.virtual"));
             self.sync_anim_targets_from_sections();
             return true;
         };
@@ -561,12 +528,12 @@ impl MemoryCleanerApp {
 
     pub fn apply_locale(&mut self, cx: &mut Context<Self>) {
         locale::apply(&self.settings);
-        let show_virtual = self.settings.show_virtual_memory;
-        if let Ok((physical, virtual_mem)) = query_sections(show_virtual) {
+        if let Ok((physical, virtual_mem)) = query_sections() {
             self.physical = physical;
             self.virtual_mem = virtual_mem;
         } else {
-            self.set_unavailable_sections(show_virtual);
+            self.physical = MemorySection::unavailable(&t!("memory.physical"));
+            self.virtual_mem = MemorySection::unavailable(&t!("memory.virtual"));
         }
         self.sync_anim_targets_from_sections();
         if !self.is_optimizing {
@@ -1131,7 +1098,6 @@ impl Render for MemoryCleanerApp {
         use gpui_component::{h_flex, v_flex};
 
         let bg = cx.theme().background;
-        let show_virtual = self.virtual_mem.is_some();
 
         let physical_card = memory_group_box(
             "physical-memory-card",
@@ -1150,46 +1116,30 @@ impl Render for MemoryCleanerApp {
                 )),
         );
 
-        let memory_row = if show_virtual {
-            let virtual_card = memory_group_box(
-                "virtual-memory-card",
-                v_flex()
-                    .w_full()
-                    .items_center()
-                    .py(px(crate::ui::memory_card::MEMORY_CARD_PY))
-                    .child(render_memory_card(
-                        self.virtual_mem
-                            .as_ref()
-                            .expect("virtual card requires data"),
-                        "virtual-memory",
-                        false,
-                        self.anim_virtual.current,
-                        self.animated_used_virt(),
-                        self.animated_avail_virt(),
-                        cx,
-                    )),
-            );
+        let virtual_card = memory_group_box(
+            "virtual-memory-card",
+            v_flex()
+                .w_full()
+                .items_center()
+                .py(px(crate::ui::memory_card::MEMORY_CARD_PY))
+                .child(render_memory_card(
+                    &self.virtual_mem,
+                    "virtual-memory",
+                    false,
+                    self.anim_virtual.current,
+                    self.animated_used_virt(),
+                    self.animated_avail_virt(),
+                    cx,
+                )),
+        );
 
-            h_flex()
-                .w_full()
-                .flex_shrink_0()
-                .gap(px(SECTION_GAP))
-                .child(div().flex_1().min_w_0().child(physical_card))
-                .child(div().flex_1().min_w_0().child(virtual_card))
-                .into_any_element()
-        } else {
-            h_flex()
-                .w_full()
-                .flex_shrink_0()
-                .justify_center()
-                .child(
-                    div()
-                        .w_full()
-                        .max_w(px(SINGLE_CARD_MAX_WIDTH))
-                        .child(physical_card),
-                )
-                .into_any_element()
-        };
+        let memory_row = h_flex()
+            .w_full()
+            .flex_shrink_0()
+            .gap(px(SECTION_GAP))
+            .child(div().flex_1().min_w_0().child(physical_card))
+            .child(div().flex_1().min_w_0().child(virtual_card))
+            .into_any_element();
 
         div()
             .relative()
