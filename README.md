@@ -125,8 +125,6 @@ cargo run --release
 | `show_optimization_notifications` | bool | `true` | 清理开始/完成时弹出 Windows Toast |
 | `cleanup_hotkey_enabled` | bool | `true` | 启用全局清理热键 |
 | `cleanup_hotkey` | string | `"Ctrl+Alt+C"` | 热键组合（`Ctrl`/`Alt`/`Shift`/`Win` + 字母或数字） |
-| `auto_optimization_interval` | u32 | `0` | **预留**：定时自动清理间隔（秒，0 = 禁用） |
-| `auto_optimization_memory_usage` | u32 | `0` | **预留**：内存占用阈值触发清理（%，0 = 禁用） |
 
 ## 技术栈
 
@@ -207,7 +205,7 @@ Windows 会按需将常用页面重新加载到内存。清理后短期内可能
   - **已修改页面** — 通过 `FlushModifiedList` 将内存中的脏页写回对应文件
   - **注册表缓存** — 通过 `RegFlushKey` 写入注册表配置单元，数据量小，影响最小
 
-日常手动使用无须担心；若配置定时自动清理，建议避开「已修改文件」和「已修改页面」以减少磁盘写入。
+日常手动使用无须担心；若频繁清理，建议避开「已修改文件」和「已修改页面」以减少磁盘写入。
 
 ## 友链
 

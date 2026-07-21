@@ -380,7 +380,6 @@ impl MemoryCleanerApp {
         crate::tray::sync_display(&self.physical, &self.virtual_mem, self.window_visible());
     }
 
-
     pub(crate) fn queue_settings_save(&mut self, cx: &mut Context<Self>) {
         self.settings_save_gen = self.settings_save_gen.wrapping_add(1);
         let generation = self.settings_save_gen;

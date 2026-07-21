@@ -10,9 +10,6 @@ pub struct Settings {
     pub run_at_startup: bool,
     pub close_to_notification_area: bool,
     pub memory_areas: u32,
-    // 预留字段：自动优化功能（未实现）
-    pub auto_optimization_interval: u32,
-    pub auto_optimization_memory_usage: u32,
     /// Show a Windows toast when memory cleanup completes.
     pub show_optimization_notifications: bool,
     /// UI language: "auto", "zh-CN", or "en".
@@ -32,8 +29,6 @@ impl Default for Settings {
         Self {
             always_on_top: false,
             run_at_startup: false,
-            auto_optimization_interval: 0,
-            auto_optimization_memory_usage: 0,
             close_to_notification_area: true,
             show_optimization_notifications: true,
             memory_areas: MemoryAreas::DEFAULT.bits(),

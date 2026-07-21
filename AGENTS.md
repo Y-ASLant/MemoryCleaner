@@ -119,13 +119,7 @@ make clean # cargo clean
 - **Memory refresh:** `MEMORY_REFRESH_INTERVAL` = 1 s while main window is visible; paused when hidden to tray (`pause_memory_refresh` / `start_memory_refresh`).
 - **Platform chrome:** Win10 (build &lt; 22000) uses square corners via theme tokens; Win11 keeps gpui-component defaults.
 
-## Unimplemented Settings (Reserved)
-
-These fields exist in `settings.toml` for forward compatibility but have no runtime logic yet:
-
-- `auto_optimization_interval` / `auto_optimization_memory_usage` — scheduled or threshold-triggered auto cleanup
-
-Implemented since earlier docs (do **not** list as unimplemented):
+Implemented settings that must **not** be listed as unimplemented:
 
 - `show_optimization_notifications` — Windows Toast on optimize start/complete
 - `cleanup_hotkey_enabled` / `cleanup_hotkey` — global hotkey via `RegisterHotKey`

@@ -189,11 +189,7 @@ pub fn format_memory_tooltip(physical: &MemorySection, virtual_mem: &MemorySecti
     lines.join("\n")
 }
 
-pub fn sync_display(
-    physical: &MemorySection,
-    virtual_mem: &MemorySection,
-    window_visible: bool,
-) {
+pub fn sync_display(physical: &MemorySection, virtual_mem: &MemorySection, window_visible: bool) {
     let Some(tray) = tray() else {
         return;
     };

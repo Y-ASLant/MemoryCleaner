@@ -125,8 +125,6 @@ Config file: `%APPDATA%\MemoryCleaner\settings.toml`
 | `show_optimization_notifications` | bool | `true` | Show Windows Toast on cleanup start/completion |
 | `cleanup_hotkey_enabled` | bool | `true` | Enable global cleanup hotkey |
 | `cleanup_hotkey` | string | `"Ctrl+Alt+C"` | Hotkey combo (`Ctrl`/`Alt`/`Shift`/`Win` + letter or digit) |
-| `auto_optimization_interval` | u32 | `0` | **Reserved**: scheduled auto-cleanup interval (seconds, 0 = disabled) |
-| `auto_optimization_memory_usage` | u32 | `0` | **Reserved**: memory usage threshold trigger (%, 0 = disabled) |
 
 ## Tech Stack
 
@@ -207,7 +205,7 @@ The 8 cleanup regions fall into two categories by disk behavior:
   - **Modified Pages** — Writes dirty pages from memory back to their backing files via `FlushModifiedList`
   - **Registry Cache** — Writes registry hives to disk via `RegFlushKey`; small data volume — lowest impact
 
-Occasional manual use is not a concern. For scheduled automatic cleanup, consider excluding "Modified Files" and "Modified Pages" to reduce disk writes.
+Occasional manual use is not a concern. If you clean frequently, consider excluding "Modified Files" and "Modified Pages" to reduce disk writes.
 
 ## Links
 
