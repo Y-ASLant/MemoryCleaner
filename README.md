@@ -125,10 +125,6 @@ cargo run --release
 | `show_optimization_notifications` | bool | `true` | 清理开始/完成时弹出 Windows Toast |
 | `cleanup_hotkey_enabled` | bool | `true` | 启用全局清理热键 |
 | `cleanup_hotkey` | string | `"Ctrl+Alt+C"` | 热键组合（`Ctrl`/`Alt`/`Shift`/`Win` + 字母或数字） |
-| `tray_icon_show_memory_usage` | bool | `false` | **预留**（未使用） |
-| `tray_icon_use_transparent_background` | bool | `false` | **预留** |
-| `tray_icon_warning_level` | u8 | `80` | **预留** |
-| `tray_icon_danger_level` | u8 | `90` | **预留** |
 | `auto_optimization_interval` | u32 | `0` | **预留**：定时自动清理间隔（秒，0 = 禁用） |
 | `auto_optimization_memory_usage` | u32 | `0` | **预留**：内存占用阈值触发清理（%，0 = 禁用） |
 

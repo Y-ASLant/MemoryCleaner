@@ -124,7 +124,6 @@ make clean # cargo clean
 These fields exist in `settings.toml` for forward compatibility but have no runtime logic yet:
 
 - `auto_optimization_interval` / `auto_optimization_memory_usage` — scheduled or threshold-triggered auto cleanup
-- `tray_icon_*` — reserved tray icon settings (no runtime logic)
 
 Implemented since earlier docs (do **not** list as unimplemented):
 

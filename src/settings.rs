@@ -15,11 +15,6 @@ pub struct Settings {
     pub auto_optimization_memory_usage: u32,
     /// Show a Windows toast when memory cleanup completes.
     pub show_optimization_notifications: bool,
-    // 预留字段：托盘图标自定义（未实现）
-    pub tray_icon_show_memory_usage: bool,
-    pub tray_icon_use_transparent_background: bool,
-    pub tray_icon_warning_level: u8,
-    pub tray_icon_danger_level: u8,
     /// UI language: "auto", "zh-CN", or "en".
     pub language: String,
     /// Write debug output to `App.log` next to the executable.
@@ -42,10 +37,6 @@ impl Default for Settings {
             close_to_notification_area: true,
             show_optimization_notifications: true,
             memory_areas: MemoryAreas::DEFAULT.bits(),
-            tray_icon_show_memory_usage: false,
-            tray_icon_use_transparent_background: false,
-            tray_icon_warning_level: 80,
-            tray_icon_danger_level: 90,
             language: "auto".into(),
             debug_logging: false,
             cleanup_hotkey_enabled: true,

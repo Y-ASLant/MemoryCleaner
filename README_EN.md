@@ -125,10 +125,6 @@ Config file: `%APPDATA%\MemoryCleaner\settings.toml`
 | `show_optimization_notifications` | bool | `true` | Show Windows Toast on cleanup start/completion |
 | `cleanup_hotkey_enabled` | bool | `true` | Enable global cleanup hotkey |
 | `cleanup_hotkey` | string | `"Ctrl+Alt+C"` | Hotkey combo (`Ctrl`/`Alt`/`Shift`/`Win` + letter or digit) |
-| `tray_icon_show_memory_usage` | bool | `false` | **Reserved** (unused) |
-| `tray_icon_use_transparent_background` | bool | `false` | **Reserved** |
-| `tray_icon_warning_level` | u8 | `80` | **Reserved** |
-| `tray_icon_danger_level` | u8 | `90` | **Reserved** |
 | `auto_optimization_interval` | u32 | `0` | **Reserved**: scheduled auto-cleanup interval (seconds, 0 = disabled) |
 | `auto_optimization_memory_usage` | u32 | `0` | **Reserved**: memory usage threshold trigger (%, 0 = disabled) |
 
