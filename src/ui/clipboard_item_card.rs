@@ -19,6 +19,21 @@ pub const ITEM_HEIGHT: f32 = 96.;
 /// Drag ghost width (matches list content area).
 pub const DRAG_CARD_WIDTH: f32 = 488.;
 
+/// Left half: drag reorder zone (pale yellow `#FFF9E6`).
+fn drag_zone_bg() -> Hsla {
+    hsla(45. / 360., 0.85, 0.95, 1.)
+}
+fn drag_zone_bg_active() -> Hsla {
+    hsla(45. / 360., 0.85, 0.90, 1.)
+}
+/// Right half: click-to-paste zone (light blue `#D6E4FF`).
+fn paste_zone_bg() -> Hsla {
+    hsla(220. / 360., 0.55, 0.92, 1.)
+}
+fn paste_zone_bg_active() -> Hsla {
+    hsla(220. / 360., 0.55, 0.86, 1.)
+}
+
 /// Drag payload for clipboard item reorder.
 #[derive(Clone)]
 pub struct DragClipboardItem {
@@ -44,27 +59,44 @@ impl Render for DragPreviewCard {
             .w(px(DRAG_CARD_WIDTH))
             .h(px(ITEM_HEIGHT))
             .overflow_hidden()
-            .bg(theme.background)
             .border_1()
             .border_color(theme.primary)
             .rounded_md()
             .cursor_grabbing()
-            .child(
+            .child(render_split_card(
                 div()
-                    .absolute()
-                    .inset_0()
-                    .px_2()
-                    .py_2()
-                    .overflow_hidden()
-                    .child(card_content(
-                        self.content_type,
-                        &self.lines,
-                        &self.time_text,
-                        self.is_pinned,
-                        self.file_count,
-                        cx,
+                    .size_full()
+                    .bg(drag_zone_bg())
+                    .child(render_zone_column(
+                        t!("clipboard.drag_zone").to_string(),
+                        theme.muted_foreground,
+                        clipped_card_half(
+                            self.content_type,
+                            &self.lines,
+                            &self.time_text,
+                            self.is_pinned,
+                            self.file_count,
+                            CardHalf::Left,
+                            cx,
+                        ),
                     )),
-            )
+                div()
+                    .size_full()
+                    .bg(paste_zone_bg())
+                    .child(render_zone_column(
+                        t!("clipboard.paste_zone").to_string(),
+                        theme.muted_foreground,
+                        clipped_card_half(
+                            self.content_type,
+                            &self.lines,
+                            &self.time_text,
+                            self.is_pinned,
+                            self.file_count,
+                            CardHalf::Right,
+                            cx,
+                        ),
+                    )),
+            ))
             .shadow(vec![BoxShadow {
                 color: hsla(0., 0., 0., 0.16),
                 offset: point(px(0.), px(6.)),
@@ -91,21 +123,17 @@ pub fn render_clipboard_item(
     let is_hovered = app.clipboard_hovered_id == Some(item.id);
     let show_actions = is_hovered && !is_deleting && app.clipboard_dragging_id.is_none();
 
-    let bg = if is_selected {
-        theme.selection
-    } else {
-        theme.background
-    };
     let border_color = if is_selected {
         theme.primary
     } else {
         theme.border
     };
     // Same tokens as gpui-component ListItem so hover/press reads clearly.
-    let hover_bg = theme.list_hover;
-    let active_bg = theme.list_active;
     let hover_border = theme.primary.opacity(0.55);
     let danger = theme.danger;
+    let drag_zone_label = t!("clipboard.drag_zone").to_string();
+    let paste_zone_label = t!("clipboard.paste_zone").to_string();
+    let zone_caption = theme.muted_foreground;
 
     let time_text = format_time_ago(&item.created_at);
     let item_id = item.id;
@@ -124,13 +152,20 @@ pub fn render_clipboard_item(
     let drag_payload = DragClipboardItem { id: item_id };
     let app_entity = cx.global::<AppEntityHolder>().0.clone();
 
+    let content_params = (
+        item.content_type,
+        preview_lines,
+        time_text,
+        item.is_pinned,
+        file_count,
+    );
+
     let card = div()
         .id(("clipboard-item", item_id as u32))
         .relative()
         .w_full()
         .h(px(ITEM_HEIGHT))
         .overflow_hidden()
-        .bg(bg)
         .border_1()
         .border_color(border_color)
         .rounded_md()
@@ -146,79 +181,78 @@ pub fn render_clipboard_item(
             }
         }))
         .when(!is_selected && !is_deleting, |el| {
-            el.hover(move |style| style.bg(hover_bg).border_color(hover_border))
+            el.hover(move |style| style.border_color(hover_border))
         })
-        .child(
+        .child(render_split_card(
             div()
-                .absolute()
-                .inset_0()
-                .px_2()
-                .py_2()
-                .overflow_hidden()
-                .child(card_content(
-                    item.content_type,
-                    &preview_lines,
-                    &time_text,
-                    item.is_pinned,
-                    file_count,
-                    cx,
+                .id(("clipboard-drag", item_id as u32))
+                .size_full()
+                .bg(drag_zone_bg())
+                .cursor_grab()
+                .active(|style| style.bg(drag_zone_bg_active()))
+                .on_click(|_, _, cx| cx.stop_propagation())
+                .on_drag(drag_payload, {
+                    let preview = drag_preview.clone();
+                    let app_entity = app_entity.clone();
+                    move |item, _offset, _window, cx| {
+                        app_entity.update(cx, |app, cx| {
+                            app.clipboard_shift_anims.clear();
+                            app.clipboard_dragging_id = Some(item.id);
+                            app.clipboard_drop_target_id = Some(item.id);
+                            app.clipboard_hovered_id = None;
+                            crate::ui::clipboard_panel::sync_clipboard_shift_anims(app, cx);
+                            cx.notify();
+                        });
+                        let preview = preview.clone();
+                        cx.new(move |_cx| preview)
+                    }
+                })
+                .child(render_zone_column(
+                    drag_zone_label.clone(),
+                    zone_caption,
+                    clipped_card_half(
+                        content_params.0,
+                        &content_params.1,
+                        &content_params.2,
+                        content_params.3,
+                        content_params.4,
+                        CardHalf::Left,
+                        cx,
+                    ),
                 )),
-        )
-        .child(
-            h_flex()
-                .w_full()
-                .h_full()
-                .child(
-                    div()
-                        .id(("clipboard-drag", item_id as u32))
-                        .flex_1()
-                        .h_full()
-                        .cursor_grab()
-                        .on_click(|_, _, cx| cx.stop_propagation())
-                        .on_drag(drag_payload, {
-                            let preview = drag_preview.clone();
-                            let app_entity = app_entity.clone();
-                            move |item, _offset, _window, cx| {
-                                app_entity.update(cx, |app, cx| {
-                                    app.clipboard_shift_anims.clear();
-                                    app.clipboard_dragging_id = Some(item.id);
-                                    app.clipboard_drop_target_id = Some(item.id);
-                                    app.clipboard_hovered_id = None;
-                                    crate::ui::clipboard_panel::sync_clipboard_shift_anims(app, cx);
-                                    cx.notify();
-                                });
-                                let preview = preview.clone();
-                                cx.new(move |_cx| preview)
-                            }
-                        }),
-                )
-                .child(
-                    div()
-                        .id(("clipboard-paste", item_id as u32))
-                        .flex_1()
-                        .h_full()
-                        .cursor_pointer()
-                        .when(!is_selected && !is_deleting, |el| {
-                            el.active(move |style| style.bg(active_bg).border_color(hover_border))
-                        })
-                        .when(is_selected && !is_deleting, |el| {
-                            el.active(move |style| style.bg(active_bg))
-                        })
-                        .on_click(cx.listener(move |app, _, _, cx| {
-                            if app.clipboard_deleting_id.is_some() {
-                                return;
-                            }
-                            app.clipboard_selected = Some(index);
-                            app.paste_clipboard_item(item_id, cx);
-                        }))
-                        .on_double_click(cx.listener(move |app, _, window, cx| {
-                            if app.clipboard_deleting_id.is_some() {
-                                return;
-                            }
-                            app.open_clipboard_delete_confirm(item_id, window, cx);
-                        })),
-                ),
-        )
+            div()
+                .id(("clipboard-paste", item_id as u32))
+                .size_full()
+                .bg(paste_zone_bg())
+                .cursor_pointer()
+                .active(|style| style.bg(paste_zone_bg_active()))
+                .on_click(cx.listener(move |app, _, _, cx| {
+                    if app.clipboard_deleting_id.is_some() {
+                        return;
+                    }
+                    app.clipboard_selected = Some(index);
+                    app.paste_clipboard_item(item_id, cx);
+                }))
+                .on_double_click(cx.listener(move |app, _, window, cx| {
+                    if app.clipboard_deleting_id.is_some() {
+                        return;
+                    }
+                    app.open_clipboard_delete_confirm(item_id, window, cx);
+                }))
+                .child(render_zone_column(
+                    paste_zone_label,
+                    zone_caption,
+                    clipped_card_half(
+                        content_params.0,
+                        &content_params.1,
+                        &content_params.2,
+                        content_params.3,
+                        content_params.4,
+                        CardHalf::Right,
+                        cx,
+                    ),
+                )),
+        ))
         .when(show_actions, |el| {
             el.child(
                 div()
@@ -258,6 +292,109 @@ pub fn render_clipboard_item(
         card.opacity(0.).into_any_element()
     } else {
         card.into_any_element()
+    }
+}
+
+#[derive(Clone, Copy)]
+enum CardHalf {
+    Left,
+    Right,
+}
+
+/// Fixed 50/50 split — absolute halves so wide clipped content cannot expand one side.
+fn render_split_card(
+    left: impl IntoElement,
+    right: impl IntoElement,
+) -> impl IntoElement {
+    div()
+        .relative()
+        .w_full()
+        .h_full()
+        .child(
+            div()
+                .absolute()
+                .top(px(0.))
+                .bottom(px(0.))
+                .left(px(0.))
+                .w(relative(0.5))
+                .overflow_hidden()
+                .child(left),
+        )
+        .child(
+            div()
+                .absolute()
+                .top(px(0.))
+                .bottom(px(0.))
+                .left(relative(0.5))
+                .w(relative(0.5))
+                .overflow_hidden()
+                .child(right),
+        )
+}
+
+fn render_zone_column(
+    label: String,
+    caption_color: Hsla,
+    body: impl IntoElement,
+) -> impl IntoElement {
+    v_flex()
+        .size_full()
+        .min_w_0()
+        .overflow_hidden()
+        .child(
+            Label::new(label)
+                .text_xs()
+                .text_color(caption_color)
+                .px_2()
+                .pt_1(),
+        )
+        .child(
+            div()
+                .flex_1()
+                .min_w_0()
+                .min_h_0()
+                .w_full()
+                .overflow_hidden()
+                .pb_2()
+                .child(body),
+        )
+}
+
+fn clipped_card_half(
+    content_type: ContentType,
+    lines: &[SharedString],
+    time_text: &str,
+    is_pinned: bool,
+    file_count: Option<usize>,
+    half: CardHalf,
+    cx: &App,
+) -> impl IntoElement {
+    let inner = div()
+        .w(relative(2.))
+        .min_w_0()
+        .px_2()
+        .child(card_content(
+            content_type,
+            lines,
+            time_text,
+            is_pinned,
+            file_count,
+            cx,
+        ));
+
+    match half {
+        CardHalf::Left => div()
+            .size_full()
+            .min_w_0()
+            .overflow_hidden()
+            .child(inner)
+            .into_any_element(),
+        CardHalf::Right => div()
+            .size_full()
+            .min_w_0()
+            .overflow_hidden()
+            .child(inner.ml(relative(-1.)))
+            .into_any_element(),
     }
 }
 
