@@ -20,7 +20,7 @@ name = "memory_cleaner"
 path = "src/lib.rs"
 
 [dev-dependencies]
-tempfile = "3"
+tempfile = "3.27"
 
 [dependencies]
 anyhow = "1"
