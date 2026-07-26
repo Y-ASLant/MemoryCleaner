@@ -10,7 +10,7 @@ use gpui_component::ActiveTheme;
 use gpui_component::{Root, TitleBar, WindowExt};
 use smol::Timer;
 
-use crate::anim::{ANIM_INTERVAL, AnimatedValue};
+use crate::anim::AnimatedValue;
 use crate::locale;
 use crate::memory::{MemorySection, MemoryStatus};
 use crate::messages::{build_cleanup_result_message, format_freed_message};
@@ -180,7 +180,6 @@ pub struct MemoryCleanerApp {
     pub virtual_mem: MemorySection,
     settings_save_gen: u32,
     memory_refresh_generation: Arc<AtomicU32>,
-    anim_generation: Arc<AtomicU32>,
     window_opening: bool,
     pub is_optimizing: bool,
     pub is_refreshing_icon_cache: bool,
@@ -201,6 +200,8 @@ pub struct MemoryCleanerApp {
     anim_used_virt: AnimatedValue,
     anim_avail_virt: AnimatedValue,
     anim_dirty: bool,
+    /// Wall-clock of the previous interpolator tick (`None` when settled).
+    last_anim_tick: Option<Instant>,
     /// Current in-flight window size animation.
     animating_window: Option<WindowAnim>,
 }
@@ -243,7 +244,6 @@ impl MemoryCleanerApp {
             virtual_mem,
             settings_save_gen: 0,
             memory_refresh_generation: Arc::new(AtomicU32::new(0)),
-            anim_generation: Arc::new(AtomicU32::new(0)),
             window_opening: false,
             is_optimizing: false,
             is_refreshing_icon_cache: false,
@@ -264,6 +264,7 @@ impl MemoryCleanerApp {
             anim_used_virt: AnimatedValue::new(virt_used),
             anim_avail_virt: AnimatedValue::new(virt_avail),
             anim_dirty: false,
+            last_anim_tick: None,
             animating_window: None,
         };
 
@@ -304,57 +305,12 @@ impl MemoryCleanerApp {
 
         if !launch_hidden {
             self.start_memory_refresh(cx);
-            self.start_anim(cx);
         }
     }
 
     fn pause_memory_refresh(&self) {
         self.memory_refresh_generation
             .fetch_add(1, Ordering::Relaxed);
-    }
-
-    fn pause_anim(&self) {
-        self.anim_generation.fetch_add(1, Ordering::Relaxed);
-    }
-
-    fn start_anim(&self, cx: &mut Context<Self>) {
-        if self.window.is_none() {
-            return;
-        }
-        let generation = self.anim_generation.load(Ordering::Relaxed);
-        let gen_arc = Arc::clone(&self.anim_generation);
-        cx.spawn(async move |this, cx| {
-            loop {
-                Timer::after(ANIM_INTERVAL).await;
-                if gen_arc.load(Ordering::Relaxed) != generation {
-                    break;
-                }
-                let Ok(animating) = this.update(cx, |app, cx| {
-                    if !app.anim_dirty {
-                        return false;
-                    }
-                    let a = app.anim_physical.tick();
-                    let b = app.anim_virtual.tick();
-                    let c = app.anim_optimize.tick();
-                    let d = app.anim_used_phys.tick();
-                    let e = app.anim_avail_phys.tick();
-                    let f = app.anim_used_virt.tick();
-                    let g = app.anim_avail_virt.tick();
-                    let still = a | b | c | d | e | f | g;
-                    app.anim_dirty = still;
-                    if still {
-                        cx.notify();
-                    }
-                    still
-                }) else {
-                    break;
-                };
-                if !animating {
-                    Timer::after(Duration::from_millis(50)).await;
-                }
-            }
-        })
-        .detach();
     }
 
     fn start_memory_refresh(&self, cx: &mut Context<Self>) {
@@ -511,9 +467,7 @@ impl MemoryCleanerApp {
                 Ok(Ok(())) => {
                     self.window_shown = true;
                     self.pause_memory_refresh();
-                    self.pause_anim();
                     self.start_memory_refresh(cx);
-                    self.start_anim(cx);
                     self.sync_tray();
                     return;
                 }
@@ -542,7 +496,6 @@ impl MemoryCleanerApp {
         }
         self.window_shown = false;
         self.pause_memory_refresh();
-        self.pause_anim();
     }
 
     /// Remove the GPUI window and drop our handle. `activate_window` recreates it via
@@ -552,7 +505,6 @@ impl MemoryCleanerApp {
         self.window = None;
         self.window_shown = false;
         self.pause_memory_refresh();
-        self.pause_anim();
         crate::log_msg(&format!("[close] hide_to_tray destroy ok source={source}"));
     }
 
@@ -710,8 +662,12 @@ impl MemoryCleanerApp {
         cx.notify();
     }
 
-    /// Tick window size animation each frame. Returns `true` if still running.
+    /// Tick all active animations each frame (render-driven, vsync-paced).
+    /// Returns `true` if any animation is still running (caller schedules next frame).
     pub(crate) fn tick_animations(&mut self, window: &mut Window) -> bool {
+        let mut running = false;
+
+        // Window expand/collapse animation.
         if let Some(anim) = &self.animating_window {
             let (height, done) = anim.sample(Instant::now());
             if done {
@@ -719,9 +675,36 @@ impl MemoryCleanerApp {
             } else {
                 window.resize(size(px(WINDOW_WIDTH), px(height)));
             }
-            return !done;
+            running |= !done;
         }
-        false
+
+        // Memory ring / progress / text interpolators — real-dt exponential decay,
+        // frame-rate independent (60 Hz and 144 Hz displays animate at the same speed).
+        if self.anim_dirty {
+            let now = Instant::now();
+            // First frame of a fresh animation has no previous tick: assume one 60 Hz
+            // frame. Clamp to 50 ms so a stalled frame can't teleport values.
+            let dt = self
+                .last_anim_tick
+                .map(|t| now.saturating_duration_since(t).as_secs_f32())
+                .unwrap_or(1.0 / 60.0)
+                .min(0.05);
+            let a = self.anim_physical.tick_dt(dt);
+            let b = self.anim_virtual.tick_dt(dt);
+            let c = self.anim_optimize.tick_dt(dt);
+            let d = self.anim_used_phys.tick_dt(dt);
+            let e = self.anim_avail_phys.tick_dt(dt);
+            let f = self.anim_used_virt.tick_dt(dt);
+            let g = self.anim_avail_virt.tick_dt(dt);
+            let still = a | b | c | d | e | f | g;
+            self.anim_dirty = still;
+            self.last_anim_tick = still.then_some(now);
+            running |= still;
+        } else {
+            self.last_anim_tick = None;
+        }
+
+        running
     }
 
     pub fn set_always_on_top(
