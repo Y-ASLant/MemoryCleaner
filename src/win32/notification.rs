@@ -1,6 +1,6 @@
 use std::ffi::OsString;
 use std::os::windows::ffi::OsStringExt;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use windows::Data::Xml::Dom::XmlDocument;
@@ -54,11 +54,11 @@ pub fn show(title: &str, body: &str) -> Result<()> {
 
 fn ensure_start_menu_shortcut() -> Result<()> {
     let shortcut_path = start_menu_shortcut_path()?;
-    if shortcut_path.is_file() {
+    let exe = std::env::current_exe().context("current_exe failed")?;
+    if shortcut_path.is_file() && shortcut_target_matches(&shortcut_path, &exe) {
         return Ok(());
     }
 
-    let exe = std::env::current_exe().context("current_exe failed")?;
     if let Some(parent) = shortcut_path.parent() {
         std::fs::create_dir_all(parent).with_context(|| format!("create {}", parent.display()))?;
     }
@@ -90,6 +90,43 @@ fn ensure_start_menu_shortcut() -> Result<()> {
     }
 
     Ok(())
+}
+
+/// Read the shortcut's target path and compare with `current_exe`.
+/// Returns `true` if they match, or if the shortcut cannot be read (conservative).
+fn shortcut_target_matches(shortcut_path: &Path, current_exe: &Path) -> bool {
+    read_shortcut_target(shortcut_path)
+        .ok()
+        .and_then(|target| {
+            let a = std::fs::canonicalize(target).ok()?;
+            let b = std::fs::canonicalize(current_exe).ok()?;
+            Some(a == b)
+        })
+        .unwrap_or(false)
+}
+
+/// Load an existing `.lnk` and return its target path.
+fn read_shortcut_target(shortcut_path: &Path) -> Result<PathBuf> {
+    unsafe {
+        let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED).ok();
+
+        let link: IShellLinkW =
+            CoCreateInstance(&ShellLink, None, CLSCTX_INPROC_SERVER).context("ShellLink failed")?;
+        let persist_file: IPersistFile = link.cast().context("IPersistFile cast failed")?;
+        persist_file
+            .Load(
+                &HSTRING::from(shortcut_path.as_os_str()),
+                windows::Win32::System::Com::STGM(0),
+            )
+            .context("shortcut Load failed")?;
+
+        let mut buf = [0u16; MAX_PATH as usize];
+        link.GetPath(&mut buf, std::ptr::null_mut(), 0)
+            .context("GetPath failed")?;
+
+        let len = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
+        Ok(PathBuf::from(OsString::from_wide(&buf[..len])))
+    }
 }
 
 fn start_menu_shortcut_path() -> Result<PathBuf> {
