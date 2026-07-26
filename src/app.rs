@@ -278,6 +278,7 @@ impl MemoryCleanerApp {
     }
 
     fn attach_window(&mut self, window: &mut Window, cx: &mut Context<Self>, launch_hidden: bool) {
+        self.current_window_height = window_height(self.settings_expanded);
         self.window = Some(window.window_handle());
         self.window_shown = !launch_hidden;
 
@@ -349,13 +350,15 @@ impl MemoryCleanerApp {
         }
 
         self.window_opening = true;
-        let expanded = self.settings_expanded;
         cx.spawn(async move |this, cx| {
             let entity = match this.upgrade() {
                 Some(entity) => entity,
                 None => return,
             };
 
+            // Read settings_expanded at window creation time, not at spawn time.
+            // This prevents a stale height if settings change during the async gap.
+            let expanded = entity.update(cx, |app, _| app.settings_expanded);
             let options = cx.update(|app| window_options(expanded, app));
             let opened = cx.open_window(options, |window, cx| {
                 entity.update(cx, |app, cx| {
@@ -380,7 +383,6 @@ impl MemoryCleanerApp {
         })
         .detach();
     }
-
     fn window_visible(&self) -> bool {
         self.window.is_some() && self.window_shown
     }
