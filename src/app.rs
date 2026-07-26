@@ -203,6 +203,8 @@ pub struct MemoryCleanerApp {
     last_anim_tick: Option<Instant>,
     /// Current in-flight window size animation.
     animating_window: Option<WindowAnim>,
+    /// Last known window content height (updated on every resize).
+    current_window_height: f32,
 }
 
 impl MemoryCleanerApp {
@@ -264,6 +266,7 @@ impl MemoryCleanerApp {
             anim_dirty: false,
             last_anim_tick: None,
             animating_window: None,
+            current_window_height: window_height(false),
         };
 
         cx.set_global(AppEntityHolder(cx.entity()));
@@ -671,16 +674,21 @@ impl MemoryCleanerApp {
                 self.animating_window = None;
             } else {
                 window.resize(size(px(WINDOW_WIDTH), px(height)));
+                self.current_window_height = height;
             }
             running |= !done;
+        } else {
+            let expected = window_height(self.settings_expanded);
+            if (self.current_window_height - expected).abs() > 1.0 {
+                window.resize(size(px(WINDOW_WIDTH), px(expected)));
+                self.current_window_height = expected;
+            }
         }
 
         // Memory ring / progress / text interpolators — real-dt exponential decay,
         // frame-rate independent (60 Hz and 144 Hz displays animate at the same speed).
         if self.anim_dirty {
             let now = Instant::now();
-            // First frame of a fresh animation has no previous tick: assume one 60 Hz
-            // frame. Clamp to 50 ms so a stalled frame can't teleport values.
             let dt = self
                 .last_anim_tick
                 .map(|t| now.saturating_duration_since(t).as_secs_f32())
