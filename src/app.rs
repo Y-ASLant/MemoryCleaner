@@ -2,7 +2,7 @@ use rust_i18n::t;
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use anyhow::Result;
 use gpui::*;
@@ -24,6 +24,8 @@ const SETTINGS_SAVE_DEBOUNCE: Duration = Duration::from_millis(300);
 const OPTIMIZE_RESULT_DISPLAY: Duration = Duration::from_secs(5);
 const MEMORY_REFRESH_INTERVAL: Duration = Duration::from_secs(1);
 
+/// Window expand/collapse animation duration.
+const WINDOW_ANIM_DURATION_MS: u64 = 168;
 async fn show_toast(title: String, body: String) {
     if let Err(e) = smol::unblock(move || win32::notification::show(&title, &body)).await {
         crate::log_msg(&format!("[notification] failed: {e:#}"));
@@ -43,6 +45,14 @@ pub fn window_size(expanded: bool) -> Size<Pixels> {
     size(px(WINDOW_WIDTH), px(height))
 }
 
+/// Target window height for the given expanded state.
+pub fn window_height(expanded: bool) -> f32 {
+    if expanded {
+        crate::ui::layout::expanded_window_height(CONTENT_PADDING)
+    } else {
+        crate::ui::layout::collapsed_window_height(CONTENT_PADDING)
+    }
+}
 pub fn window_min_size() -> Size<Pixels> {
     size(
         px(WINDOW_MIN_WIDTH),
@@ -57,6 +67,45 @@ pub fn window_options(expanded: bool, cx: &App) -> WindowOptions {
         is_resizable: false,
         window_min_size: Some(window_min_size()),
         ..Default::default()
+    }
+}
+
+/// Ease-out cubic for smooth window animations.
+fn ease_out_cubic(t: f32) -> f32 {
+    1.0 - (1.0 - t).powi(3)
+}
+
+/// Window size animation state (expand/collapse).
+#[derive(Clone, Debug)]
+pub struct WindowAnim {
+    pub from_height: f32,
+    pub to_height: f32,
+    pub start: Instant,
+    pub duration_ms: u64,
+}
+
+impl WindowAnim {
+    pub fn new(from: f32, to: f32, duration_ms: u64) -> Self {
+        Self {
+            from_height: from,
+            to_height: to,
+            start: Instant::now(),
+            duration_ms,
+        }
+    }
+
+    /// Sample the eased height at `now`; the second value is `true` once finished.
+    pub fn sample(&self, now: Instant) -> (f32, bool) {
+        let elapsed = now.saturating_duration_since(self.start).as_millis() as f64;
+        let progress = (elapsed / self.duration_ms as f64).min(1.0) as f32;
+        if progress >= 1.0 {
+            return (self.to_height, true);
+        }
+        let eased = ease_out_cubic(progress);
+        (
+            self.from_height + (self.to_height - self.from_height) * eased,
+            false,
+        )
     }
 }
 
@@ -152,6 +201,8 @@ pub struct MemoryCleanerApp {
     anim_used_virt: AnimatedValue,
     anim_avail_virt: AnimatedValue,
     anim_dirty: bool,
+    /// Current in-flight window size animation.
+    animating_window: Option<WindowAnim>,
 }
 
 impl MemoryCleanerApp {
@@ -213,6 +264,7 @@ impl MemoryCleanerApp {
             anim_used_virt: AnimatedValue::new(virt_used),
             anim_avail_virt: AnimatedValue::new(virt_avail),
             anim_dirty: false,
+            animating_window: None,
         };
 
         cx.set_global(AppEntityHolder(cx.entity()));
@@ -631,10 +683,45 @@ impl MemoryCleanerApp {
         });
     }
 
-    pub fn toggle_settings_expanded(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    pub fn toggle_settings_expanded(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        let from = window_height(self.settings_expanded);
         self.settings_expanded = !self.settings_expanded;
-        window.resize(window_size(self.settings_expanded));
+        let to = window_height(self.settings_expanded);
+        self.start_window_anim(from, to, WINDOW_ANIM_DURATION_MS, cx);
+    }
+
+    fn start_window_anim(
+        &mut self,
+        from_height: f32,
+        to_height: f32,
+        duration_ms: u64,
+        cx: &mut Context<Self>,
+    ) {
+        let from_height = self
+            .animating_window
+            .as_ref()
+            .map(|anim| anim.sample(Instant::now()).0)
+            .unwrap_or(from_height);
+        if (from_height - to_height).abs() < 0.5 {
+            self.animating_window = None;
+            return;
+        }
+        self.animating_window = Some(WindowAnim::new(from_height, to_height, duration_ms));
         cx.notify();
+    }
+
+    /// Tick window size animation each frame. Returns `true` if still running.
+    pub(crate) fn tick_animations(&mut self, window: &mut Window) -> bool {
+        if let Some(anim) = &self.animating_window {
+            let (height, done) = anim.sample(Instant::now());
+            if done {
+                self.animating_window = None;
+            } else {
+                window.resize(size(px(WINDOW_WIDTH), px(height)));
+            }
+            return !done;
+        }
+        false
     }
 
     pub fn set_always_on_top(
@@ -1096,6 +1183,10 @@ impl Render for MemoryCleanerApp {
         use gpui::prelude::FluentBuilder;
         use gpui_component::{h_flex, v_flex};
 
+        // Tick animations — if still running, schedule next frame.
+        if self.tick_animations(window) {
+            cx.notify();
+        }
         let bg = cx.theme().background;
 
         let physical_card = memory_group_box(
