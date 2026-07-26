@@ -184,7 +184,6 @@ pub struct MemoryCleanerApp {
     pub is_optimizing: bool,
     pub is_refreshing_icon_cache: bool,
     pub optimize_step: String,
-    pub optimize_percent: f32,
     pub optimize_status: String,
     pub optimize_has_errors: bool,
     pub icon_cache_status: String,
@@ -248,7 +247,6 @@ impl MemoryCleanerApp {
             is_optimizing: false,
             is_refreshing_icon_cache: false,
             optimize_step: String::new(),
-            optimize_percent: 0.0,
             optimize_status: String::new(),
             optimize_has_errors: false,
             icon_cache_status: String::new(),
@@ -451,7 +449,6 @@ impl MemoryCleanerApp {
 
     /// Set optimize progress and kick the animation loop.
     fn set_optimize_percent(&mut self, value: f32) {
-        self.optimize_percent = value;
         self.anim_optimize.target = value;
         self.anim_dirty = true;
     }

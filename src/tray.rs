@@ -154,7 +154,7 @@ pub fn start_spin() {
 
     let generation = SPIN_GENERATION.fetch_add(1, Ordering::Relaxed) + 1;
 
-    thread::Builder::new()
+    if thread::Builder::new()
         .name("tray-icon-spin".into())
         .spawn(move || {
             let mut quarters = 0u32;
@@ -174,7 +174,10 @@ pub fn start_spin() {
                 thread::sleep(Duration::from_millis(SPIN_STEP_MS));
             }
         })
-        .ok();
+        .is_err()
+    {
+        SPIN_ACTIVE.store(false, Ordering::Relaxed);
+    }
 }
 
 pub fn format_memory_tooltip(physical: &MemorySection, virtual_mem: &MemorySection) -> String {
