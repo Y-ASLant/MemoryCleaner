@@ -24,7 +24,6 @@ const SETTINGS_SAVE_DEBOUNCE: Duration = Duration::from_millis(300);
 const OPTIMIZE_RESULT_DISPLAY: Duration = Duration::from_secs(5);
 const MEMORY_REFRESH_INTERVAL: Duration = Duration::from_secs(1);
 
-
 async fn show_toast(title: String, body: String) {
     if let Err(e) = smol::unblock(move || win32::notification::show(&title, &body)).await {
         crate::log_msg(&format!("[notification] failed: {e:#}"));
@@ -518,10 +517,15 @@ impl MemoryCleanerApp {
 
         let mut areas = self.settings.memory_areas();
         if enabled {
-            if area == MemoryAreas::STANDBY_LIST {
-                areas.remove(MemoryAreas::STANDBY_LIST_LOW_PRIORITY);
-            } else if area == MemoryAreas::STANDBY_LIST_LOW_PRIORITY {
-                areas.remove(MemoryAreas::STANDBY_LIST);
+            // Standby List variants are mutually exclusive.
+            match area {
+                MemoryAreas::STANDBY_LIST => {
+                    areas.remove(MemoryAreas::STANDBY_LIST_LOW_PRIORITY);
+                }
+                MemoryAreas::STANDBY_LIST_LOW_PRIORITY => {
+                    areas.remove(MemoryAreas::STANDBY_LIST);
+                }
+                _ => {}
             }
             areas.insert(area);
         } else {
@@ -624,14 +628,13 @@ impl MemoryCleanerApp {
                 .map(|t| now.saturating_duration_since(t).as_secs_f32())
                 .unwrap_or(1.0 / 60.0)
                 .min(0.05);
-            let a = self.anim_physical.tick_dt(dt);
-            let b = self.anim_virtual.tick_dt(dt);
-            let c = self.anim_optimize.tick_dt(dt);
-            let d = self.anim_used_phys.tick_dt(dt);
-            let e = self.anim_avail_phys.tick_dt(dt);
-            let f = self.anim_used_virt.tick_dt(dt);
-            let g = self.anim_avail_virt.tick_dt(dt);
-            let still = a | b | c | d | e | f | g;
+            let still = self.anim_physical.tick_dt(dt)
+                | self.anim_virtual.tick_dt(dt)
+                | self.anim_optimize.tick_dt(dt)
+                | self.anim_used_phys.tick_dt(dt)
+                | self.anim_avail_phys.tick_dt(dt)
+                | self.anim_used_virt.tick_dt(dt)
+                | self.anim_avail_virt.tick_dt(dt);
             self.anim_dirty = still;
             self.last_anim_tick = still.then_some(now);
             running |= still;
