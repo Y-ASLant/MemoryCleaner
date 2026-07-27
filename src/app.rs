@@ -24,8 +24,7 @@ const SETTINGS_SAVE_DEBOUNCE: Duration = Duration::from_millis(300);
 const OPTIMIZE_RESULT_DISPLAY: Duration = Duration::from_secs(5);
 const MEMORY_REFRESH_INTERVAL: Duration = Duration::from_secs(1);
 
-/// Window expand/collapse animation duration.
-const WINDOW_ANIM_DURATION_MS: u64 = 168;
+
 async fn show_toast(title: String, body: String) {
     if let Err(e) = smol::unblock(move || win32::notification::show(&title, &body)).await {
         crate::log_msg(&format!("[notification] failed: {e:#}"));
@@ -67,45 +66,6 @@ pub fn window_options(expanded: bool, cx: &App) -> WindowOptions {
         is_resizable: false,
         window_min_size: Some(window_min_size()),
         ..Default::default()
-    }
-}
-
-/// Ease-out cubic for smooth window animations.
-fn ease_out_cubic(t: f32) -> f32 {
-    1.0 - (1.0 - t).powi(3)
-}
-
-/// Window size animation state (expand/collapse).
-#[derive(Clone, Debug)]
-pub struct WindowAnim {
-    pub from_height: f32,
-    pub to_height: f32,
-    pub start: Instant,
-    pub duration_ms: u64,
-}
-
-impl WindowAnim {
-    pub fn new(from: f32, to: f32, duration_ms: u64) -> Self {
-        Self {
-            from_height: from,
-            to_height: to,
-            start: Instant::now(),
-            duration_ms,
-        }
-    }
-
-    /// Sample the eased height at `now`; the second value is `true` once finished.
-    pub fn sample(&self, now: Instant) -> (f32, bool) {
-        let elapsed = now.saturating_duration_since(self.start).as_millis() as f64;
-        let progress = (elapsed / self.duration_ms as f64).min(1.0) as f32;
-        if progress >= 1.0 {
-            return (self.to_height, true);
-        }
-        let eased = ease_out_cubic(progress);
-        (
-            self.from_height + (self.to_height - self.from_height) * eased,
-            false,
-        )
     }
 }
 
@@ -201,8 +161,6 @@ pub struct MemoryCleanerApp {
     anim_dirty: bool,
     /// Wall-clock of the previous interpolator tick (`None` when settled).
     last_anim_tick: Option<Instant>,
-    /// Current in-flight window size animation.
-    animating_window: Option<WindowAnim>,
     /// Last known window content height (updated on every resize).
     current_window_height: f32,
 }
@@ -265,7 +223,6 @@ impl MemoryCleanerApp {
             anim_avail_virt: AnimatedValue::new(virt_avail),
             anim_dirty: false,
             last_anim_tick: None,
-            animating_window: None,
             current_window_height: window_height(false),
         };
 
@@ -637,30 +594,11 @@ impl MemoryCleanerApp {
         });
     }
 
-    pub fn toggle_settings_expanded(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
-        let from = window_height(self.settings_expanded);
+    pub fn toggle_settings_expanded(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.settings_expanded = !self.settings_expanded;
-        let to = window_height(self.settings_expanded);
-        self.start_window_anim(from, to, WINDOW_ANIM_DURATION_MS, cx);
-    }
-
-    fn start_window_anim(
-        &mut self,
-        from_height: f32,
-        to_height: f32,
-        duration_ms: u64,
-        cx: &mut Context<Self>,
-    ) {
-        let from_height = self
-            .animating_window
-            .as_ref()
-            .map(|anim| anim.sample(Instant::now()).0)
-            .unwrap_or(from_height);
-        if (from_height - to_height).abs() < 0.5 {
-            self.animating_window = None;
-            return;
-        }
-        self.animating_window = Some(WindowAnim::new(from_height, to_height, duration_ms));
+        let new_h = window_height(self.settings_expanded);
+        window.resize(size(px(WINDOW_WIDTH), px(new_h)));
+        self.current_window_height = new_h;
         cx.notify();
     }
 
@@ -669,22 +607,12 @@ impl MemoryCleanerApp {
     pub(crate) fn tick_animations(&mut self, window: &mut Window) -> bool {
         let mut running = false;
 
-        // Window expand/collapse animation.
-        if let Some(anim) = &self.animating_window {
-            let (height, done) = anim.sample(Instant::now());
-            if done {
-                self.animating_window = None;
-            } else {
-                window.resize(size(px(WINDOW_WIDTH), px(height)));
-                self.current_window_height = height;
-            }
-            running |= !done;
-        } else {
-            let expected = window_height(self.settings_expanded);
-            if (self.current_window_height - expected).abs() > 1.0 {
-                window.resize(size(px(WINDOW_WIDTH), px(expected)));
-                self.current_window_height = expected;
-            }
+        // Ensure window height matches current expansion state.
+        // (Collapse/expand is now instant — this guards against stale resize.)
+        let expected = window_height(self.settings_expanded);
+        if (self.current_window_height - expected).abs() > 1.0 {
+            window.resize(size(px(WINDOW_WIDTH), px(expected)));
+            self.current_window_height = expected;
         }
 
         // Memory ring / progress / text interpolators — real-dt exponential decay,
