@@ -33,3 +33,107 @@ impl AnimatedValue {
         true
     }
 }
+
+/// Fixed-duration scalar animation for layout transitions.
+///
+/// Unlike `AnimatedValue`'s exponential smoothing, this always completes in a
+/// bounded time and avoids the perceptual "slow tail" that makes window
+/// expand/collapse feel like it stalls near the end. The interpolation is
+/// intentionally linear because this value often drives pixel-rounded geometry;
+/// visual easing should be applied separately to opacity or transforms.
+#[derive(Clone, Debug)]
+pub struct TimedAnimatedValue {
+    pub current: f32,
+    pub target: f32,
+    start: f32,
+    elapsed: f32,
+    duration: f32,
+    running: bool,
+}
+
+impl TimedAnimatedValue {
+    pub const fn new(value: f32, duration: f32) -> Self {
+        Self {
+            current: value,
+            target: value,
+            start: value,
+            elapsed: 0.0,
+            duration,
+            running: false,
+        }
+    }
+
+    pub fn snap_to(&mut self, value: f32) {
+        self.current = value;
+        self.target = value;
+        self.start = value;
+        self.elapsed = 0.0;
+        self.running = false;
+    }
+
+    pub fn set_target(&mut self, target: f32) {
+        if (self.current - target).abs() < ANIM_SNAP_EPSILON {
+            self.snap_to(target);
+            return;
+        }
+
+        self.start = self.current;
+        self.target = target;
+        self.elapsed = 0.0;
+        self.running = true;
+    }
+
+    pub fn is_running(&self) -> bool {
+        self.running
+    }
+
+    pub fn tick_dt(&mut self, dt: f32) -> bool {
+        if !self.running {
+            return false;
+        }
+
+        self.elapsed += dt;
+        let t = (self.elapsed / self.duration.max(f32::EPSILON)).clamp(0.0, 1.0);
+        self.current = self.start + (self.target - self.start) * t;
+
+        if t >= 1.0 {
+            self.snap_to(self.target);
+            return false;
+        }
+
+        true
+    }
+}
+
+#[inline]
+pub fn ease_out_cubic(t: f32) -> f32 {
+    1.0 - (1.0 - t).powi(3)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn timed_animation_finishes_at_target() {
+        let mut value = TimedAnimatedValue::new(0.0, 0.2);
+        value.set_target(1.0);
+        assert!(value.tick_dt(0.1));
+        assert_eq!(value.current, 0.5);
+        assert!(!value.tick_dt(0.1));
+        assert_eq!(value.current, 1.0);
+        assert!(!value.is_running());
+    }
+
+    #[test]
+    fn timed_animation_retargets_from_current_value() {
+        let mut value = TimedAnimatedValue::new(0.0, 0.2);
+        value.set_target(1.0);
+        assert!(value.tick_dt(0.1));
+        let mid = value.current;
+        value.set_target(0.0);
+        assert_eq!(value.start, mid);
+        assert!(value.tick_dt(0.1));
+        assert!(value.current < mid);
+    }
+}

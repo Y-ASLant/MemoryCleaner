@@ -14,11 +14,10 @@ const GROUP_BOX_OUTLINE_PADDING_V: f32 = 16.;
 const MEMORY_HEADER_H: f32 = 20.;
 const MEMORY_LINE_GAP: f32 = 4.;
 const MEMORY_SUMMARY_H: f32 = 16.;
-const SECTION_TITLE_H: f32 = 20.;
-/// 清理区行高估算（仅用于 `expanded_window_height`，不影响实际布局）。
-const HINT_H: f32 = 24.;
-const CHECKBOX_ROW_H: f32 = 22.;
-const CLEANUP_ROWS: f32 = 4.;
+pub const SETTINGS_CARD_TITLE_H: f32 = 20.;
+pub const CLEANUP_AREAS_HINT_H: f32 = 24.;
+pub const CLEANUP_AREA_ROW_H: f32 = 22.;
+pub const CLEANUP_AREA_ROWS: f32 = 4.;
 /// Small outline Tag 行高（与 gpui-component `Tag::small` 一致）。
 pub const EXCLUSION_TAG_ROW_HEIGHT: f32 = 26.;
 /// 标签 flex_wrap 间距（横/纵）。
@@ -28,7 +27,7 @@ pub const EXCLUSION_LIST_PADDING: f32 = 6.;
 pub const EXCLUSION_FOOTER_GAP: f32 = 6.;
 pub const EXCLUSION_SELECTOR_H: f32 = 32.;
 /// 提示条 + 4 行 checkbox 共 5 项，`v_flex().gap(6)` 产生 4 个间距。
-const CLEANUP_ROW_GAPS: f32 = SECTION_GAP * CLEANUP_ROWS;
+const CLEANUP_ROW_GAPS: f32 = SECTION_GAP * CLEANUP_AREA_ROWS;
 /// 折叠窗口高度略偏低时会裁切 footer 底边距，补回至 6px。
 const COLLAPSED_FOOTER_PADDING_GUARD: f32 = 4.;
 
@@ -47,7 +46,10 @@ pub fn memory_section_height() -> f32 {
 
 pub fn cleanup_section_height() -> f32 {
     let cleanup_areas = section_card_height(
-        HINT_H + SECTION_GAP + CHECKBOX_ROW_H * CLEANUP_ROWS + CLEANUP_ROW_GAPS,
+        CLEANUP_AREAS_HINT_H
+            + SECTION_GAP
+            + CLEANUP_AREA_ROW_H * CLEANUP_AREA_ROWS
+            + CLEANUP_ROW_GAPS,
     );
     let exclusion_list = process_exclusion_list_max_height();
     let process_exclusion =
@@ -57,7 +59,22 @@ pub fn cleanup_section_height() -> f32 {
 }
 
 fn section_card_height(body: f32) -> f32 {
-    CARD_BORDER + GROUP_BOX_OUTLINE_PADDING_V + SECTION_TITLE_H + SECTION_GAP + body
+    CARD_BORDER + GROUP_BOX_OUTLINE_PADDING_V + SETTINGS_CARD_TITLE_H + SECTION_GAP + body
+}
+
+pub fn process_exclusion_card_height() -> f32 {
+    section_card_height(
+        EXCLUSION_SELECTOR_H + EXCLUSION_FOOTER_GAP + process_exclusion_list_max_height(),
+    )
+}
+
+pub fn cleanup_areas_card_height() -> f32 {
+    section_card_height(
+        CLEANUP_AREAS_HINT_H
+            + SECTION_GAP
+            + CLEANUP_AREA_ROW_H * CLEANUP_AREA_ROWS
+            + CLEANUP_ROW_GAPS,
+    )
 }
 
 fn process_exclusion_list_inner_height() -> f32 {
@@ -94,8 +111,12 @@ pub fn collapsed_window_height(content_padding: f32) -> f32 {
         + COLLAPSED_FOOTER_PADDING_GUARD
 }
 
-pub fn expanded_window_height(_content_padding: f32) -> f32 {
-    630.
+pub fn settings_reveal_height() -> f32 {
+    SECTION_GAP + cleanup_section_height()
+}
+
+pub fn expanded_window_height(content_padding: f32) -> f32 {
+    collapsed_window_height(content_padding) + settings_reveal_height()
 }
 
 #[cfg(test)]
@@ -107,6 +128,17 @@ mod tests {
         let collapsed = collapsed_window_height(6.);
         let expanded = expanded_window_height(6.);
         assert!(expanded > collapsed);
+    }
+
+    #[test]
+    fn expanded_window_contains_full_settings_reveal() {
+        let collapsed = collapsed_window_height(6.);
+        let expanded = expanded_window_height(6.);
+        assert_eq!(expanded - collapsed, settings_reveal_height());
+        assert_eq!(
+            settings_reveal_height(),
+            SECTION_GAP + cleanup_section_height()
+        );
     }
 
     #[test]

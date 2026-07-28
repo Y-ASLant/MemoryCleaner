@@ -20,9 +20,11 @@ use rust_i18n::t;
 use crate::app::MemoryCleanerApp;
 use crate::optimize::MemoryAreas;
 use crate::ui::layout::{
-    CLEANUP_BUTTON_H, EXCLUSION_LIST_PADDING, EXCLUSION_SELECTOR_H, EXCLUSION_TAG_GAP,
-    MAIN_CONTENT_PADDING, MAIN_WINDOW_WIDTH, PROCESS_PICKER_MENU_MAX_H, SECTION_GAP,
-    process_exclusion_list_max_height, process_exclusion_selector_width,
+    CLEANUP_AREA_ROW_H, CLEANUP_AREAS_HINT_H, CLEANUP_BUTTON_H, EXCLUSION_LIST_PADDING,
+    EXCLUSION_SELECTOR_H, EXCLUSION_TAG_GAP, MAIN_CONTENT_PADDING, MAIN_WINDOW_WIDTH,
+    PROCESS_PICKER_MENU_MAX_H, SECTION_GAP, SETTINGS_CARD_TITLE_H, cleanup_areas_card_height,
+    process_exclusion_card_height, process_exclusion_list_max_height,
+    process_exclusion_selector_width,
 };
 use crate::version::PROCESS_BASE_NAME;
 use crate::win32::hotkey::HotkeyBinding;
@@ -58,6 +60,7 @@ fn language_options() -> [(&'static str, String); 3] {
 fn panel_section_title(icon: IconName, label: String) -> impl IntoElement {
     h_flex()
         .w_full()
+        .h(px(SETTINGS_CARD_TITLE_H))
         .items_center()
         .gap_2()
         .child(Icon::new(icon).small())
@@ -98,6 +101,7 @@ fn cleanup_area_row(
 ) -> impl IntoElement {
     h_flex()
         .w_full()
+        .h(px(CLEANUP_AREA_ROW_H))
         .gap_4()
         .child(memory_area_checkbox(left.0, left.1, app, cx))
         .child(memory_area_checkbox(right.0, right.1, app, cx))
@@ -114,6 +118,7 @@ fn render_cleanup_areas(
         .child(
             div()
                 .w_full()
+                .h(px(CLEANUP_AREAS_HINT_H))
                 .rounded(cx.theme().radius)
                 .px_2()
                 .py_1()
@@ -937,12 +942,14 @@ fn render_settings_card(
     id: &'static str,
     title_icon: IconName,
     title: String,
+    height: f32,
     content: impl IntoElement,
 ) -> impl IntoElement {
     GroupBox::new()
         .id(id)
         .outline()
         .w_full()
+        .h(px(height))
         .p_0()
         .content_style(compact_group_box_style())
         .child(
@@ -968,12 +975,14 @@ fn render_settings_details(
             "process-exclusion-card",
             IconName::CircleX,
             t!("settings.process_exclusion").to_string(),
+            process_exclusion_card_height(),
             render_process_exclusion(app, cx),
         ))
         .child(render_settings_card(
             "cleanup-areas-card",
             IconName::Settings,
             t!("settings.cleanup_areas").to_string(),
+            cleanup_areas_card_height(),
             render_cleanup_areas(app, muted, cx),
         ))
 }

@@ -10,14 +10,14 @@ use gpui_component::ActiveTheme;
 use gpui_component::{Root, TitleBar, WindowExt};
 use smol::Timer;
 
-use crate::anim::AnimatedValue;
+use crate::anim::{AnimatedValue, TimedAnimatedValue, ease_out_cubic};
 use crate::locale;
 use crate::memory::{MemorySection, MemoryStatus};
 use crate::messages::{build_cleanup_result_message, format_freed_message};
 use crate::optimize::{self, MemoryAreas};
 use crate::settings::Settings;
 use crate::tray::{TrayCommand, dispatch_command};
-use crate::ui::layout::SECTION_GAP;
+use crate::ui::layout::{SECTION_GAP, settings_reveal_height};
 use crate::win32;
 
 const SETTINGS_SAVE_DEBOUNCE: Duration = Duration::from_millis(300);
@@ -33,6 +33,8 @@ async fn show_toast(title: String, body: String) {
 const WINDOW_WIDTH: f32 = 520.;
 const WINDOW_MIN_WIDTH: f32 = 520.;
 pub const CONTENT_PADDING: f32 = 6.;
+const SETTINGS_PANEL_VISIBLE_EPSILON: f32 = 0.01;
+const SETTINGS_EXPAND_DURATION_SECS: f32 = 0.22;
 
 pub fn window_size(expanded: bool) -> Size<Pixels> {
     let height = if expanded {
@@ -159,6 +161,7 @@ pub struct MemoryCleanerApp {
     anim_avail_phys: AnimatedValue,
     anim_used_virt: AnimatedValue,
     anim_avail_virt: AnimatedValue,
+    anim_settings_expand: TimedAnimatedValue,
     anim_dirty: bool,
     /// Wall-clock of the previous interpolator tick (`None` when settled).
     last_anim_tick: Option<Instant>,
@@ -223,6 +226,7 @@ impl MemoryCleanerApp {
             anim_avail_phys: AnimatedValue::new(phys_avail),
             anim_used_virt: AnimatedValue::new(virt_used),
             anim_avail_virt: AnimatedValue::new(virt_avail),
+            anim_settings_expand: TimedAnimatedValue::new(0.0, SETTINGS_EXPAND_DURATION_SECS),
             anim_dirty: false,
             last_anim_tick: None,
             current_window_height: window_height(false),
@@ -237,7 +241,9 @@ impl MemoryCleanerApp {
     }
 
     fn attach_window(&mut self, window: &mut Window, cx: &mut Context<Self>, launch_hidden: bool) {
-        self.current_window_height = window_height(self.settings_expanded);
+        let expansion = if self.settings_expanded { 1.0 } else { 0.0 };
+        self.anim_settings_expand.snap_to(expansion);
+        self.current_window_height = self.animated_window_height();
         self.window = Some(window.window_handle());
         self.window_shown = !launch_hidden;
 
@@ -409,6 +415,22 @@ impl MemoryCleanerApp {
     }
     pub fn animated_optimize_percent(&self) -> f32 {
         self.anim_optimize.current
+    }
+    pub fn settings_expand_progress(&self) -> f32 {
+        self.anim_settings_expand.current.clamp(0.0, 1.0)
+    }
+    pub fn settings_panel_visible(&self) -> bool {
+        self.settings_expanded || self.settings_expand_progress() > SETTINGS_PANEL_VISIBLE_EPSILON
+    }
+    fn animated_window_height(&self) -> f32 {
+        window_height(false) + settings_reveal_height() * self.settings_expand_progress()
+    }
+    fn resize_window_height(&mut self, window: &mut Window, height: f32, force: bool) {
+        let rounded = height.round();
+        if force || (self.current_window_height - rounded).abs() >= 0.5 {
+            window.resize(size(px(WINDOW_WIDTH), px(rounded)));
+            self.current_window_height = rounded;
+        }
     }
 
     /// Set optimize progress and kick the animation loop.
@@ -603,9 +625,11 @@ impl MemoryCleanerApp {
 
     pub fn toggle_settings_expanded(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.settings_expanded = !self.settings_expanded;
-        let new_h = window_height(self.settings_expanded);
-        window.resize(size(px(WINDOW_WIDTH), px(new_h)));
-        self.current_window_height = new_h;
+        let target = if self.settings_expanded { 1.0 } else { 0.0 };
+        self.anim_settings_expand.set_target(target);
+        self.anim_dirty = true;
+        let next_h = self.animated_window_height();
+        self.resize_window_height(window, next_h, false);
         cx.notify();
     }
 
@@ -613,14 +637,7 @@ impl MemoryCleanerApp {
     /// Returns `true` if any animation is still running (caller schedules next frame).
     pub(crate) fn tick_animations(&mut self, window: &mut Window) -> bool {
         let mut running = false;
-
-        // Ensure window height matches current expansion state.
-        // (Collapse/expand is now instant — this guards against stale resize.)
-        let expected = window_height(self.settings_expanded);
-        if (self.current_window_height - expected).abs() > 1.0 {
-            window.resize(size(px(WINDOW_WIDTH), px(expected)));
-            self.current_window_height = expected;
-        }
+        let settings_was_animating = self.anim_settings_expand.is_running();
 
         // Memory ring / progress / text interpolators — real-dt exponential decay,
         // frame-rate independent (60 Hz and 144 Hz displays animate at the same speed).
@@ -637,12 +654,24 @@ impl MemoryCleanerApp {
                 | self.anim_used_phys.tick_dt(dt)
                 | self.anim_avail_phys.tick_dt(dt)
                 | self.anim_used_virt.tick_dt(dt)
-                | self.anim_avail_virt.tick_dt(dt);
+                | self.anim_avail_virt.tick_dt(dt)
+                | self.anim_settings_expand.tick_dt(dt);
             self.anim_dirty = still;
             self.last_anim_tick = still.then_some(now);
             running |= still;
         } else {
             self.last_anim_tick = None;
+        }
+
+        let next_h = if self.anim_dirty {
+            self.animated_window_height()
+        } else {
+            window_height(self.settings_expanded)
+        };
+        self.resize_window_height(window, next_h, false);
+
+        if settings_was_animating && !self.anim_settings_expand.is_running() {
+            self.resize_window_height(window, window_height(self.settings_expanded), true);
         }
 
         running
@@ -1133,9 +1162,12 @@ impl Render for MemoryCleanerApp {
 
         // Tick animations — if still running, schedule next frame.
         if self.tick_animations(window) {
-            cx.notify();
+            window.request_animation_frame();
         }
         let bg = cx.theme().background;
+        let settings_progress = self.settings_expand_progress();
+        let settings_visual_progress = ease_out_cubic(settings_progress);
+        let settings_reveal_h = settings_reveal_height() * settings_progress;
 
         let physical_card = memory_group_box(
             "physical-memory-card",
@@ -1198,9 +1230,20 @@ impl Render for MemoryCleanerApp {
                                 .px(px(CONTENT_PADDING))
                                 .pt(px(CONTENT_PADDING))
                                 .child(memory_row)
-                                .when(self.settings_expanded, |body| {
-                                    body.gap(px(SECTION_GAP))
-                                        .child(render_settings_content(self, cx))
+                                .when(self.settings_panel_visible(), |body| {
+                                    body.child(
+                                        div()
+                                            .w_full()
+                                            .h(px(settings_reveal_h))
+                                            .overflow_hidden()
+                                            .child(
+                                                div()
+                                                    .w_full()
+                                                    .pt(px(SECTION_GAP))
+                                                    .opacity(settings_visual_progress)
+                                                    .child(render_settings_content(self, cx)),
+                                            ),
+                                    )
                                 });
 
                             v_flex()
