@@ -5,6 +5,20 @@
 **编写约定**（详见 `AGENTS.md` → Documentation & Changelog）：每个版本只记录相对上一 tag 的**最终差异**，不记录开发过程中的中间修改或逐步修复。
 
 
+## [1.0.4] - 2026-07-29
+
+相对 [1.0.3] 的最终变更如下。
+
+### 新增
+
+- **展开/折叠动画**：清理区域设置面板展开与折叠时使用固定时长布局动画，并支持中途反向切换。
+
+### 变更
+
+- **动画调度**：连续动画改为通过 GPUI `window.request_animation_frame()` 请求下一帧，减少展开/折叠时的卡顿与逐帧感。
+- **布局高度计算**：展开窗口高度由设置面板的显式布局高度推导，移除硬编码展开高度，避免展开或折叠后内容被裁切。
+- **动画基础设施**：`src/anim.rs` 新增固定时长插值器，用于布局过渡；原有指数平滑动画继续用于内存数值、环形图和清理进度。
+
 ## [1.0.3] - 2026-07-20
 
 相对 [1.0.2] 的最终变更如下。
@@ -56,6 +70,20 @@ Records Memory Cleaner releases. Format follows [Keep a Changelog](https://keepa
 **Writing rules** (see `AGENTS.md` → Documentation & Changelog): each release entry covers **only the final diff** vs the previous tag — not intermediate commits or step-by-step fixes during development.
 
 
+## [1.0.4] - 2026-07-29
+
+Final changes since [1.0.3].
+
+### Added
+
+- **Expand/collapse animation** — The cleanup settings panel now uses a fixed-duration layout transition when expanding or collapsing, and supports reversing mid-animation.
+
+### Changed
+
+- **Animation scheduling** — Continuous animations now request frames through GPUI `window.request_animation_frame()`, reducing stutter and frame-stepping during expand/collapse.
+- **Layout height calculation** — Expanded window height is derived from explicit settings-panel layout metrics instead of a hardcoded expanded height, preventing content clipping after expand/collapse.
+- **Animation foundation** — `src/anim.rs` now includes a fixed-duration interpolator for layout transitions; the existing exponential smoothing remains for memory values, usage rings, and cleanup progress.
+
 ## [1.0.3] - 2026-07-20
 
 Final changes since [1.0.2].
@@ -98,6 +126,7 @@ Since [1.0.0]: process exclusion, global cleanup hotkey (default Ctrl+Alt+C) wit
 
 Initial public release: 8 memory cleanup regions, GPUI UI, system tray, administrator elevation, settings persistence.
 
+[1.0.4]: https://github.com/Y-ASLant/MemoryCleaner/compare/v1.0.3...v1.0.4
 [1.0.3]: https://github.com/Y-ASLant/MemoryCleaner/compare/v1.0.2...v1.0.3
 [1.0.2]: https://github.com/Y-ASLant/MemoryCleaner/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/Y-ASLant/MemoryCleaner/releases/tag/v1.0.1
