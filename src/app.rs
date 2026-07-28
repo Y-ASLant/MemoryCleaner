@@ -74,6 +74,7 @@ impl Global for AppEntityHolder {}
 pub fn open_main_window(
     cx: &mut AsyncApp,
     settings: Settings,
+    command_tx: std::sync::mpsc::Sender<TrayCommand>,
     tray_rx: std::sync::mpsc::Receiver<TrayCommand>,
     launch_hidden: bool,
 ) -> Result<()> {
@@ -81,8 +82,9 @@ pub fn open_main_window(
     cx.open_window(options, |window, cx| {
         window.set_window_title(crate::version::APP_NAME);
 
-        let app_entity =
-            cx.new(|cx| MemoryCleanerApp::new(window, cx, settings, tray_rx, launch_hidden));
+        let app_entity = cx.new(|cx| {
+            MemoryCleanerApp::new(window, cx, settings, command_tx, tray_rx, launch_hidden)
+        });
         let _ = win32::window::remove_maximize_button(window);
         crate::ui::theme::init_light_theme(window, cx);
 
@@ -169,6 +171,7 @@ impl MemoryCleanerApp {
         window: &mut Window,
         cx: &mut Context<Self>,
         settings: Settings,
+        command_tx: std::sync::mpsc::Sender<TrayCommand>,
         tray_rx: std::sync::mpsc::Receiver<TrayCommand>,
         launch_hidden: bool,
     ) -> Self {
@@ -227,7 +230,7 @@ impl MemoryCleanerApp {
 
         cx.set_global(AppEntityHolder(cx.entity()));
         app.attach_window(window, cx, launch_hidden);
-        app.start_background_tasks(cx, tray_rx);
+        app.start_background_tasks(cx, command_tx, tray_rx);
         app.sync_tray();
 
         app
@@ -688,6 +691,12 @@ impl MemoryCleanerApp {
         cx.notify();
     }
 
+    pub fn set_auto_cleanup_enabled(&mut self, enabled: bool, cx: &mut Context<Self>) {
+        self.settings.auto_cleanup_enabled = enabled;
+        self.queue_settings_save(cx);
+        cx.notify();
+    }
+
     pub fn set_cleanup_hotkey_enabled(&mut self, enabled: bool, cx: &mut Context<Self>) {
         self.settings.cleanup_hotkey_enabled = enabled;
         if !enabled {
@@ -777,9 +786,12 @@ impl MemoryCleanerApp {
     pub fn start_background_tasks(
         &self,
         cx: &mut Context<Self>,
+        command_tx: std::sync::mpsc::Sender<TrayCommand>,
         mut tray_rx: std::sync::mpsc::Receiver<TrayCommand>,
     ) {
-        // 托盘命令监听
+        crate::win32::memory_notification::start(command_tx);
+
+        // Tray, hotkey, and low-memory notification commands are handled on the GPUI thread.
         cx.spawn(async move |this, cx| {
             loop {
                 let (command, rx) = smol::unblock(move || {
@@ -915,6 +927,21 @@ impl MemoryCleanerApp {
         }
 
         complete_volume_flush(report).is_ok()
+    }
+
+    pub fn run_low_memory_cleanup(&mut self, cx: &mut Context<Self>) {
+        if !self.settings.auto_cleanup_enabled
+            || self.is_busy()
+            || self.settings.memory_areas().is_empty()
+        {
+            return;
+        }
+
+        if self.refresh_memory() {
+            self.sync_tray();
+        }
+        crate::log::write("[auto-cleanup] Windows low-memory notification received");
+        self.run_optimize(cx);
     }
 
     pub fn run_optimize(&mut self, cx: &mut Context<Self>) {

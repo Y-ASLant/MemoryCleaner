@@ -685,6 +685,25 @@ pub fn render_window_behavior_dialog(
         .child(render_cleanup_hotkey_row(&weak, muted, foreground, cx))
         .child(switch_row_app(
             SwitchRowConfig {
+                id: "dialog-switch-auto-cleanup",
+                icon: IconName::Play,
+                title: t!("settings.auto_cleanup").to_string(),
+                description: t!("settings.auto_cleanup_desc").to_string(),
+                checked: settings.auto_cleanup_enabled,
+            },
+            muted,
+            foreground,
+            {
+                let weak = weak.clone();
+                move |checked, _window, cx| {
+                    let _ = weak.update(cx, |app, cx| {
+                        app.set_auto_cleanup_enabled(*checked, cx);
+                    });
+                }
+            },
+        ))
+        .child(switch_row_app(
+            SwitchRowConfig {
                 id: "dialog-switch-always-on-top",
                 icon: IconName::Star,
                 title: t!("settings.always_on_top").to_string(),

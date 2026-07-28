@@ -43,6 +43,7 @@ fn settings_save_and_load_roundtrip_in_temp_config_dir() {
             language: "zh-CN".into(),
             debug_logging: true,
             excluded_processes: vec!["chrome".into()],
+            auto_cleanup_enabled: true,
             ..Settings::default()
         };
         settings.save();
@@ -54,6 +55,7 @@ fn settings_save_and_load_roundtrip_in_temp_config_dir() {
         assert_eq!(loaded.language, "zh-CN");
         assert_eq!(loaded.debug_logging, true);
         assert_eq!(loaded.excluded_processes, vec!["chrome".to_string()]);
+        assert!(loaded.auto_cleanup_enabled);
     });
 }
 

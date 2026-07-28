@@ -22,6 +22,8 @@ pub struct Settings {
     pub cleanup_hotkey: String,
     /// Process base names excluded from Working Set cleanup (lowercase, no `.exe`).
     pub excluded_processes: Vec<String>,
+    /// Enable cleanup when Windows reports low physical memory.
+    pub auto_cleanup_enabled: bool,
 }
 
 impl Default for Settings {
@@ -37,6 +39,7 @@ impl Default for Settings {
             cleanup_hotkey_enabled: true,
             cleanup_hotkey: crate::win32::hotkey::HotkeyBinding::DEFAULT_CLEANUP.into(),
             excluded_processes: Vec::new(),
+            auto_cleanup_enabled: false,
         }
     }
 }
@@ -190,6 +193,7 @@ mod tests {
             settings.cleanup_hotkey,
             crate::win32::hotkey::HotkeyBinding::DEFAULT_CLEANUP
         );
+        assert!(!settings.auto_cleanup_enabled);
     }
 
     #[test]
@@ -199,6 +203,7 @@ mod tests {
             debug_logging: true,
             language: "en".into(),
             memory_areas: MemoryAreas::WORKING_SET.bits(),
+            auto_cleanup_enabled: true,
             ..Default::default()
         };
         let restored: Settings = toml::from_str(&toml::to_string(&original).unwrap()).unwrap();
@@ -206,6 +211,15 @@ mod tests {
         assert_eq!(restored.debug_logging, true);
         assert_eq!(restored.language, "en");
         assert_eq!(restored.memory_areas, MemoryAreas::WORKING_SET.bits());
+        assert!(restored.auto_cleanup_enabled);
+    }
+
+    #[test]
+    fn legacy_automatic_cleanup_schedule_fields_are_ignored() {
+        let settings = Settings::from_toml(
+            "auto_cleanup_enabled = true\nauto_cleanup_threshold = 90\nauto_cleanup_interval_minutes = 30",
+        );
+        assert!(settings.auto_cleanup_enabled);
     }
 
     #[test]

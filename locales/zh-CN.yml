@@ -100,6 +100,12 @@ settings.cleanup_hotkey_desc:
 settings.cleanup_hotkey_recording:
   zh-CN: "按下快捷键…"
   en: "Press shortcut…"
+settings.auto_cleanup:
+  zh-CN: "自动清理"
+  en: "Automatic Cleanup"
+settings.auto_cleanup_desc:
+  zh-CN: "Windows 检测到物理内存不足时自动执行清理"
+  en: "Clean automatically when Windows reports low physical memory"
 settings.cleanup_areas:
   zh-CN: "清理区域"
   en: "Cleanup Areas"

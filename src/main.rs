@@ -136,7 +136,7 @@ fn main() {
         });
 
         cx.spawn(async move |cx| {
-            app::open_main_window(cx, settings, command_rx, launch_hidden)
+            app::open_main_window(cx, settings, command_tx, command_rx, launch_hidden)
                 .expect("Failed to open window");
         })
         .detach();

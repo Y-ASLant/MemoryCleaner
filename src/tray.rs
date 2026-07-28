@@ -35,6 +35,8 @@ pub enum TrayCommand {
     RefreshTooltip,
     /// Global hotkey (`RegisterHotKey`) triggered memory cleanup.
     Optimize,
+    /// Windows reported low physical memory.
+    LowMemory,
     MenuAction(String),
     /// Tray icon spin animation frame (0 = upright). Handled on the GPUI thread only.
     SetSpinFrame {
@@ -290,6 +292,7 @@ pub fn dispatch_command(
             app.sync_tray();
         }
         TrayCommand::Optimize => app.run_optimize(cx),
+        TrayCommand::LowMemory => app.run_low_memory_cleanup(cx),
         TrayCommand::MenuAction(action) => app.handle_tray_action(&action, cx),
         TrayCommand::SetSpinFrame {
             quarters,
