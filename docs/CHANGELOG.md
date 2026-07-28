@@ -11,13 +11,21 @@
 
 ### 新增
 
+- **自动清理**：窗口行为设置中新增「自动清理」开关；启用后，程序通过 Windows 低物理内存通知触发清理，并在内存压力恢复前不会重复触发，避免轮询和频繁清理。
 - **展开/折叠动画**：清理区域设置面板展开与折叠时使用固定时长布局动画，并支持中途反向切换。
 
 ### 变更
 
+- **虚拟内存显示**：主界面固定显示物理内存与虚拟内存两张卡片，移除隐藏虚拟内存的分支逻辑。
 - **动画调度**：连续动画改为通过 GPUI `window.request_animation_frame()` 请求下一帧，减少展开/折叠时的卡顿与逐帧感。
 - **布局高度计算**：展开窗口高度由设置面板的显式布局高度推导，移除硬编码展开高度，避免展开或折叠后内容被裁切。
 - **动画基础设施**：`src/anim.rs` 新增固定时长插值器，用于布局过渡；原有指数平滑动画继续用于内存数值、环形图和清理进度。
+- **Toast 快捷方式校验**：Windows Toast 初始化时会检查开始菜单快捷方式是否指向当前程序；路径不匹配时自动重建，避免移动程序后通知入口失效。
+- **文档配置表**：README 移除未实现的预留配置说明，保留当前实际支持的设置项。
+
+### 移除
+
+- **未实现的预留配置项**：移除 `show_virtual_memory`、托盘图标自定义预留字段，以及旧的自动优化间隔/阈值预留字段；已保存的未知 TOML 字段仍会被兼容忽略。
 
 ## [1.0.3] - 2026-07-20
 
@@ -76,13 +84,21 @@ Final changes since [1.0.3].
 
 ### Added
 
+- **Automatic cleanup** — Added an "Automatic Cleanup" switch in Window Behavior settings. When enabled, cleanup is triggered by Windows low-physical-memory notifications and is rearmed only after memory pressure recovers, avoiding polling and repeated cleanup loops.
 - **Expand/collapse animation** — The cleanup settings panel now uses a fixed-duration layout transition when expanding or collapsing, and supports reversing mid-animation.
 
 ### Changed
 
+- **Virtual memory display** — The main window now always shows both physical-memory and virtual-memory cards, removing the hidden-virtual-memory rendering branch.
 - **Animation scheduling** — Continuous animations now request frames through GPUI `window.request_animation_frame()`, reducing stutter and frame-stepping during expand/collapse.
 - **Layout height calculation** — Expanded window height is derived from explicit settings-panel layout metrics instead of a hardcoded expanded height, preventing content clipping after expand/collapse.
 - **Animation foundation** — `src/anim.rs` now includes a fixed-duration interpolator for layout transitions; the existing exponential smoothing remains for memory values, usage rings, and cleanup progress.
+- **Toast shortcut validation** — Windows Toast initialization now verifies that the Start Menu shortcut points to the current executable and recreates it when the target path is stale.
+- **Documentation settings table** — README settings tables now list only currently supported settings and omit unused reserved options.
+
+### Removed
+
+- **Unused reserved settings** — Removed `show_virtual_memory`, reserved tray-icon customization fields, and legacy automatic-optimization interval/threshold placeholders; unknown TOML fields from older configs remain safely ignored.
 
 ## [1.0.3] - 2026-07-20
 
