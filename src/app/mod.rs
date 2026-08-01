@@ -182,6 +182,10 @@ pub struct MemoryCleanerApp {
     pub clipboard_tearoff_preview_handle: Option<AnyWindowHandle>,
     /// Prevents duplicate async open while the follower window is being created.
     pub clipboard_tearoff_preview_opening: bool,
+    /// Cached main-window bounds for the active drag.
+    pub clipboard_drag_window_bounds: Option<Bounds<Pixels>>,
+    /// Last cursor position submitted to the drag preview window.
+    pub clipboard_drag_last_screen_position: Option<Point<Pixels>>,
     /// Bumps to cancel the global drag-position tracker.
     pub clipboard_drag_track_tick_gen: u32,
     /// Floating desktop card windows keyed by clipboard item id.
@@ -295,6 +299,8 @@ impl MemoryCleanerApp {
             clipboard_drag_cursor_offset: None,
             clipboard_tearoff_preview_handle: None,
             clipboard_tearoff_preview_opening: false,
+            clipboard_drag_window_bounds: None,
+            clipboard_drag_last_screen_position: None,
             clipboard_drag_track_tick_gen: 0,
             pinned_card_handles: HashMap::new(),
             clipboard_hovered_id: None,

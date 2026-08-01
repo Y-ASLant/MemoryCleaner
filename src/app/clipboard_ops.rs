@@ -370,6 +370,8 @@ impl MemoryCleanerApp {
         self.clipboard_dragging_id = None;
         self.clipboard_drag_cursor_offset = None;
         self.clipboard_drop_target_id = None;
+        self.clipboard_drag_window_bounds = None;
+        self.clipboard_drag_last_screen_position = None;
         self.clipboard_shift_anims.clear();
         self.clipboard_shift_tick_gen = self.clipboard_shift_tick_gen.wrapping_add(1);
         self.clipboard_drag_track_tick_gen = self.clipboard_drag_track_tick_gen.wrapping_add(1);
@@ -405,10 +407,18 @@ impl MemoryCleanerApp {
     }
 
     pub fn update_clipboard_tearoff_preview_position(&mut self, cx: &mut gpui::Context<Self>) {
-        let Some(handle) = self.clipboard_tearoff_preview_handle else {
+        let Ok(screen) = crate::win32::cursor::screen_point() else {
             return;
         };
-        let Ok(screen) = crate::win32::cursor::screen_point() else {
+        self.update_clipboard_tearoff_preview_position_at(screen, cx);
+    }
+
+    pub(crate) fn update_clipboard_tearoff_preview_position_at(
+        &mut self,
+        screen: Point<Pixels>,
+        cx: &mut gpui::Context<Self>,
+    ) {
+        let Some(handle) = self.clipboard_tearoff_preview_handle else {
             return;
         };
         let origin = self.tearoff_preview_origin_for(screen, cx);
