@@ -115,53 +115,6 @@ pub fn step_plan(areas: MemoryAreas, excluded_processes: &[String]) -> Result<St
         .collect())
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::locale::with_locale;
-
-    #[test]
-    fn step_plan_rejects_empty_selection() {
-        assert!(step_plan(MemoryAreas::empty(), &[]).is_err());
-    }
-
-    #[test]
-    fn step_plan_preserves_optimize_order_zh() {
-        with_locale("zh-CN", || {
-            let areas = MemoryAreas::MODIFIED_FILE_CACHE | MemoryAreas::WORKING_SET;
-            let plan = step_plan(areas, &[]).expect("plan");
-            let labels: Vec<_> = plan.into_iter().map(|(label, _)| label).collect();
-            assert_eq!(labels, vec!["工作集", "已修改文件"]);
-        });
-    }
-
-    #[test]
-    fn step_plan_preserves_optimize_order_en() {
-        with_locale("en", || {
-            let areas = MemoryAreas::MODIFIED_FILE_CACHE | MemoryAreas::WORKING_SET;
-            let plan = step_plan(areas, &[]).expect("plan");
-            let labels: Vec<_> = plan.into_iter().map(|(label, _)| label).collect();
-            assert_eq!(labels, vec!["Working Set", "Modified File Cache"]);
-        });
-    }
-
-    #[test]
-    fn memory_area_labels_are_stable_zh() {
-        with_locale("zh-CN", || {
-            assert_eq!(MemoryAreas::WORKING_SET.label(), "工作集");
-            assert_eq!(MemoryAreas::REGISTRY_CACHE.label(), "注册表缓存");
-        });
-    }
-
-    #[test]
-    fn memory_area_labels_are_stable_en() {
-        with_locale("en", || {
-            assert_eq!(MemoryAreas::WORKING_SET.label(), "Working Set");
-            assert_eq!(MemoryAreas::REGISTRY_CACHE.label(), "Registry Cache");
-        });
-    }
-}
-
 fn purge_memory_list(command: SystemMemoryListCommand, privilege: &str, what: &str) -> Result<()> {
     enable_privilege(privilege).with_context(|| format!("{what} requires {privilege}"))?;
     unsafe {
@@ -278,4 +231,50 @@ fn optimize_registry_cache() -> Result<()> {
     }
 
     Ok(())
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::locale::with_locale;
+
+    #[test]
+    fn step_plan_rejects_empty_selection() {
+        assert!(step_plan(MemoryAreas::empty(), &[]).is_err());
+    }
+
+    #[test]
+    fn step_plan_preserves_optimize_order_zh() {
+        with_locale("zh-CN", || {
+            let areas = MemoryAreas::MODIFIED_FILE_CACHE | MemoryAreas::WORKING_SET;
+            let plan = step_plan(areas, &[]).expect("plan");
+            let labels: Vec<_> = plan.into_iter().map(|(label, _)| label).collect();
+            assert_eq!(labels, vec!["工作集", "已修改文件"]);
+        });
+    }
+
+    #[test]
+    fn step_plan_preserves_optimize_order_en() {
+        with_locale("en", || {
+            let areas = MemoryAreas::MODIFIED_FILE_CACHE | MemoryAreas::WORKING_SET;
+            let plan = step_plan(areas, &[]).expect("plan");
+            let labels: Vec<_> = plan.into_iter().map(|(label, _)| label).collect();
+            assert_eq!(labels, vec!["Working Set", "Modified File Cache"]);
+        });
+    }
+
+    #[test]
+    fn memory_area_labels_are_stable_zh() {
+        with_locale("zh-CN", || {
+            assert_eq!(MemoryAreas::WORKING_SET.label(), "工作集");
+            assert_eq!(MemoryAreas::REGISTRY_CACHE.label(), "注册表缓存");
+        });
+    }
+
+    #[test]
+    fn memory_area_labels_are_stable_en() {
+        with_locale("en", || {
+            assert_eq!(MemoryAreas::WORKING_SET.label(), "Working Set");
+            assert_eq!(MemoryAreas::REGISTRY_CACHE.label(), "Registry Cache");
+        });
+    }
 }

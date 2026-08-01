@@ -214,18 +214,23 @@ mod tests {
             ..Default::default()
         };
         let restored: Settings = toml::from_str(&toml::to_string(&original).unwrap()).unwrap();
-        assert_eq!(restored.always_on_top, true);
-        assert_eq!(restored.debug_logging, true);
+        assert!(restored.always_on_top);
+        assert!(restored.debug_logging);
         assert_eq!(restored.language, "en");
         assert_eq!(restored.memory_areas, MemoryAreas::WORKING_SET.bits());
     }
 
     #[test]
     fn effective_locale_resolves_explicit_values() {
-        let mut settings = Settings::default();
-        settings.language = "en".into();
+        let settings = Settings {
+            language: "en".into(),
+            ..Default::default()
+        };
         assert_eq!(settings.effective_locale(), "en");
-        settings.language = "zh-CN".into();
+        let settings = Settings {
+            language: "zh-CN".into(),
+            ..settings
+        };
         assert_eq!(settings.effective_locale(), "zh-CN");
     }
 

@@ -20,6 +20,8 @@ Windows 内存清理工具，基于 Rust + GPUI 构建。提供实时内存监�
 - **桌面图标缓存刷新** — 标题栏刷新按钮；结束并重启 Explorer 以清理 `IconCache.db` 等缓存
 - **自定义标题栏** — 设置、图标缓存、展开/收起、最小化、关闭（无最大化按钮）
 - **配置持久化** — `%APPDATA%\MemoryCleaner\settings.toml`，首次运行自动创建
+- **剪贴板历史** — 监听文本与文件剪贴板内容，支持搜索、类型筛选、分页、置顶、拖拽排序、删除和自动清理，并保存到 `%APPDATA%\MemoryCleaner\clipboard.db`
+- **Win+V 接管** — 可选替换系统 Win+V 快捷键打开应用内剪贴板历史；退出时恢复系统设置
 - **调试日志** — 可选写入程序目录下的 `App.log`，按行内时间戳自动清理 7 天前的记录
 - **自动提权** — 启动时检测管理员权限，不足时触发 UAC 提升
 - **单实例** — 命名互斥量；重复启动时第二个实例直接退出
@@ -118,6 +120,7 @@ cargo run --release
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
 | `always_on_top` | bool | `false` | 窗口始终置顶 |
+| `run_at_startup` | bool | `false` | 登录 Windows 后自动启动并隐藏到托盘 |
 | `close_to_notification_area` | bool | `true` | 点击关闭时隐藏到托盘而非退出 |
 | `memory_areas` | u32 | `42` | 清理区域位掩码（各 `MemoryAreas` 标志位之和） |
 | `language` | string | `"auto"` | 界面语言：`auto`（跟随系统）、`zh-CN`、`en` |
@@ -125,17 +128,20 @@ cargo run --release
 | `show_optimization_notifications` | bool | `true` | 清理开始/完成时弹出 Windows Toast |
 | `cleanup_hotkey_enabled` | bool | `true` | 启用全局清理热键 |
 | `cleanup_hotkey` | string | `"Ctrl+Alt+C"` | 热键组合（`Ctrl`/`Alt`/`Shift`/`Win` + 字母或数字） |
+| `clipboard_enabled` | bool | `true` | 启用剪贴板历史监听与托盘菜单 |
+| `clipboard_win_v_enabled` | bool | `false` | 用应用内剪贴板历史替换系统 Win+V（需要重启 Explorer） |
+| `clipboard_max_history` | u32 | `10000` | 剪贴板历史最大条数 |
+| `clipboard_auto_cleanup_days` | u32 | `30` | 自动删除超过指定天数的未置顶条目；`0` 表示不自动清理 |
 
 ## 技术栈
 
-| 依赖 | 用途 |
-|------|------|
 | [Rust](https://www.rust-lang.org/) 1.96+ | 语言与运行时 |
 | [GPUI](https://gpui.rs)（Zed 源码） | GPU 加速 UI 框架 |
 | [gpui-component](https://longbridge.github.io/gpui-component/zh-CN/docs/components/) | UI 组件（Button、Checkbox、Switch、GroupBox、ProgressCircle 等） |
 | [windows-rs](https://github.com/microsoft/windows-rs) 0.62 | Win32 API（内存管理、权限、窗口控制、Toast、RegisterHotKey） |
 | [tray-icon](https://crates.io/crates/tray-icon) | 系统托盘图标与菜单 |
 | [smol](https://crates.io/crates/smol) | 异步定时与阻塞任务卸载 |
+| [rusqlite](https://crates.io/crates/rusqlite) | SQLite 剪贴板历史持久化 |
 | [rust-i18n](https://crates.io/crates/rust-i18n) | 界面国际化（`locales/zh-CN.yml`） |
 | [image](https://crates.io/crates/image) | 托盘 PNG 解码与缩放 |
 
@@ -148,7 +154,16 @@ locales/
 
 src/
 ├── main.rs              # 入口：UAC、单实例、通知初始化、托盘/热键、GPUI 启动
-├── app.rs               # 应用状态、内存轮询、优化流程、窗口隐藏/恢复、热键录制
+├── app/                 # 应用状态、内存轮询、优化流程、窗口生命周期
+│   ├── mod.rs           # MemoryCleanerApp 与后台任务协调
+│   ├── clipboard_ops.rs # 剪贴板查询、粘贴、拖拽与置顶卡片
+│   ├── memory.rs        # 内存刷新与动画
+│   ├── optimize_impl.rs # 异步优化进度与结果
+│   └── window.rs        # 窗口隐藏/恢复、设置与关闭策略
+├── clipboard/           # 剪贴板监听、内容处理与 SQLite 存储
+│   ├── monitor.rs       # Win32 隐藏窗口与剪贴板监听线程
+│   ├── handler.rs       # 内容截断、预览和 BLAKE3 哈希
+│   └── storage.rs       # SQLite schema、查询、排序、置顶与自动清理
 ├── icon_cache.rs        # Explorer 图标缓存清理
 ├── locale.rs            # locale 应用、列表分隔符、系统语言映射
 ├── log.rs               # 调试日志写入 App.log，按行内时间戳清理过期记录
@@ -160,6 +175,7 @@ src/
 ├── tray.rs              # 系统托盘图标、Tooltip、菜单、清理过程旋转动画
 ├── version.rs           # 版本常量
 ├── win32/               # Windows API 封装
+│   ├── clipboard.rs     # 原生剪贴板读写与粘贴
 │   ├── hotkey.rs        # RegisterHotKey 全局热键（独立消息循环线程）
 │   ├── notification.rs  # Windows Toast 与开始菜单快捷方式
 │   ├── nt.rs            # NtSetSystemInformation 等 NT 原语
@@ -168,6 +184,8 @@ src/
 │   ├── single_instance.rs
 │   └── window.rs        # 窗口置顶、隐藏到托盘
 └── ui/                  # GPUI UI 组件
+    ├── clipboard_panel.rs
+    ├── clipboard_item_card.rs
     ├── layout.rs
     ├── memory_card.rs
     ├── settings_page.rs # 清理区域、窗口行为对话框、热键录制

@@ -16,8 +16,7 @@ impl MemoryCleanerApp {
     }
 
     pub(crate) fn pause_anim(&self) {
-        self.anim_generation
-            .fetch_add(1, Ordering::Relaxed);
+        self.anim_generation.fetch_add(1, Ordering::Relaxed);
     }
 
     pub(crate) fn start_anim(&self, cx: &mut gpui::Context<Self>) {

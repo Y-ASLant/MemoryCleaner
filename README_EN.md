@@ -20,6 +20,8 @@ A Windows memory optimization tool built with Rust + GPUI. Real-time memory moni
 - **Desktop Icon Cache Refresh** — Title bar refresh button; terminates and restarts Explorer to clear `IconCache.db` and related caches
 - **Custom Title Bar** — Settings, icon cache refresh, expand/collapse, minimize, close (no maximize button)
 - **Configuration Persistence** — `%APPDATA%\MemoryCleaner\settings.toml`, auto-created on first run
+- **Clipboard History** — Captures text and file clipboard content with search, type filters, pagination, pinning, drag-to-reorder, deletion, and automatic cleanup; persisted at `%APPDATA%\MemoryCleaner\clipboard.db`
+- **Win+V Integration** — Optionally replaces the system Win+V shortcut with the in-app clipboard history panel; restores the system setting on exit
 - **Debug Logging** — Optional `App.log` output in the application directory, with automatic cleanup of entries older than 7 days based on timestamp
 - **Auto Elevation** — Detects admin privileges at startup and triggers UAC elevation if needed
 - **Single Instance** — Named mutex; second instance exits immediately
@@ -118,6 +120,7 @@ Config file: `%APPDATA%\MemoryCleaner\settings.toml`
 | Setting | Type | Default | Description |
 |---------|------|---------|-------------|
 | `always_on_top` | bool | `false` | Window always on top |
+| `run_at_startup` | bool | `false` | Launch at Windows sign-in and start hidden in the tray |
 | `close_to_notification_area` | bool | `true` | Hide to tray on close instead of exiting |
 | `memory_areas` | u32 | `42` | Cleanup region bitmask (sum of `MemoryAreas` flag bits) |
 | `language` | string | `"auto"` | Interface language: `auto` (follow system), `zh-CN`, `en` |
@@ -125,17 +128,20 @@ Config file: `%APPDATA%\MemoryCleaner\settings.toml`
 | `show_optimization_notifications` | bool | `true` | Show Windows Toast on cleanup start/completion |
 | `cleanup_hotkey_enabled` | bool | `true` | Enable global cleanup hotkey |
 | `cleanup_hotkey` | string | `"Ctrl+Alt+C"` | Hotkey combo (`Ctrl`/`Alt`/`Shift`/`Win` + letter or digit) |
+| `clipboard_enabled` | bool | `true` | Enable clipboard history monitoring and tray menu |
+| `clipboard_win_v_enabled` | bool | `false` | Replace system Win+V with the in-app clipboard history (requires Explorer restart) |
+| `clipboard_max_history` | u32 | `10000` | Maximum clipboard history items |
+| `clipboard_auto_cleanup_days` | u32 | `30` | Automatically delete unpinned items older than this many days; `0` disables automatic cleanup |
 
 ## Tech Stack
 
-| Dependency | Purpose |
-|------------|---------|
 | [Rust](https://www.rust-lang.org/) 1.96+ | Language and runtime |
 | [GPUI](https://gpui.rs) (Zed source) | GPU-accelerated UI framework |
 | [gpui-component](https://longbridge.github.io/gpui-component/zh-CN/docs/components/) | UI components (Button, Checkbox, Switch, GroupBox, ProgressCircle, etc.) |
 | [windows-rs](https://github.com/microsoft/windows-rs) 0.62 | Win32 API (memory management, privileges, window control, Toast, RegisterHotKey) |
 | [tray-icon](https://crates.io/crates/tray-icon) | System tray icon and menu |
 | [smol](https://crates.io/crates/smol) | Async scheduling and blocking task offload |
+| [rusqlite](https://crates.io/crates/rusqlite) | SQLite clipboard history persistence |
 | [rust-i18n](https://crates.io/crates/rust-i18n) | Interface internationalization (`locales/zh-CN.yml`) |
 | [image](https://crates.io/crates/image) | Tray PNG decoding and scaling |
 
@@ -148,9 +154,18 @@ locales/
 
 src/
 ├── main.rs              # Entry: UAC, single-instance, notification init, tray/hotkey, GPUI launch
-├── app.rs               # Application state, memory polling, optimization, window hide/restore, hotkey recording
+├── app/                 # Application state, memory polling, optimization, window lifecycle
+│   ├── mod.rs           # MemoryCleanerApp and background task coordination
+│   ├── clipboard_ops.rs # Clipboard queries, paste, drag, and pinned cards
+│   ├── memory.rs        # Memory refresh and animations
+│   ├── optimize_impl.rs # Async optimization progress and results
+│   └── window.rs        # Window hide/restore, settings, and close policy
+├── clipboard/           # Clipboard monitoring, processing, and SQLite storage
+│   ├── monitor.rs       # Win32 hidden window and clipboard listener thread
+│   ├── handler.rs       # Content truncation, previews, and BLAKE3 hashes
+│   └── storage.rs       # SQLite schema, queries, ordering, pinning, and cleanup
 ├── icon_cache.rs        # Explorer icon cache cleanup
-├── locale.rs            # Locale apply, list separator, system language mapping
+├── locale.rs            # Locale application, list separator, system language mapping
 ├── log.rs               # Debug logging to App.log, timestamp-based entry retention
 ├── memory.rs            # Memory query (GlobalMemoryStatusEx)
 ├── messages.rs          # Cleanup result message assembly
@@ -160,6 +175,7 @@ src/
 ├── tray.rs              # System tray icon, tooltip, menu, cleanup spin animation
 ├── version.rs           # Version constant
 ├── win32/               # Windows API wrappers
+│   ├── clipboard.rs     # Native clipboard read/write and paste
 │   ├── hotkey.rs        # RegisterHotKey global hotkey (dedicated message loop thread)
 │   ├── notification.rs  # Windows Toast and Start Menu shortcut
 │   ├── nt.rs            # NtSetSystemInformation and NT primitives
@@ -168,6 +184,8 @@ src/
 │   ├── single_instance.rs
 │   └── window.rs        # Window always-on-top, hide to tray
 └── ui/                  # GPUI UI components
+    ├── clipboard_panel.rs
+    ├── clipboard_item_card.rs
     ├── layout.rs
     ├── memory_card.rs
     ├── settings_page.rs # Cleanup regions, window behavior dialog, hotkey recording

@@ -1,5 +1,7 @@
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+
+use parking_lot::Mutex;
 
 use anyhow::{Context, Result};
 use rusqlite::{Connection, params};
@@ -73,7 +75,7 @@ impl ClipboardStorage {
         byte_size: i64,
         source_app: Option<&str>,
     ) -> Result<i64> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock();
         let max_sort_order: i64 = conn.query_row(
             "SELECT COALESCE(MAX(sort_order), 0) FROM clipboard_items",
             [],
@@ -130,7 +132,7 @@ impl ClipboardStorage {
         limit: usize,
         offset: usize,
     ) -> Result<Vec<ClipboardItem>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock();
         let mut sql = String::from(
             "SELECT id, content_type, text_content, preview, file_paths,
                     content_hash, byte_size, is_pinned, source_app, created_at
@@ -193,7 +195,7 @@ impl ClipboardStorage {
 
     /// Get total item count, optionally filtered.
     pub fn count(&self, content_type: Option<ContentType>, search: Option<&str>) -> Result<usize> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock();
         let mut sql = String::from("SELECT COUNT(*) FROM clipboard_items WHERE 1=1");
         let mut param_values: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
         let mut param_idx = 1usize;
@@ -224,7 +226,7 @@ impl ClipboardStorage {
         if from_id == to_id {
             return Ok(());
         }
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock();
         let mut stmt = conn.prepare(
             "SELECT id FROM clipboard_items
              ORDER BY is_pinned DESC, sort_order DESC, created_at DESC",
@@ -257,7 +259,7 @@ impl ClipboardStorage {
 
     /// Toggle pin status of an item.
     pub fn toggle_pin(&self, id: i64) -> Result<bool> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock();
         conn.execute(
             "UPDATE clipboard_items SET is_pinned = 1 - is_pinned WHERE id = ?1",
             params![id],
@@ -272,14 +274,14 @@ impl ClipboardStorage {
 
     /// Delete a single item.
     pub fn delete(&self, id: i64) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock();
         conn.execute("DELETE FROM clipboard_items WHERE id = ?1", params![id])?;
         Ok(())
     }
 
     /// Delete all non-pinned items.
     pub fn clear_unpinned(&self) -> Result<usize> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock();
         let count = conn.execute("DELETE FROM clipboard_items WHERE is_pinned = 0", [])?;
         Ok(count)
     }
@@ -289,7 +291,7 @@ impl ClipboardStorage {
         if days == 0 {
             return Ok(0);
         }
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock();
         let count = conn.execute(
             "DELETE FROM clipboard_items WHERE is_pinned = 0
              AND created_at < datetime('now', '-' || ?1 || ' days', 'localtime')",
@@ -300,7 +302,7 @@ impl ClipboardStorage {
 
     /// Get a single item by id.
     pub fn get(&self, id: i64) -> Result<Option<ClipboardItem>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock();
         let result = conn.query_row(
             "SELECT id, content_type, text_content, preview, file_paths,
                     content_hash, byte_size, is_pinned, source_app, created_at
@@ -477,6 +479,49 @@ mod tests {
         s.insert(ContentType::Text, Some("a"), "a", None, "ha", 1, None)
             .unwrap();
         assert_eq!(s.count(None, None).unwrap(), 1);
+    }
+    #[test]
+    fn auto_cleanup_removes_old_unpinned_items_only() {
+        let s = test_storage();
+        let stale_id = s
+            .insert(
+                ContentType::Text,
+                Some("stale"),
+                "stale",
+                None,
+                "stale",
+                5,
+                None,
+            )
+            .unwrap();
+        let pinned_id = s
+            .insert(
+                ContentType::Text,
+                Some("pinned"),
+                "pinned",
+                None,
+                "pinned",
+                6,
+                None,
+            )
+            .unwrap();
+        s.toggle_pin(pinned_id).unwrap();
+
+        {
+            let conn = s.conn.lock();
+            conn.execute(
+                "UPDATE clipboard_items
+                 SET created_at = datetime('now', '-31 days')
+                 WHERE id IN (?1, ?2)",
+                params![stale_id, pinned_id],
+            )
+            .unwrap();
+        }
+
+        assert_eq!(s.auto_cleanup(30).unwrap(), 1);
+        assert!(s.get(stale_id).unwrap().is_none());
+        assert!(s.get(pinned_id).unwrap().is_some());
+        assert_eq!(s.auto_cleanup(0).unwrap(), 0);
     }
 
     #[test]

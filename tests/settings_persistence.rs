@@ -1,8 +1,8 @@
 use memory_cleaner::optimize::MemoryAreas;
 use memory_cleaner::settings::Settings;
+use parking_lot::Mutex;
 use std::fs;
 use std::path::PathBuf;
-use std::sync::Mutex;
 
 static APPDATA_TEST_LOCK: Mutex<()> = Mutex::new(());
 
@@ -10,7 +10,7 @@ fn with_temp_appdata<F>(run: F)
 where
     F: FnOnce(&std::path::Path),
 {
-    let _guard = APPDATA_TEST_LOCK.lock().expect("app_data test lock");
+    let _guard = APPDATA_TEST_LOCK.lock();
     let temp = tempfile::tempdir().expect("tempdir");
     let previous = std::env::var_os("APPDATA");
     // SAFETY: tests run serially by default and restore APPDATA before returning.
@@ -48,11 +48,11 @@ fn settings_save_and_load_roundtrip_in_temp_config_dir() {
         settings.save();
 
         let loaded = Settings::load();
-        assert_eq!(loaded.always_on_top, true);
-        assert_eq!(loaded.close_to_notification_area, false);
+        assert!(loaded.always_on_top);
+        assert!(!loaded.close_to_notification_area);
         assert_eq!(loaded.memory_areas, MemoryAreas::WORKING_SET.bits());
         assert_eq!(loaded.language, "zh-CN");
-        assert_eq!(loaded.debug_logging, true);
+        assert!(loaded.debug_logging);
         assert_eq!(loaded.excluded_processes, vec!["chrome".to_string()]);
     });
 }

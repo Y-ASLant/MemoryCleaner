@@ -83,10 +83,10 @@ pub fn process_exclusion_list_max_height() -> f32 {
 /// 进程下拉菜单最大高度（向下展开，滚动条保持在菜单内部）。
 pub const PROCESS_PICKER_MENU_MAX_H: f32 = 300.;
 
-/// 主窗口固定宽度（re-export from `app::WINDOW_WIDTH`）。
-pub use crate::app::WINDOW_WIDTH as MAIN_WINDOW_WIDTH;
 /// 主窗口内容区内边距（re-export from `app::CONTENT_PADDING`）。
 pub use crate::app::CONTENT_PADDING as MAIN_CONTENT_PADDING;
+/// 主窗口固定宽度（re-export from `app::WINDOW_WIDTH`）。
+pub use crate::app::WINDOW_WIDTH as MAIN_WINDOW_WIDTH;
 const GROUP_BOX_OUTLINE_BORDER: f32 = 2.;
 const GROUP_BOX_CONTENT_PADDING_H: f32 = 16.; // outline GroupBox `p_2()` 左右各 8px
 

@@ -10,10 +10,11 @@ use windows::Win32::System::DataExchange::{
     RemoveClipboardFormatListener,
 };
 use windows::Win32::System::Memory::{GlobalLock, GlobalUnlock};
+use windows::Win32::System::Threading::GetCurrentThreadId;
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetMessageW, MSG,
-    RegisterClassW, TranslateMessage, UnregisterClassW, WINDOW_STYLE, WM_CLIPBOARDUPDATE, WM_CLOSE,
-    WM_DESTROY, WNDCLASSW, WS_EX_NOACTIVATE,
+    PostThreadMessageW, RegisterClassW, TranslateMessage, UnregisterClassW, WINDOW_STYLE,
+    WM_CLIPBOARDUPDATE, WM_CLOSE, WM_DESTROY, WM_QUIT, WNDCLASSW, WS_EX_NOACTIVATE,
 };
 use windows::core::w;
 
@@ -49,43 +50,92 @@ pub fn start_monitor() -> Result<(mpsc::Receiver<RawClipboardContent>, MonitorHa
     let (tx, rx) = mpsc::sync_channel::<RawClipboardContent>(16);
     let shutdown = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let shutdown_clone = shutdown.clone();
+    let (ready_tx, ready_rx) = mpsc::sync_channel(1);
 
     let join = thread::Builder::new()
         .name("clipboard-monitor".into())
         .spawn(move || {
-            if let Err(e) = run_monitor_loop(tx, shutdown_clone) {
+            if let Err(e) = run_monitor_loop(tx, shutdown_clone, ready_tx) {
                 crate::log_msg(&format!("[clipboard] monitor error: {e:#}"));
             }
         })
         .map_err(|e| anyhow::anyhow!("spawn clipboard monitor: {e}"))?;
 
-    Ok((rx, MonitorHandle { join, shutdown }))
+    let thread_id = match ready_rx.recv() {
+        Ok(Ok(thread_id)) => thread_id,
+        Ok(Err(error)) => {
+            let _ = join.join();
+            return Err(error);
+        }
+        Err(error) => {
+            let _ = join.join();
+            return Err(anyhow::anyhow!(
+                "clipboard monitor exited before initialization: {error}"
+            ));
+        }
+    };
+
+    Ok((
+        rx,
+        MonitorHandle {
+            join: Some(join),
+            shutdown,
+            thread_id,
+        },
+    ))
 }
 
 /// Handle to shut down the monitor thread.
 pub struct MonitorHandle {
-    join: thread::JoinHandle<()>,
+    join: Option<thread::JoinHandle<()>>,
     shutdown: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    thread_id: u32,
 }
 
 impl MonitorHandle {
     /// Signal the monitor thread to stop and wait for it to finish.
     pub fn shutdown(self) {
+        self.request_shutdown();
+    }
+
+    fn request_shutdown(&self) {
         self.shutdown
             .store(true, std::sync::atomic::Ordering::SeqCst);
-        // Post WM_CLOSE to break GetMessageW
-        // The thread will see shutdown flag and exit
-        let _ = self.join.join();
+        unsafe {
+            let _ = PostThreadMessageW(self.thread_id, WM_QUIT, WPARAM(0), LPARAM(0));
+        }
+    }
+}
+
+impl Drop for MonitorHandle {
+    fn drop(&mut self) {
+        self.request_shutdown();
+        if let Some(join) = self.join.take() {
+            let _ = join.join();
+        }
     }
 }
 
 fn run_monitor_loop(
     tx: mpsc::SyncSender<RawClipboardContent>,
     shutdown: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    ready_tx: mpsc::SyncSender<Result<u32>>,
+) -> Result<()> {
+    let result = run_monitor_loop_inner(tx, shutdown, &ready_tx);
+    if let Err(error) = &result {
+        let _ = ready_tx.send(Err(anyhow::anyhow!("{error:#}")));
+    }
+    result
+}
+
+fn run_monitor_loop_inner(
+    tx: mpsc::SyncSender<RawClipboardContent>,
+    shutdown: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    ready_tx: &mpsc::SyncSender<Result<u32>>,
 ) -> Result<()> {
     unsafe {
         let class_name = w!("MemoryCleanrClipMonitor");
-
+        let thread_id = GetCurrentThreadId();
         let wnd_class = WNDCLASSW {
             lpfnWndProc: Some(clip_wnd_proc),
             hInstance: windows::Win32::System::LibraryLoader::GetModuleHandleW(None)?.into(),
@@ -119,11 +169,16 @@ fn run_monitor_loop(
         )?;
 
         AddClipboardFormatListener(hwnd)?;
+        let _ = ready_tx.send(Ok(thread_id));
 
         // Message loop — must dispatch to `clip_wnd_proc` (DefWindowProc alone never calls it).
         let mut msg = MSG::default();
-        while GetMessageW(&mut msg, None, 0, 0).into() {
-            if shutdown.load(std::sync::atomic::Ordering::SeqCst) {
+        loop {
+            let result = GetMessageW(&mut msg, None, 0, 0);
+            if result.0 == -1 {
+                anyhow::bail!("GetMessageW failed");
+            }
+            if result.0 == 0 || shutdown.load(std::sync::atomic::Ordering::SeqCst) {
                 break;
             }
             let _ = TranslateMessage(&msg);
@@ -268,6 +323,11 @@ mod tests {
     fn monitor_types_send_sync() {
         fn assert_send_sync<T: Send + Sync>() {}
         assert_send_sync::<RawClipboardContent>();
+    }
+    #[test]
+    fn monitor_shutdown_joins_listener_thread() {
+        let (_rx, handle) = start_monitor().expect("start monitor");
+        handle.shutdown();
     }
 
     #[test]

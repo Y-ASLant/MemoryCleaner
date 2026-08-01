@@ -108,6 +108,12 @@ impl MemoryCleanerApp {
         self.pause_anim();
         crate::log_msg(&format!("[close] hide_to_tray destroy ok source={source}"));
     }
+    pub fn shutdown_clipboard_monitor(&mut self) {
+        if let Some(handle) = self.clipboard_monitor.take() {
+            handle.shutdown();
+            crate::log_msg("[clipboard] monitor stopped");
+        }
+    }
 
     /// Handle a close request. Returns `true` when the app should quit entirely.
     pub fn request_close(&mut self, source: &str, window: &mut Window) -> bool {
@@ -121,6 +127,7 @@ impl MemoryCleanerApp {
             self.sync_tray();
             false
         } else {
+            self.shutdown_clipboard_monitor();
             true
         }
     }
@@ -279,10 +286,7 @@ impl MemoryCleanerApp {
         self.settings.clipboard_enabled = enabled;
         if !enabled {
             self.clipboard_visible = false;
-            if let Some(handle) = self.clipboard_monitor.take() {
-                drop(handle);
-                crate::log_msg("[clipboard] monitor stopped");
-            }
+            self.shutdown_clipboard_monitor();
         }
         self.queue_settings_save(cx);
         cx.notify();

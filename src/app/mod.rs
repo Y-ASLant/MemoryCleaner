@@ -28,6 +28,7 @@ use crate::win32;
 pub(crate) const SETTINGS_SAVE_DEBOUNCE: Duration = Duration::from_millis(300);
 pub(crate) const OPTIMIZE_RESULT_DISPLAY: Duration = Duration::from_secs(5);
 pub(crate) const MEMORY_REFRESH_INTERVAL: Duration = Duration::from_secs(1);
+const CLIPBOARD_AUTO_CLEANUP_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
 
 pub(crate) async fn show_toast(title: String, body: String) {
     if let Err(e) = smol::unblock(move || win32::notification::show(&title, &body)).await {
@@ -403,6 +404,7 @@ impl MemoryCleanerApp {
             }
             "clipboard" => self.show_clipboard_window(cx),
             "quit" => {
+                self.shutdown_clipboard_monitor();
                 self.settings.save();
                 cx.quit();
             }
@@ -441,7 +443,8 @@ impl MemoryCleanerApp {
         })
         .detach();
 
-        // 剪贴板监听
+        self.start_clipboard_auto_cleanup(cx);
+
         if self.settings.clipboard_enabled {
             match crate::clipboard::monitor::start_monitor() {
                 Ok((clip_rx, handle)) => {
@@ -479,6 +482,47 @@ impl MemoryCleanerApp {
                 }
             }
         }
+    }
+    fn start_clipboard_auto_cleanup(&self, cx: &mut Context<Self>) {
+        if self.clipboard_storage.is_none() {
+            return;
+        }
+
+        cx.spawn(async move |this, cx| {
+            loop {
+                let state = this.update(cx, |app, _| {
+                    if app.settings.clipboard_enabled {
+                        app.clipboard_storage
+                            .clone()
+                            .map(|storage| (storage, app.settings.clipboard_auto_cleanup_days))
+                    } else {
+                        None
+                    }
+                });
+                let Ok(Some((storage, days))) = state else {
+                    break;
+                };
+
+                if days > 0 {
+                    match smol::unblock(move || storage.auto_cleanup(days)).await {
+                        Ok(count) if count > 0 => {
+                            let _ = this.update(cx, |app, _| {
+                                if app.clipboard_visible {
+                                    app.refresh_clipboard_items();
+                                }
+                            });
+                        }
+                        Ok(_) => {}
+                        Err(error) => {
+                            crate::log_msg(&format!("[clipboard] auto cleanup failed: {error:#}"));
+                        }
+                    }
+                }
+
+                Timer::after(CLIPBOARD_AUTO_CLEANUP_INTERVAL).await;
+            }
+        })
+        .detach();
     }
 
     pub fn set_memory_area(&mut self, area: MemoryAreas, enabled: bool, cx: &mut Context<Self>) {

@@ -139,6 +139,7 @@ fn main() {
                 .map(|holder| holder.0.clone());
             if let Some(entity) = entity {
                 entity.update(cx, |app, _| {
+                    app.shutdown_clipboard_monitor();
                     app.settings.save();
                     // Restore system Win+V on exit
                     if app.settings.clipboard_win_v_enabled
