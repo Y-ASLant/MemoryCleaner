@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use gpui::{Bounds, Pixels, Point, Window, point, px, size};
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use windows::Win32::Foundation::{HWND, RECT};
+use windows::Win32::UI::Input::KeyboardAndMouse::{ReleaseCapture, SetCapture};
 use windows::Win32::UI::WindowsAndMessaging::{
     GWL_EXSTYLE, GWL_STYLE, GetWindowLongPtrW, GetWindowRect, HWND_NOTOPMOST, HWND_TOPMOST,
     IsIconic, SHOW_WINDOW_CMD, SW_HIDE, SW_RESTORE, SW_SHOW, SW_SHOWNOACTIVATE, SWP_FRAMECHANGED,
@@ -136,6 +137,22 @@ pub fn window_screen_bounds(window: &Window) -> Result<Bounds<Pixels>> {
                 px((rect.bottom - rect.top) as f32),
             ),
         ))
+    }
+}
+
+/// Capture mouse input for the application window during a cross-window drag.
+pub fn capture_mouse(window: &Window) -> Result<()> {
+    let hwnd = hwnd_from_window(window)?;
+    unsafe {
+        SetCapture(hwnd);
+    }
+    Ok(())
+}
+
+/// Release mouse input captured for a cross-window drag.
+pub fn release_mouse_capture() {
+    unsafe {
+        let _ = ReleaseCapture();
     }
 }
 

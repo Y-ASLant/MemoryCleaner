@@ -463,6 +463,14 @@ fn update_drag_tearoff(
     }
 
     if app.clipboard_drag_tearoff {
+        if let Ok(screen) = crate::win32::cursor::screen_point()
+            && app
+                .clipboard_drag_last_screen_position
+                .is_none_or(|last| last != screen)
+        {
+            app.clipboard_drag_last_screen_position = Some(screen);
+            app.update_clipboard_tearoff_preview_position_at(screen, cx);
+        }
         return;
     }
 
@@ -477,110 +485,17 @@ fn update_drag_tearoff(
     cx.notify();
 }
 
-fn cursor_outside_window_bounds(cursor: Point<Pixels>, bounds: Bounds<Pixels>) -> bool {
-    cursor.x < bounds.origin.x
-        || cursor.y < bounds.origin.y
-        || cursor.x >= bounds.origin.x + bounds.size.width
-        || cursor.y >= bounds.origin.y + bounds.size.height
-}
-
-const DRAG_TRACK_INTERVAL: Duration = Duration::from_millis(8);
-
-fn advance_clipboard_drag_frame(
-    app: &mut MemoryCleanerApp,
-    cx: &mut Context<MemoryCleanerApp>,
-) -> bool {
-    let Some(dragging_id) = app.clipboard_dragging_id else {
-        return false;
-    };
-
-    let cursor = match crate::win32::cursor::screen_point() {
-        Ok(point) => point,
-        Err(_) => return true,
-    };
-
-    let bounds = match app.clipboard_drag_window_bounds {
-        Some(bounds) => bounds,
-        None => {
-            let bounds = app.window.and_then(|handle| {
-                handle
-                    .update(cx, |_, window, _| {
-                        crate::win32::window::window_screen_bounds(window)
-                    })
-                    .ok()
-                    .and_then(|result| result.ok())
-            });
-            app.clipboard_drag_window_bounds = bounds;
-            let Some(bounds) = bounds else {
-                return true;
-            };
-            bounds
-        }
-    };
-
-    let outside = cursor_outside_window_bounds(cursor, bounds);
-    let position_changed = app
-        .clipboard_drag_last_screen_position
-        .is_none_or(|last| last != cursor);
-    app.clipboard_drag_last_screen_position = Some(cursor);
-
-    if outside && !app.clipboard_drag_tearoff {
-        app.clipboard_drag_tearoff = true;
-        app.clipboard_drop_target_id = None;
-        app.clipboard_shift_anims.clear();
-        app.clipboard_shift_tick_gen = app.clipboard_shift_tick_gen.wrapping_add(1);
-        app.begin_clipboard_tearoff_preview(dragging_id, cx);
-        if let Some(handle) = app.window {
-            let _ = handle.update(cx, |_, window, _| window.refresh());
-        }
-        cx.notify();
-    } else if !outside && app.clipboard_drag_tearoff {
-        app.cancel_clipboard_tearoff(cx);
-        if let Some(handle) = app.window {
-            let _ = handle.update(cx, |_, window, _| window.refresh());
-        }
-    } else if app.clipboard_drag_tearoff && position_changed {
-        app.update_clipboard_tearoff_preview_position_at(cursor, cx);
-    }
-
-    true
-}
-
-/// Global cursor tracker: GPUI drag ghost stops at the window edge; once outside,
-/// a borderless follower window tracks the cursor until release.
 pub fn start_clipboard_drag_tracker(
     app: &mut MemoryCleanerApp,
     cx: &mut Context<MemoryCleanerApp>,
 ) {
-    app.clipboard_drag_track_tick_gen = app.clipboard_drag_track_tick_gen.wrapping_add(1);
     app.clipboard_drag_last_screen_position = None;
-    app.clipboard_drag_window_bounds = app.window.and_then(|handle| {
-        handle
-            .update(cx, |_, window, _| {
-                crate::win32::window::window_screen_bounds(window)
-            })
-            .ok()
-            .and_then(|result| result.ok())
-    });
 
-    let tick_gen = app.clipboard_drag_track_tick_gen;
-    cx.spawn(async move |this, cx| {
-        loop {
-            Timer::after(DRAG_TRACK_INTERVAL).await;
-            let keep = this
-                .update(cx, |app, cx| {
-                    if app.clipboard_drag_track_tick_gen != tick_gen {
-                        return false;
-                    }
-                    advance_clipboard_drag_frame(app, cx)
-                })
-                .unwrap_or(false);
-            if !keep {
-                break;
-            }
-        }
-    })
-    .detach();
+    if let Some(handle) = app.window {
+        let _ = handle.update(cx, |_, window, _| {
+            crate::win32::window::capture_mouse(window)
+        });
+    }
 }
 
 /// Resolve `over` from pointer Y — closest row center (dnd-kit `closestCenter` for

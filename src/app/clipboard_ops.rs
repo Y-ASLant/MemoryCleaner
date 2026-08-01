@@ -367,14 +367,13 @@ impl MemoryCleanerApp {
     }
 
     pub fn clear_clipboard_drag_preview(&mut self, cx: &mut gpui::Context<Self>) {
+        crate::win32::window::release_mouse_capture();
         self.clipboard_dragging_id = None;
         self.clipboard_drag_cursor_offset = None;
         self.clipboard_drop_target_id = None;
-        self.clipboard_drag_window_bounds = None;
         self.clipboard_drag_last_screen_position = None;
         self.clipboard_shift_anims.clear();
         self.clipboard_shift_tick_gen = self.clipboard_shift_tick_gen.wrapping_add(1);
-        self.clipboard_drag_track_tick_gen = self.clipboard_drag_track_tick_gen.wrapping_add(1);
         self.close_clipboard_tearoff_preview(cx);
     }
 
