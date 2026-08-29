@@ -83,10 +83,6 @@ impl TimedAnimatedValue {
         self.running = true;
     }
 
-    pub fn is_running(&self) -> bool {
-        self.running
-    }
-
     pub fn tick_dt(&mut self, dt: f32) -> bool {
         if !self.running {
             return false;
@@ -120,9 +116,10 @@ mod tests {
         value.set_target(1.0);
         assert!(value.tick_dt(0.1));
         assert_eq!(value.current, 0.5);
+        // `tick_dt` returns `false` exactly when the animation has settled.
         assert!(!value.tick_dt(0.1));
         assert_eq!(value.current, 1.0);
-        assert!(!value.is_running());
+        assert_eq!(value.current, value.target);
     }
 
     #[test]

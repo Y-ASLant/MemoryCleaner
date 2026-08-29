@@ -37,12 +37,7 @@ const SETTINGS_PANEL_VISIBLE_EPSILON: f32 = 0.01;
 const SETTINGS_EXPAND_DURATION_SECS: f32 = 0.22;
 
 pub fn window_size(expanded: bool) -> Size<Pixels> {
-    let height = if expanded {
-        crate::ui::layout::expanded_window_height(CONTENT_PADDING)
-    } else {
-        crate::ui::layout::collapsed_window_height(CONTENT_PADDING)
-    };
-    size(px(WINDOW_WIDTH), px(height))
+    size(px(WINDOW_WIDTH), px(window_height(expanded)))
 }
 
 /// Target window height for the given expanded state.
@@ -425,9 +420,9 @@ impl MemoryCleanerApp {
     fn animated_window_height(&self) -> f32 {
         window_height(false) + settings_reveal_height() * self.settings_expand_progress()
     }
-    fn resize_window_height(&mut self, window: &mut Window, height: f32, force: bool) {
+    fn resize_window_height(&mut self, window: &mut Window, height: f32) {
         let rounded = height.round();
-        if force || (self.current_window_height - rounded).abs() >= 0.5 {
+        if (self.current_window_height - rounded).abs() >= 0.5 {
             window.resize(size(px(WINDOW_WIDTH), px(rounded)));
             self.current_window_height = rounded;
         }
@@ -628,17 +623,13 @@ impl MemoryCleanerApp {
         let target = if self.settings_expanded { 1.0 } else { 0.0 };
         self.anim_settings_expand.set_target(target);
         self.anim_dirty = true;
-        let next_h = self.animated_window_height();
-        self.resize_window_height(window, next_h, false);
+        self.resize_window_height(window, self.animated_window_height());
         cx.notify();
     }
 
     /// Tick all active animations each frame (render-driven, vsync-paced).
     /// Returns `true` if any animation is still running (caller schedules next frame).
-    pub(crate) fn tick_animations(&mut self, window: &mut Window) -> bool {
-        let mut running = false;
-        let settings_was_animating = self.anim_settings_expand.is_running();
-
+    fn tick_animations(&mut self, window: &mut Window) -> bool {
         // Memory ring / progress / text interpolators — real-dt exponential decay,
         // frame-rate independent (60 Hz and 144 Hz displays animate at the same speed).
         if self.anim_dirty {
@@ -658,23 +649,15 @@ impl MemoryCleanerApp {
                 | self.anim_settings_expand.tick_dt(dt);
             self.anim_dirty = still;
             self.last_anim_tick = still.then_some(now);
-            running |= still;
         } else {
             self.last_anim_tick = None;
         }
 
-        let next_h = if self.anim_dirty {
-            self.animated_window_height()
-        } else {
-            window_height(self.settings_expanded)
-        };
-        self.resize_window_height(window, next_h, false);
+        // When settled, expand progress is exactly 0/1, so this equals the
+        // collapsed/expanded height; while animating it tracks the live progress.
+        self.resize_window_height(window, self.animated_window_height());
 
-        if settings_was_animating && !self.anim_settings_expand.is_running() {
-            self.resize_window_height(window, window_height(self.settings_expanded), true);
-        }
-
-        running
+        self.anim_dirty
     }
 
     pub fn set_always_on_top(

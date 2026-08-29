@@ -45,17 +45,7 @@ pub fn memory_section_height() -> f32 {
 }
 
 pub fn cleanup_section_height() -> f32 {
-    let cleanup_areas = section_card_height(
-        CLEANUP_AREAS_HINT_H
-            + SECTION_GAP
-            + CLEANUP_AREA_ROW_H * CLEANUP_AREA_ROWS
-            + CLEANUP_ROW_GAPS,
-    );
-    let exclusion_list = process_exclusion_list_max_height();
-    let process_exclusion =
-        section_card_height(EXCLUSION_SELECTOR_H + EXCLUSION_FOOTER_GAP + exclusion_list);
-
-    process_exclusion + SECTION_GAP + cleanup_areas
+    process_exclusion_card_height() + SECTION_GAP + cleanup_areas_card_height()
 }
 
 fn section_card_height(body: f32) -> f32 {
