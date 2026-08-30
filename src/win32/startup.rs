@@ -8,14 +8,20 @@
 
 use anyhow::{Context, Result};
 use windows::Win32::Foundation::{CloseHandle, ERROR_FILE_NOT_FOUND, WAIT_OBJECT_0};
+use windows::Win32::System::Com::{
+    CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED, CoCreateInstance, CoInitializeEx,
+    CoUninitialize,
+};
 use windows::Win32::System::Registry::{
     HKEY, HKEY_CURRENT_USER, KEY_SET_VALUE, KEY_WRITE, RegCloseKey, RegDeleteValueW,
 };
+use windows::Win32::System::TaskScheduler::{ITaskService, TaskScheduler};
 use windows::Win32::System::Threading::{
     CREATE_NO_WINDOW, CreateProcessW, GetExitCodeProcess, INFINITE, PROCESS_INFORMATION,
     STARTUPINFOW, WaitForSingleObject,
 };
-use windows::core::{Error, PCWSTR, PWSTR};
+use windows::Win32::System::Variant::VARIANT;
+use windows::core::{BSTR, Error, HRESULT, PCWSTR, PWSTR};
 
 use crate::settings::Settings;
 use crate::version::PROCESS_BASE_NAME;
@@ -104,14 +110,57 @@ fn run_schtasks(arguments: &str) -> Result<i32> {
     }
 }
 
+/// HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND), returned by `ITaskFolder::GetTask`.
+const TASK_NOT_FOUND_HRESULT: HRESULT = HRESULT(0x8007_0002_u32 as i32);
+
+struct ComApartment;
+
+impl ComApartment {
+    fn initialize() -> Result<Self> {
+        unsafe {
+            CoInitializeEx(None, COINIT_APARTMENTTHREADED)
+                .ok()
+                .context("CoInitializeEx(Task Scheduler) failed")?;
+        }
+        Ok(Self)
+    }
+}
+
+impl Drop for ComApartment {
+    fn drop(&mut self) {
+        unsafe {
+            CoUninitialize();
+        }
+    }
+}
+
+fn is_task_not_found(code: HRESULT) -> bool {
+    code == TASK_NOT_FOUND_HRESULT
+}
+
 fn task_exists() -> Result<bool> {
-    Ok(run_schtasks(&format!("/Query /TN \"{TASK_NAME}\""))? == 0)
+    let _com = ComApartment::initialize()?;
+    let service: ITaskService =
+        unsafe { CoCreateInstance(&TaskScheduler, None, CLSCTX_INPROC_SERVER) }
+            .context("CoCreateInstance(TaskScheduler) failed")?;
+    let empty = VARIANT::default();
+    let folder = unsafe {
+        service
+            .Connect(&empty, &empty, &empty, &empty)
+            .context("ITaskService::Connect failed")?;
+        service
+            .GetFolder(&BSTR::from("\\"))
+            .context("ITaskService::GetFolder failed")?
+    };
+
+    match unsafe { folder.GetTask(&BSTR::from(TASK_NAME)) } {
+        Ok(_) => Ok(true),
+        Err(error) if is_task_not_found(error.code()) => Ok(false),
+        Err(error) => Err(error).context("ITaskFolder::GetTask failed"),
+    }
 }
 
 fn ensure_task() -> Result<()> {
-    if task_exists()? {
-        return Ok(());
-    }
     let exit_code = run_schtasks(&schtasks_create_arguments()?)?;
     if exit_code != 0 {
         anyhow::bail!("schtasks create failed with exit code {exit_code}");
@@ -208,5 +257,11 @@ mod tests {
         // The exe path must be wrapped in escaped quotes so /TR stays one value.
         assert!(arguments.contains("\\\""));
         assert!(arguments.ends_with(format!("{STARTUP_ARG}\"").as_str()));
+    }
+
+    #[test]
+    fn task_query_only_treats_missing_task_as_absent() {
+        assert!(is_task_not_found(TASK_NOT_FOUND_HRESULT));
+        assert!(!is_task_not_found(HRESULT(0x8007_0005_u32 as i32)));
     }
 }

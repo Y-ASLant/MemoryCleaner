@@ -5,6 +5,26 @@
 **编写约定**（详见 `AGENTS.md` → Documentation & Changelog）：每个版本只记录相对上一 tag 的**最终差异**，不记录开发过程中的中间修改或逐步修复。
 
 
+## [1.0.5] - 2026-08-30
+
+相对 [1.0.4] 的最终变更如下。
+
+### 新增
+
+- **自动清理策略**：自动清理支持 Windows 低内存通知、持续内存占用阈值与定时间隔三种触发方式；可在窗口行为设置中选择阈值和间隔。
+
+### 变更
+
+- **阈值清理**：连续两次检测到内存占用超过阈值后即可首次清理；后续阈值清理保留 10 分钟冷却时间，避免持续压力下重复清理。
+- **已有实例唤醒**：再次启动程序时会通知已有实例显示主窗口；同一权限级别下无需额外 UAC 提示。
+- **开机启动**：改用以最高权限运行的登录计划任务，并在每次同步时刷新任务配置，确保程序更新或移动后仍使用当前可执行文件。
+- **启动可靠性**：计划任务查询会区分任务不存在与系统错误；单实例互斥体和唤醒监听器的创建失败会中止启动并记录错误。
+
+### 移除
+
+- 无。
+
+
 ## [1.0.4] - 2026-07-29
 
 相对 [1.0.3] 的最终变更如下。
@@ -78,6 +98,25 @@ Records Memory Cleaner releases. Format follows [Keep a Changelog](https://keepa
 **Writing rules** (see `AGENTS.md` → Documentation & Changelog): each release entry covers **only the final diff** vs the previous tag — not intermediate commits or step-by-step fixes during development.
 
 
+
+## [1.0.5] - 2026-08-30
+
+Final changes since [1.0.4].
+
+### Added
+
+- **Automatic-cleanup policies** — Automatic cleanup now supports Windows low-memory notifications, sustained memory-usage thresholds, and scheduled intervals. Threshold and interval choices are available in Window Behavior settings.
+
+### Changed
+
+- **Threshold cleanup** — The first cleanup runs after two consecutive above-threshold checks; subsequent threshold cleanups retain a 10-minute cooldown to avoid repeated cleanup under sustained pressure.
+- **Existing-instance activation** — Launching the application again signals the existing instance to show its main window without an additional UAC prompt at the same integrity level.
+- **Startup** — Logon startup now uses a highest-privilege scheduled task and refreshes its configuration on every sync, so updates or moved installations continue to launch the current executable.
+- **Startup reliability** — Scheduled-task queries now distinguish a missing task from system errors; failures to create the single-instance mutex or wake listener abort startup and are logged.
+
+### Removed
+
+- None.
 ## [1.0.4] - 2026-07-29
 
 Final changes since [1.0.3].
@@ -142,6 +181,7 @@ Since [1.0.0]: process exclusion, global cleanup hotkey (default Ctrl+Alt+C) wit
 
 Initial public release: 8 memory cleanup regions, GPUI UI, system tray, administrator elevation, settings persistence.
 
+[1.0.5]: https://github.com/Y-ASLant/MemoryCleaner/compare/v1.0.4...v1.0.5
 [1.0.4]: https://github.com/Y-ASLant/MemoryCleaner/compare/v1.0.3...v1.0.4
 [1.0.3]: https://github.com/Y-ASLant/MemoryCleaner/compare/v1.0.2...v1.0.3
 [1.0.2]: https://github.com/Y-ASLant/MemoryCleaner/compare/v1.0.1...v1.0.2

@@ -6,7 +6,7 @@ use std::path::PathBuf;
 #[serde(default)]
 pub struct Settings {
     pub always_on_top: bool,
-    /// Launch with Windows via the current-user Run registry key.
+    /// Launch silently to the notification area through a highest-privilege logon task.
     pub run_at_startup: bool,
     pub close_to_notification_area: bool,
     pub memory_areas: u32,

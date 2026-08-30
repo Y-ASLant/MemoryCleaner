@@ -15,7 +15,7 @@ use windows::Win32::System::Threading::{
     CreateEventW, CreateMutexW, EVENT_MODIFY_STATE, INFINITE, OpenEventW, SetEvent,
     WaitForSingleObject,
 };
-use windows::core::PCWSTR;
+use windows::core::{HRESULT, PCWSTR};
 
 use crate::tray::TrayCommand;
 
@@ -39,10 +39,9 @@ pub enum InstanceSignal {
 pub fn signal_existing_instance() -> InstanceSignal {
     let name = wide_null(SHOW_EVENT_NAME);
 
-    let event = unsafe { OpenEventW(EVENT_MODIFY_STATE, false, PCWSTR(name.as_ptr())) };
-    let Ok(event) = event else {
-        // Missing or inaccessible event: treat as no reachable instance.
-        return InstanceSignal::NotRunning;
+    let event = match unsafe { OpenEventW(EVENT_MODIFY_STATE, false, PCWSTR(name.as_ptr())) } {
+        Ok(event) => event,
+        Err(error) => return signal_from_open_event_error(error.code()),
     };
 
     let signaled = unsafe { SetEvent(event) };
@@ -63,19 +62,22 @@ pub fn ensure_single_instance(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mutex_name = wide_null(MUTEX_NAME);
 
-    unsafe {
-        // The handle is intentionally leaked: closing it would destroy the
-        // mutex object and let a later launch start a second instance.
-        let _handle = CreateMutexW(None, true, PCWSTR(mutex_name.as_ptr()));
-        if GetLastError() == ERROR_ALREADY_EXISTS {
-            return Err("Application is already running".into());
+    let mutex = unsafe { CreateMutexW(None, true, PCWSTR(mutex_name.as_ptr())) }
+        .map_err(|error| format!("CreateMutexW failed: {error}"))?;
+    if unsafe { GetLastError() } == ERROR_ALREADY_EXISTS {
+        unsafe {
+            let _ = CloseHandle(mutex);
         }
-
-        let event_name = wide_null(SHOW_EVENT_NAME);
-        let event = CreateEventW(None, false, false, PCWSTR(event_name.as_ptr()))
-            .map_err(|e| format!("CreateEventW failed: {e}"))?;
-        spawn_event_watcher(event, command_tx);
+        return Err("Application is already running".into());
     }
+
+    let event_name = wide_null(SHOW_EVENT_NAME);
+    let event = unsafe { CreateEventW(None, false, false, PCWSTR(event_name.as_ptr())) }
+        .map_err(|error| format!("CreateEventW failed: {error}"))?;
+    spawn_event_watcher(event, command_tx)?;
+
+    // The mutex handle is intentionally leaked to preserve the process-lifetime lock.
+    let _ = mutex;
 
     Ok(())
 }
@@ -85,18 +87,21 @@ pub fn ensure_single_instance(
 struct SendHandle(HANDLE);
 unsafe impl Send for SendHandle {}
 
-fn spawn_event_watcher(event: HANDLE, command_tx: Sender<TrayCommand>) {
+fn spawn_event_watcher(
+    event: HANDLE,
+    command_tx: Sender<TrayCommand>,
+) -> Result<(), Box<dyn std::error::Error>> {
     let wrapped = SendHandle(event);
-    let result = std::thread::Builder::new()
+    std::thread::Builder::new()
         .name("single-instance-watcher".into())
-        .spawn(move || watcher_loop(wrapped, command_tx));
-
-    if let Err(error) = result {
-        crate::log_msg(&format!("[single-instance] watcher start failed: {error}"));
-        unsafe {
-            let _ = CloseHandle(event);
-        }
-    }
+        .spawn(move || watcher_loop(wrapped, command_tx))
+        .map_err(|error| {
+            unsafe {
+                let _ = CloseHandle(event);
+            }
+            format!("single-instance watcher start failed: {error}")
+        })?;
+    Ok(())
 }
 
 /// Body of the watcher thread. Taking the wrapped handle as a by-value
@@ -118,6 +123,16 @@ fn watcher_loop(event: SendHandle, command_tx: Sender<TrayCommand>) {
     }
 }
 
+const HRESULT_ACCESS_DENIED: HRESULT = HRESULT(0x8007_0005_u32 as i32);
+
+fn signal_from_open_event_error(code: HRESULT) -> InstanceSignal {
+    if code == HRESULT_ACCESS_DENIED {
+        InstanceSignal::AccessDenied
+    } else {
+        InstanceSignal::NotRunning
+    }
+}
+
 fn wide_null(s: &str) -> Vec<u16> {
     s.encode_utf16().chain(std::iter::once(0)).collect()
 }
@@ -130,5 +145,17 @@ mod tests {
     fn show_event_name_is_derived_from_mutex_name() {
         assert!(SHOW_EVENT_NAME.starts_with(MUTEX_NAME));
         assert!(SHOW_EVENT_NAME.ends_with("_ShowWindow"));
+    }
+
+    #[test]
+    fn access_denied_wake_signal_is_distinguished() {
+        assert_eq!(
+            signal_from_open_event_error(HRESULT_ACCESS_DENIED),
+            InstanceSignal::AccessDenied
+        );
+        assert_eq!(
+            signal_from_open_event_error(HRESULT(0x8007_0002_u32 as i32)),
+            InstanceSignal::NotRunning
+        );
     }
 }

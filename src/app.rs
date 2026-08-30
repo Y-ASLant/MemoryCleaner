@@ -12,8 +12,8 @@ use smol::Timer;
 
 use crate::anim::{AnimatedValue, TimedAnimatedValue, ease_out_cubic};
 use crate::auto_cleanup::{
-    AUTO_CLEANUP_POLL_INTERVAL, AUTO_CLEANUP_THRESHOLD_COOLDOWN, AutoCleanupSource,
-    interval_trigger_due, threshold_trigger_due,
+    AUTO_CLEANUP_POLL_INTERVAL, AutoCleanupSource, interval_trigger_due,
+    threshold_cooldown_elapsed, threshold_trigger_due,
 };
 use crate::locale;
 use crate::memory::{MemorySection, MemoryStatus};
@@ -991,7 +991,7 @@ impl MemoryCleanerApp {
             return None;
         }
 
-        let elapsed_since_cleanup = self.last_auto_cleanup.unwrap_or(monitor_started).elapsed();
+        let elapsed_since_auto_cleanup = self.last_auto_cleanup.map(|cleanup| cleanup.elapsed());
 
         let threshold = self.settings.auto_cleanup_threshold;
         if threshold > 0 {
@@ -1005,7 +1005,7 @@ impl MemoryCleanerApp {
             }
             if threshold_trigger_due(
                 *above_threshold_ticks,
-                elapsed_since_cleanup >= AUTO_CLEANUP_THRESHOLD_COOLDOWN,
+                threshold_cooldown_elapsed(elapsed_since_auto_cleanup),
             ) {
                 *above_threshold_ticks = 0;
                 return Some(AutoCleanupSource::Threshold);
@@ -1016,6 +1016,8 @@ impl MemoryCleanerApp {
 
         let interval =
             Duration::from_secs(u64::from(self.settings.auto_cleanup_interval_minutes) * 60);
+        let elapsed_since_cleanup =
+            elapsed_since_auto_cleanup.unwrap_or_else(|| monitor_started.elapsed());
         if interval_trigger_due(interval, elapsed_since_cleanup) {
             return Some(AutoCleanupSource::Interval);
         }

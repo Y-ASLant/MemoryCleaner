@@ -35,6 +35,13 @@ pub fn threshold_trigger_due(above_threshold_ticks: u32, cooldown_elapsed: bool)
     above_threshold_ticks >= AUTO_CLEANUP_SUSTAINED_TICKS && cooldown_elapsed
 }
 
+/// Whether a threshold cleanup may run, given its most recent automatic run.
+///
+/// A first cleanup has no prior run to cool down from.
+pub fn threshold_cooldown_elapsed(elapsed_since_cleanup: Option<Duration>) -> bool {
+    elapsed_since_cleanup.is_none_or(|elapsed| elapsed >= AUTO_CLEANUP_THRESHOLD_COOLDOWN)
+}
+
 /// Whether the interval trigger should fire on this poll.
 pub fn interval_trigger_due(interval: Duration, elapsed_since_cleanup: Duration) -> bool {
     interval > Duration::ZERO && elapsed_since_cleanup >= interval
@@ -65,6 +72,17 @@ mod tests {
             AUTO_CLEANUP_SUSTAINED_TICKS + 5,
             true
         ));
+    }
+
+    #[test]
+    fn initial_threshold_trigger_has_no_cooldown() {
+        assert!(threshold_cooldown_elapsed(None));
+        assert!(!threshold_cooldown_elapsed(Some(Duration::from_secs(
+            9 * 60 + 59
+        ))));
+        assert!(threshold_cooldown_elapsed(Some(
+            AUTO_CLEANUP_THRESHOLD_COOLDOWN
+        )));
     }
 
     #[test]
