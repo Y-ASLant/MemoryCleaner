@@ -12,7 +12,7 @@
 ### 新增
 
 - **自动清理策略**：自动清理支持 Windows 低内存通知和持续内存占用阈值两种触发方式；可在窗口行为设置中选择阈值。
-- **GitHub Actions**：新增 Windows 构建流程；推送、Pull Request 和手动触发时自动执行格式检查、Clippy、测试及 release 构建，匹配版本号的 `v*` 标签会自动创建 GitHub Release 并附带 `MemoryCleaner.exe`。
+- **GitHub Actions**：新增仅由 `v*` 标签触发的 Windows 构建与发布流程；标签须匹配版本号，随后自动执行格式检查、Clippy、测试、release 构建，并创建附带 `MemoryCleaner.exe` 的 GitHub Release。
 
 ### 变更
 
@@ -109,7 +109,7 @@ Final changes since [1.0.4].
 ### Added
 
 - **Automatic-cleanup policies** — Automatic cleanup now supports Windows low-memory notifications and sustained memory-usage thresholds. The threshold is configurable in Window Behavior settings.
-- **GitHub Actions** — Added a Windows build workflow. Pushes, pull requests, and manual runs automatically check formatting, run Clippy and tests, and build release binaries. A version-matched `v*` tag creates a GitHub Release with `MemoryCleaner.exe`.
+- **GitHub Actions** — Added a Windows build-and-release workflow triggered only by `v*` tags. The tag must match the package version; it checks formatting, runs Clippy and tests, builds the release binary, and creates a GitHub Release with `MemoryCleaner.exe`.
 
 ### Changed
 
