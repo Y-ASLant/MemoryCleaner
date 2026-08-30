@@ -42,6 +42,7 @@ main.rs → wake-signal check → ensure_elevated() → wake-signal retry → si
 | `src/ui/` | GPUI UI components (layout, memory_card, settings_page, theme, title_bar) |
 | `locales/` | rust-i18n translation YAML (`zh-CN.yml`, zh-CN + en strings) |
 | `docs/` | Project docs (`CHANGELOG.md`, technical comparisons) |
+| `.github/workflows/` | GitHub Actions build and tag-release workflows |
 | `src/win32/` | Win32/NT API bindings (hotkey, notification, nt, os, process, single_instance, startup, volume, window) |
 | `vendor/proc-macro-error2/` | Vendored patch for Rust 1.97+ compatibility (see below) |
 | `.codegraph/` | Codegraph index (gitignored) |
@@ -50,10 +51,10 @@ main.rs → wake-signal check → ensure_elevated() → wake-signal retry → si
 
 ```bash
 # Format
-make fmt # cargo fmt
+make format # cargo fmt --all
 
 # Lint (clippy with -D warnings — warnings are errors)
-make check # cargo clippy -- -D warnings
+make check # cargo clippy --release -- -D warnings
 
 # Test
 make test # cargo test
@@ -71,7 +72,9 @@ cargo run --release
 make clean # cargo clean
 ```
 
-**Tests:** `make test` / `cargo test` — 63 unit tests in `src/` plus 2 integration tests in `tests/settings_persistence.rs`.
+**CI:** `.github/workflows/build.yml` runs formatting, lint, tests, and a Windows release build on pushes and pull requests to `main`. A `v*` tag must match `Cargo.toml`'s version; it then creates a GitHub Release with `MemoryCleaner.exe`.
+
+**Tests:** `make test` / `cargo test` — 66 unit tests in `src/` plus 2 integration tests in `tests/settings_persistence.rs`.
 
 ## Code Conventions & Common Patterns
 
