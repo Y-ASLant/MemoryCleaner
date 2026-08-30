@@ -27,8 +27,6 @@ pub struct Settings {
     /// Physical memory usage percent (0–100) that triggers automatic cleanup.
     /// `0` disables the threshold trigger.
     pub auto_cleanup_threshold: u32,
-    /// Minutes between scheduled automatic cleanups. `0` disables the interval trigger.
-    pub auto_cleanup_interval_minutes: u32,
 }
 
 impl Default for Settings {
@@ -46,7 +44,6 @@ impl Default for Settings {
             excluded_processes: Vec::new(),
             auto_cleanup_enabled: false,
             auto_cleanup_threshold: 0,
-            auto_cleanup_interval_minutes: 0,
         }
     }
 }
@@ -97,8 +94,7 @@ impl Settings {
         }
     }
 
-    /// Clamp auto-cleanup trigger inputs to their valid ranges. The threshold is a
-    /// usage percent; the interval is minutes. `0` disables each trigger.
+    /// Clamp the auto-cleanup threshold to its valid usage-percent range.
     fn normalize_auto_cleanup(&mut self) {
         self.auto_cleanup_threshold = self.auto_cleanup_threshold.min(100);
     }
@@ -210,7 +206,6 @@ mod tests {
         );
         assert!(!settings.auto_cleanup_enabled);
         assert_eq!(settings.auto_cleanup_threshold, 0);
-        assert_eq!(settings.auto_cleanup_interval_minutes, 0);
     }
 
     #[test]
@@ -232,20 +227,22 @@ mod tests {
     }
 
     #[test]
-    fn auto_cleanup_schedule_fields_are_parsed() {
+    fn legacy_scheduled_cleanup_field_is_ignored() {
         let settings = Settings::from_toml(
             "auto_cleanup_enabled = true\nauto_cleanup_threshold = 90\nauto_cleanup_interval_minutes = 30",
         );
         assert!(settings.auto_cleanup_enabled);
         assert_eq!(settings.auto_cleanup_threshold, 90);
-        assert_eq!(settings.auto_cleanup_interval_minutes, 30);
+        assert!(
+            !toml::to_string(&settings)
+                .expect("settings serialize")
+                .contains("auto_cleanup_interval_minutes")
+        );
     }
 
     #[test]
-    fn auto_cleanup_defaults_disable_triggers() {
-        let settings = Settings::default();
-        assert_eq!(settings.auto_cleanup_threshold, 0);
-        assert_eq!(settings.auto_cleanup_interval_minutes, 0);
+    fn auto_cleanup_defaults_disable_threshold() {
+        assert_eq!(Settings::default().auto_cleanup_threshold, 0);
     }
 
     #[test]
@@ -255,16 +252,14 @@ mod tests {
     }
 
     #[test]
-    fn auto_cleanup_fields_roundtrip() {
+    fn auto_cleanup_threshold_roundtrips() {
         let original = Settings {
             auto_cleanup_enabled: true,
             auto_cleanup_threshold: 85,
-            auto_cleanup_interval_minutes: 60,
             ..Default::default()
         };
         let restored: Settings = toml::from_str(&toml::to_string(&original).unwrap()).unwrap();
         assert_eq!(restored.auto_cleanup_threshold, 85);
-        assert_eq!(restored.auto_cleanup_interval_minutes, 60);
     }
 
     #[test]

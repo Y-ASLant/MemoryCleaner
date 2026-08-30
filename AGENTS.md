@@ -11,7 +11,7 @@ main.rs → wake-signal check → ensure_elevated() → wake-signal retry → si
        → notification::init → tray install + hotkey::sync → GPUI app launch
  │
  ├─ app.rs (core state, memory refresh, optimization, window hide/restore)
- ├─ auto_cleanup.rs (auto-cleanup trigger policy: threshold/interval decisions)
+ ├─ auto_cleanup.rs (auto-cleanup trigger policy: threshold decisions)
  ├─ log.rs (optional App.log file output, timestamp-based retention)
  ├─ locale.rs (rust-i18n locale apply, list separator, lang-id mapping)
  ├─ memory.rs (GlobalMemoryStatusEx → MemoryStatus)
@@ -115,7 +115,7 @@ make clean # cargo clean
 - **Window size:** fixed width 520px; collapsed height ~294px, expanded ~630px (`src/app.rs` + `src/ui/layout.rs`).
 - **Collapsed view:** memory cards + cleanup button.
 - **Expanded view:** adds cleanup-area checkboxes panel (`settings_page::render_settings_content`).
-- **Window behavior dialog** (always on top, close-to-tray, run at startup, debug logging, optimization notifications, cleanup hotkey + recording, language, auto-cleanup threshold/interval): opened from title-bar gear icon; `overlay_closable(false)` — clicking the backdrop does not close it.
+- **Window behavior dialog** (always on top, close-to-tray, run at startup, debug logging, optimization notifications, cleanup hotkey + recording, language, auto-cleanup threshold): opened from title-bar gear icon; `overlay_closable(false)` — clicking the backdrop does not close it.
 - **Optimization feedback:** progress and result text render inside the cleanup button; result clears after 5 seconds (`OPTIMIZE_RESULT_DISPLAY`).
 - **Memory refresh:** `MEMORY_REFRESH_INTERVAL` = 1 s while main window is visible; paused when hidden to tray (`pause_memory_refresh` / `start_memory_refresh`).
 - **Platform chrome:** Win10 (build &lt; 22000) uses square corners via theme tokens; Win11 keeps gpui-component defaults.

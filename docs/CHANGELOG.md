@@ -11,7 +11,7 @@
 
 ### 新增
 
-- **自动清理策略**：自动清理支持 Windows 低内存通知、持续内存占用阈值与定时间隔三种触发方式；可在窗口行为设置中选择阈值和间隔。
+- **自动清理策略**：自动清理支持 Windows 低内存通知和持续内存占用阈值两种触发方式；可在窗口行为设置中选择阈值。
 
 ### 变更
 
@@ -19,10 +19,12 @@
 - **已有实例唤醒**：再次启动程序时会通知已有实例显示主窗口；同一权限级别下无需额外 UAC 提示。
 - **开机启动**：改用以最高权限运行的登录计划任务，并在每次同步时刷新任务配置，确保程序更新或移动后仍使用当前可执行文件。
 - **启动可靠性**：计划任务查询会区分任务不存在与系统错误；单实例互斥体和唤醒监听器的创建失败会中止启动并记录错误。
+- **当前策略说明**：自动清理设置会明确显示当前启用的触发条件；阈值关闭时，说明仅由 Windows 低物理内存通知触发。
+- **选择器布局**：自动清理的阈值下拉选择器宽度与语言选择器统一，减少弹出菜单与触发控件的宽度差异。
 
 ### 移除
 
-- 无。
+- **定时清理**：移除定时间隔设置与触发逻辑；旧配置中的间隔字段会被安全忽略并在下次保存时移除。
 
 
 ## [1.0.4] - 2026-07-29
@@ -105,7 +107,7 @@ Final changes since [1.0.4].
 
 ### Added
 
-- **Automatic-cleanup policies** — Automatic cleanup now supports Windows low-memory notifications, sustained memory-usage thresholds, and scheduled intervals. Threshold and interval choices are available in Window Behavior settings.
+- **Automatic-cleanup policies** — Automatic cleanup now supports Windows low-memory notifications and sustained memory-usage thresholds. The threshold is configurable in Window Behavior settings.
 
 ### Changed
 
@@ -113,10 +115,12 @@ Final changes since [1.0.4].
 - **Existing-instance activation** — Launching the application again signals the existing instance to show its main window without an additional UAC prompt at the same integrity level.
 - **Startup** — Logon startup now uses a highest-privilege scheduled task and refreshes its configuration on every sync, so updates or moved installations continue to launch the current executable.
 - **Startup reliability** — Scheduled-task queries now distinguish a missing task from system errors; failures to create the single-instance mutex or wake listener abort startup and are logged.
+- **Current-policy explanation** — Automatic Cleanup now explicitly states the active triggers. When the threshold is off, it says that only Windows low-physical-memory notifications can trigger cleanup.
+- **Selector layout** — The automatic-cleanup threshold selector now matches the language selector width, reducing the width mismatch between the trigger control and its popup menu.
 
 ### Removed
 
-- None.
+- **Scheduled cleanup** — Removed the scheduled-interval setting and trigger. Legacy interval fields in saved configuration are safely ignored and removed on the next save.
 ## [1.0.4] - 2026-07-29
 
 Final changes since [1.0.3].

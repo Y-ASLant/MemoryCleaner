@@ -1,6 +1,5 @@
-//! Auto-cleanup trigger policy shared by the configurable triggers (usage
-//! threshold, scheduled interval). The OS low-memory notification lives in
-//! `win32::memory_notification` and needs no policy logic.
+//! Auto-cleanup trigger policy for the configurable memory-usage threshold.
+//! The OS low-memory notification lives in `win32::memory_notification`.
 
 use std::time::Duration;
 
@@ -17,7 +16,6 @@ pub const AUTO_CLEANUP_THRESHOLD_COOLDOWN: Duration = Duration::from_secs(10 * 6
 pub enum AutoCleanupSource {
     LowMemoryNotification,
     Threshold,
-    Interval,
 }
 
 impl AutoCleanupSource {
@@ -25,7 +23,6 @@ impl AutoCleanupSource {
         match self {
             Self::LowMemoryNotification => "Windows low-memory notification",
             Self::Threshold => "memory usage threshold",
-            Self::Interval => "scheduled interval",
         }
     }
 }
@@ -40,11 +37,6 @@ pub fn threshold_trigger_due(above_threshold_ticks: u32, cooldown_elapsed: bool)
 /// A first cleanup has no prior run to cool down from.
 pub fn threshold_cooldown_elapsed(elapsed_since_cleanup: Option<Duration>) -> bool {
     elapsed_since_cleanup.is_none_or(|elapsed| elapsed >= AUTO_CLEANUP_THRESHOLD_COOLDOWN)
-}
-
-/// Whether the interval trigger should fire on this poll.
-pub fn interval_trigger_due(interval: Duration, elapsed_since_cleanup: Duration) -> bool {
-    interval > Duration::ZERO && elapsed_since_cleanup >= interval
 }
 
 #[cfg(test)]
@@ -83,17 +75,5 @@ mod tests {
         assert!(threshold_cooldown_elapsed(Some(
             AUTO_CLEANUP_THRESHOLD_COOLDOWN
         )));
-    }
-
-    #[test]
-    fn interval_trigger_requires_nonzero_interval() {
-        let elapsed = Duration::from_secs(60 * 60);
-        assert!(!interval_trigger_due(Duration::ZERO, elapsed));
-        assert!(!interval_trigger_due(
-            Duration::from_secs(2 * 60 * 60),
-            elapsed
-        ));
-        assert!(interval_trigger_due(Duration::from_secs(60 * 60), elapsed));
-        assert!(interval_trigger_due(Duration::from_secs(60), elapsed));
     }
 }

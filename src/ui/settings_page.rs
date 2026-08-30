@@ -533,7 +533,6 @@ fn cleanup_hotkey_display(
 }
 
 const AUTO_CLEANUP_THRESHOLD_OPTIONS: &[u32] = &[0, 70, 75, 80, 85, 90, 95];
-const AUTO_CLEANUP_INTERVAL_OPTIONS: &[u32] = &[0, 15, 30, 60, 120, 240, 480, 1440];
 
 fn format_threshold_value(value: u32) -> String {
     if value == 0 {
@@ -543,13 +542,19 @@ fn format_threshold_value(value: u32) -> String {
     }
 }
 
-fn format_interval_value(value: u32) -> String {
-    if value == 0 {
-        t!("settings.auto_cleanup_option_off").to_string()
-    } else if value < 60 {
-        t!("settings.interval_minutes", n = value).to_string()
+pub(crate) fn auto_cleanup_description(enabled: bool, threshold: u32) -> String {
+    if !enabled {
+        return t!("settings.auto_cleanup_status_disabled").to_string();
+    }
+
+    if threshold == 0 {
+        t!("settings.auto_cleanup_status_low_memory").to_string()
     } else {
-        t!("settings.interval_hours", n = value / 60).to_string()
+        t!(
+            "settings.auto_cleanup_status_threshold",
+            threshold = format_threshold_value(threshold)
+        )
+        .to_string()
     }
 }
 
@@ -643,7 +648,7 @@ fn render_auto_cleanup_option_row(
             Button::new(id)
                 .ghost()
                 .small()
-                .min_w(px(112.))
+                .min_w(px(128.))
                 .label(current_label)
                 .dropdown_caret(true)
                 .dropdown_menu_with_anchor(Anchor::TopRight, move |menu, _, _| {
@@ -824,7 +829,10 @@ pub fn render_window_behavior_dialog(
                 id: "dialog-switch-auto-cleanup",
                 icon: IconName::Play,
                 title: t!("settings.auto_cleanup").to_string(),
-                description: t!("settings.auto_cleanup_desc").to_string(),
+                description: auto_cleanup_description(
+                    settings.auto_cleanup_enabled,
+                    settings.auto_cleanup_threshold,
+                ),
                 checked: settings.auto_cleanup_enabled,
             },
             muted,
@@ -849,22 +857,6 @@ pub fn render_window_behavior_dialog(
                 current: settings.auto_cleanup_threshold,
                 format_value: format_threshold_value,
                 setter: MemoryCleanerApp::set_auto_cleanup_threshold,
-            },
-            !settings.auto_cleanup_enabled,
-            muted,
-            foreground,
-        ))
-        .child(render_auto_cleanup_option_row(
-            &weak,
-            AutoCleanupOptionRow {
-                id: "dialog-select-auto-cleanup-interval",
-                icon: IconName::Calendar,
-                title: t!("settings.auto_cleanup_interval").to_string(),
-                description: t!("settings.auto_cleanup_interval_desc").to_string(),
-                options: AUTO_CLEANUP_INTERVAL_OPTIONS,
-                current: settings.auto_cleanup_interval_minutes,
-                format_value: format_interval_value,
-                setter: MemoryCleanerApp::set_auto_cleanup_interval_minutes,
             },
             !settings.auto_cleanup_enabled,
             muted,

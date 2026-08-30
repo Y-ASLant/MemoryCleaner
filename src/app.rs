@@ -12,8 +12,8 @@ use smol::Timer;
 
 use crate::anim::{AnimatedValue, TimedAnimatedValue, ease_out_cubic};
 use crate::auto_cleanup::{
-    AUTO_CLEANUP_POLL_INTERVAL, AutoCleanupSource, interval_trigger_due,
-    threshold_cooldown_elapsed, threshold_trigger_due,
+    AUTO_CLEANUP_POLL_INTERVAL, AutoCleanupSource, threshold_cooldown_elapsed,
+    threshold_trigger_due,
 };
 use crate::locale;
 use crate::memory::{MemorySection, MemoryStatus};
@@ -151,8 +151,7 @@ pub struct MemoryCleanerApp {
     pub icon_cache_status: String,
     pub settings_expanded: bool,
     window_shown: bool,
-    /// When the last automatic cleanup ran (any source); anchors threshold cooldown
-    /// and the scheduled-interval timer.
+    /// When the last automatic cleanup ran; anchors the threshold cooldown.
     last_auto_cleanup: Option<Instant>,
     pub cleanup_hotkey_recording: bool,
     pub(crate) hotkey_capture_focus: FocusHandle,
@@ -723,12 +722,6 @@ impl MemoryCleanerApp {
         cx.notify();
     }
 
-    pub fn set_auto_cleanup_interval_minutes(&mut self, value: u32, cx: &mut Context<Self>) {
-        self.settings.auto_cleanup_interval_minutes = value;
-        self.queue_settings_save(cx);
-        cx.notify();
-    }
-
     pub fn set_cleanup_hotkey_enabled(&mut self, enabled: bool, cx: &mut Context<Self>) {
         self.settings.cleanup_hotkey_enabled = enabled;
         if !enabled {
@@ -978,68 +971,50 @@ impl MemoryCleanerApp {
         self.run_optimize(cx);
     }
 
-    /// Re-evaluate the threshold and interval triggers. Returns the trigger that
-    /// should fire, if any. `monitor_started` anchors the interval timer before the
-    /// first cleanup, and `above_threshold_ticks` carries the sustained-pressure
-    /// counter across polls.
-    fn poll_auto_cleanup(
-        &mut self,
-        monitor_started: Instant,
-        above_threshold_ticks: &mut u32,
-    ) -> Option<AutoCleanupSource> {
+    /// Re-evaluate the configurable threshold trigger. `above_threshold_ticks`
+    /// carries the sustained-pressure counter across polls.
+    fn poll_auto_cleanup(&mut self, above_threshold_ticks: &mut u32) -> Option<AutoCleanupSource> {
         if !self.settings.auto_cleanup_enabled || self.is_busy() {
             return None;
         }
 
-        let elapsed_since_auto_cleanup = self.last_auto_cleanup.map(|cleanup| cleanup.elapsed());
-
         let threshold = self.settings.auto_cleanup_threshold;
-        if threshold > 0 {
-            let memory_load = MemoryStatus::query()
-                .map(|status| status.memory_load)
-                .unwrap_or(0);
-            if memory_load >= threshold {
-                *above_threshold_ticks = above_threshold_ticks.saturating_add(1);
-            } else {
-                *above_threshold_ticks = 0;
-            }
-            if threshold_trigger_due(
-                *above_threshold_ticks,
-                threshold_cooldown_elapsed(elapsed_since_auto_cleanup),
-            ) {
-                *above_threshold_ticks = 0;
-                return Some(AutoCleanupSource::Threshold);
-            }
+        if threshold == 0 {
+            *above_threshold_ticks = 0;
+            return None;
+        }
+
+        let memory_load = MemoryStatus::query()
+            .map(|status| status.memory_load)
+            .unwrap_or(0);
+        if memory_load >= threshold {
+            *above_threshold_ticks = above_threshold_ticks.saturating_add(1);
         } else {
             *above_threshold_ticks = 0;
         }
 
-        let interval =
-            Duration::from_secs(u64::from(self.settings.auto_cleanup_interval_minutes) * 60);
-        let elapsed_since_cleanup =
-            elapsed_since_auto_cleanup.unwrap_or_else(|| monitor_started.elapsed());
-        if interval_trigger_due(interval, elapsed_since_cleanup) {
-            return Some(AutoCleanupSource::Interval);
+        if threshold_trigger_due(
+            *above_threshold_ticks,
+            threshold_cooldown_elapsed(self.last_auto_cleanup.map(|cleanup| cleanup.elapsed())),
+        ) {
+            *above_threshold_ticks = 0;
+            Some(AutoCleanupSource::Threshold)
+        } else {
+            None
         }
-
-        None
     }
 
-    /// Process-lifetime monitor for the threshold and interval auto-cleanup
-    /// triggers. The OS low-memory notification keeps its own native monitor
-    /// (`win32::memory_notification`); this task only adds the configurable
-    /// triggers that need settings access. It runs independently of window
-    /// visibility.
+    /// Process-lifetime monitor for the configurable threshold trigger. The OS
+    /// low-memory notification keeps its own native monitor
+    /// (`win32::memory_notification`); this task only adds the trigger that needs
+    /// settings access. It runs independently of window visibility.
     fn start_auto_cleanup_monitor(&self, cx: &mut Context<Self>) {
-        let monitor_started = Instant::now();
         cx.spawn(async move |this, cx| {
             let mut above_threshold_ticks: u32 = 0;
             loop {
                 Timer::after(AUTO_CLEANUP_POLL_INTERVAL).await;
                 let Ok(()) = this.update(cx, |app, cx| {
-                    if let Some(source) =
-                        app.poll_auto_cleanup(monitor_started, &mut above_threshold_ticks)
-                    {
+                    if let Some(source) = app.poll_auto_cleanup(&mut above_threshold_ticks) {
                         app.run_auto_cleanup(source, cx);
                     }
                 }) else {

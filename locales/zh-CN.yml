@@ -103,30 +103,24 @@ settings.cleanup_hotkey_recording:
 settings.auto_cleanup:
   zh-CN: "自动清理"
   en: "Automatic Cleanup"
-settings.auto_cleanup_desc:
-  zh-CN: "在物理内存不足、超过阈值或到达定时间隔时自动执行清理"
-  en: "Clean automatically on low memory, above the threshold, or on a schedule"
+settings.auto_cleanup_status_disabled:
+  zh-CN: "当前：已关闭。开启后将在 Windows 内存不足或超过阈值时清理"
+  en: "Currently off. Enable to clean on low memory or above the threshold"
+settings.auto_cleanup_status_low_memory:
+  zh-CN: "当前：仅在 Windows 报告物理内存不足时清理"
+  en: "Currently: only when Windows reports low physical memory"
+settings.auto_cleanup_status_threshold:
+  zh-CN: "当前：Windows 报告物理内存不足，或使用率持续达到 %{threshold} 时清理"
+  en: "Currently: when Windows reports low physical memory or usage stays at %{threshold}"
 settings.auto_cleanup_threshold:
   zh-CN: "内存占用阈值"
   en: "Memory Usage Threshold"
 settings.auto_cleanup_threshold_desc:
   zh-CN: "使用率持续高于该阈值时自动清理"
   en: "Clean when usage stays above the threshold"
-settings.auto_cleanup_interval:
-  zh-CN: "定时清理间隔"
-  en: "Scheduled Cleanup"
-settings.auto_cleanup_interval_desc:
-  zh-CN: "按固定间隔自动执行一次清理"
-  en: "Clean automatically at a fixed interval"
 settings.auto_cleanup_option_off:
   zh-CN: "关闭"
   en: "Off"
-settings.interval_minutes:
-  zh-CN: "%{n} 分钟"
-  en: "%{n} min"
-settings.interval_hours:
-  zh-CN: "%{n} 小时"
-  en: "%{n} h"
 settings.cleanup_areas:
   zh-CN: "清理区域"
   en: "Cleanup Areas"
