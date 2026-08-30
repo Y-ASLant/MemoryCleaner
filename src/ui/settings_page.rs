@@ -532,6 +532,137 @@ fn cleanup_hotkey_display(
     }
 }
 
+const AUTO_CLEANUP_THRESHOLD_OPTIONS: &[u32] = &[0, 70, 75, 80, 85, 90, 95];
+const AUTO_CLEANUP_INTERVAL_OPTIONS: &[u32] = &[0, 15, 30, 60, 120, 240, 480, 1440];
+
+fn format_threshold_value(value: u32) -> String {
+    if value == 0 {
+        t!("settings.auto_cleanup_option_off").to_string()
+    } else {
+        format!("{value}%")
+    }
+}
+
+fn format_interval_value(value: u32) -> String {
+    if value == 0 {
+        t!("settings.auto_cleanup_option_off").to_string()
+    } else if value < 60 {
+        t!("settings.interval_minutes", n = value).to_string()
+    } else {
+        t!("settings.interval_hours", n = value / 60).to_string()
+    }
+}
+
+/// One auto-cleanup trigger row: label + description on the left, a preset
+/// dropdown on the right.
+struct AutoCleanupOptionRow {
+    id: &'static str,
+    icon: IconName,
+    title: String,
+    description: String,
+    options: &'static [u32],
+    current: u32,
+    format_value: fn(u32) -> String,
+    setter: fn(&mut MemoryCleanerApp, u32, &mut Context<MemoryCleanerApp>),
+}
+
+fn render_auto_cleanup_option_row(
+    weak: &WeakEntity<MemoryCleanerApp>,
+    row: AutoCleanupOptionRow,
+    dim: bool,
+    muted: Hsla,
+    foreground: Hsla,
+) -> impl IntoElement {
+    let AutoCleanupOptionRow {
+        id,
+        icon,
+        title,
+        description,
+        options,
+        current,
+        format_value,
+        setter,
+    } = row;
+    let current_label = format_value(current);
+    let weak_row = weak.clone();
+
+    h_flex()
+        .w_full()
+        .items_center()
+        .justify_between()
+        .gap_3()
+        .py(px(3.))
+        .when(dim, |row| row.opacity(0.5))
+        .child(
+            v_flex()
+                .flex_1()
+                .min_w_0()
+                .gap(px(1.))
+                .child(
+                    h_flex()
+                        .w_full()
+                        .items_center()
+                        .gap_2()
+                        .child(
+                            div()
+                                .flex_shrink_0()
+                                .flex()
+                                .items_center()
+                                .child(Icon::new(icon.clone()).small().text_color(muted)),
+                        )
+                        .child(
+                            Label::new(title)
+                                .text_sm()
+                                .font_weight(FontWeight::MEDIUM)
+                                .text_color(foreground),
+                        ),
+                )
+                .child(
+                    h_flex()
+                        .w_full()
+                        .items_start()
+                        .gap_2()
+                        .child(
+                            div()
+                                .flex_shrink_0()
+                                .invisible()
+                                .flex()
+                                .items_center()
+                                .child(Icon::new(icon).small()),
+                        )
+                        .child(
+                            Label::new(description)
+                                .text_xs()
+                                .text_color(muted)
+                                .flex_1()
+                                .min_w_0(),
+                        ),
+                ),
+        )
+        .child(
+            Button::new(id)
+                .ghost()
+                .small()
+                .min_w(px(112.))
+                .label(current_label)
+                .dropdown_caret(true)
+                .dropdown_menu_with_anchor(Anchor::TopRight, move |menu, _, _| {
+                    options.iter().fold(menu, |menu, value| {
+                        let value = *value;
+                        let checked = current == value;
+                        let weak = weak_row.clone();
+                        menu.item(
+                            PopupMenuItem::new(format_value(value))
+                                .checked(checked)
+                                .on_click(move |_, _, cx| {
+                                    let _ = weak.update(cx, |app, cx| setter(app, value, cx));
+                                }),
+                        )
+                    })
+                }),
+        )
+}
+
 fn render_cleanup_hotkey_row(
     weak: &WeakEntity<MemoryCleanerApp>,
     muted: Hsla,
@@ -706,6 +837,38 @@ pub fn render_window_behavior_dialog(
                     });
                 }
             },
+        ))
+        .child(render_auto_cleanup_option_row(
+            &weak,
+            AutoCleanupOptionRow {
+                id: "dialog-select-auto-cleanup-threshold",
+                icon: IconName::ChartPie,
+                title: t!("settings.auto_cleanup_threshold").to_string(),
+                description: t!("settings.auto_cleanup_threshold_desc").to_string(),
+                options: AUTO_CLEANUP_THRESHOLD_OPTIONS,
+                current: settings.auto_cleanup_threshold,
+                format_value: format_threshold_value,
+                setter: MemoryCleanerApp::set_auto_cleanup_threshold,
+            },
+            !settings.auto_cleanup_enabled,
+            muted,
+            foreground,
+        ))
+        .child(render_auto_cleanup_option_row(
+            &weak,
+            AutoCleanupOptionRow {
+                id: "dialog-select-auto-cleanup-interval",
+                icon: IconName::Calendar,
+                title: t!("settings.auto_cleanup_interval").to_string(),
+                description: t!("settings.auto_cleanup_interval_desc").to_string(),
+                options: AUTO_CLEANUP_INTERVAL_OPTIONS,
+                current: settings.auto_cleanup_interval_minutes,
+                format_value: format_interval_value,
+                setter: MemoryCleanerApp::set_auto_cleanup_interval_minutes,
+            },
+            !settings.auto_cleanup_enabled,
+            muted,
+            foreground,
         ))
         .child(switch_row_app(
             SwitchRowConfig {

@@ -7,10 +7,11 @@ Memory Cleaner is a **Windows-only** GUI memory-optimization tool written in Rus
 ## Architecture & Data Flow
 
 ```
-main.rs → ensure_elevated() → single-instance check → notification::init
-       → tray install + hotkey::sync → GPUI app launch
+main.rs → wake-signal check → ensure_elevated() → wake-signal retry → single-instance mutex + wake event
+       → notification::init → tray install + hotkey::sync → GPUI app launch
  │
  ├─ app.rs (core state, memory refresh, optimization, window hide/restore)
+ ├─ auto_cleanup.rs (auto-cleanup trigger policy: threshold/interval decisions)
  ├─ log.rs (optional App.log file output, timestamp-based retention)
  ├─ locale.rs (rust-i18n locale apply, list separator, lang-id mapping)
  ├─ memory.rs (GlobalMemoryStatusEx → MemoryStatus)
@@ -24,7 +25,7 @@ main.rs → ensure_elevated() → single-instance check → notification::init
  └─ win32/ (hotkey, notification, nt, os, process, single_instance, startup, volume, window)
 ```
 
-- **Entry flow:** `main.rs` → elevation → single-instance mutex → `locale::apply` → `notification::init` → install tray + bind hotkey sender → `hotkey::sync` → GPUI app with `QuitMode::Explicit` → `open_main_window`.
+- **Entry flow:** `main.rs` → wake any running instance via the named show-window event (before elevation, so a same-integrity launch needs no UAC) → `ensure_elevated()` → wake-signal retry → single-instance mutex + wake event watcher → `locale::apply` → `notification::init` → install tray + bind hotkey sender → `hotkey::sync` → GPUI app with `QuitMode::Explicit` → `open_main_window`.
 - **i18n:** `rust-i18n` with `locales/zh-CN.yml` (single file, `_version: 2`, zh-CN + en). `rust_i18n::i18n!` is invoked once in `lib.rs`. `settings.language` is `auto` | `zh-CN` | `en`; `auto` uses `GetUserDefaultUILanguage` via `win32::os::system_ui_locale()`. Language changes call `MemoryCleanerApp::apply_locale()` to refresh memory labels and tray menu text immediately.
 - **Async runtime:** `smol` for async task execution (optimization progress updates, memory polling, toast display).
 - **UI stack:** GPUI + `gpui-component` (Button, Checkbox, Switch, GroupBox, ProgressCircle, Kbd).
@@ -70,7 +71,7 @@ cargo run --release
 make clean # cargo clean
 ```
 
-**Tests:** `make test` / `cargo test` — 52 unit tests in `src/` plus 2 integration tests in `tests/settings_persistence.rs`.
+**Tests:** `make test` / `cargo test` — 63 unit tests in `src/` plus 2 integration tests in `tests/settings_persistence.rs`.
 
 ## Code Conventions & Common Patterns
 
@@ -103,7 +104,7 @@ make clean # cargo clean
 | `src/settings.rs` | TOML settings schema and persistence |
 | `src/win32/nt.rs` | Raw NT API bindings (`NtSetSystemInformation`, `NtCreateFile`, structs, enums) |
 | `src/win32/volume.rs` | Mount Manager volume enumeration and modified-file-cache flush |
-| `src/win32/startup.rs` | Run-at-startup registry toggle (`HKCU\...\Run`) |
+| `src/win32/startup.rs` | Run-at-startup via a Task Scheduler logon task (`/RL HIGHEST`); deletes the legacy `HKCU\...\Run` entry |
 | `docs/CHANGELOG.md` | Version changelog (final diff vs previous release only) |
 | `Cargo.toml` | Dependencies, features, release profile (LTO, strip, abort-on-panic) |
 | `build.rs` | Icon embedding via `winres` |
@@ -114,7 +115,7 @@ make clean # cargo clean
 - **Window size:** fixed width 520px; collapsed height ~294px, expanded ~630px (`src/app.rs` + `src/ui/layout.rs`).
 - **Collapsed view:** memory cards + cleanup button.
 - **Expanded view:** adds cleanup-area checkboxes panel (`settings_page::render_settings_content`).
-- **Window behavior dialog** (always on top, close-to-tray, run at startup, debug logging, optimization notifications, cleanup hotkey + recording, language): opened from title-bar gear icon; `overlay_closable(false)` — clicking the backdrop does not close it.
+- **Window behavior dialog** (always on top, close-to-tray, run at startup, debug logging, optimization notifications, cleanup hotkey + recording, language, auto-cleanup threshold/interval): opened from title-bar gear icon; `overlay_closable(false)` — clicking the backdrop does not close it.
 - **Optimization feedback:** progress and result text render inside the cleanup button; result clears after 5 seconds (`OPTIMIZE_RESULT_DISPLAY`).
 - **Memory refresh:** `MEMORY_REFRESH_INTERVAL` = 1 s while main window is visible; paused when hidden to tray (`pause_memory_refresh` / `start_memory_refresh`).
 - **Platform chrome:** Win10 (build &lt; 22000) uses square corners via theme tokens; Win11 keeps gpui-component defaults.
@@ -151,7 +152,7 @@ While `run_optimize` is in progress, `tray::start_spin()` posts `TrayCommand::Se
 
 ## Testing & QA
 
-- **Unit tests:** `cargo test` — memory formatting, cleanup messages, settings TOML, tray tooltip, hotkey chord parse/format, optimize step plan, layout metrics, icon-cache outcomes, notification XML escape, volume flush helpers.
+- **Unit tests:** `cargo test` — memory formatting, cleanup messages, settings TOML, tray tooltip, hotkey chord parse/format, optimize step plan, auto-cleanup trigger policy, startup task command line, layout metrics, icon-cache outcomes, notification XML escape, volume flush helpers.
 - **Integration tests:** `tests/settings_persistence.rs` — settings save/load and atomic write in isolated `%APPDATA%`.
 - **Manual QA:** Win32 memory cleanup, tray, GPUI dialogs, Explorer restart, global hotkey, Windows Toast (admin required for most cleanup).
 - **Diagnostics:** DebugView for `OutputDebugString`; optional `App.log` when debug logging is enabled.

@@ -2,6 +2,7 @@ rust_i18n::i18n!("locales", fallback = "zh-CN");
 pub mod anim;
 
 pub mod app;
+pub mod auto_cleanup;
 pub mod icon_cache;
 pub mod locale;
 pub mod log;

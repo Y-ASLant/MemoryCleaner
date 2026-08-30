@@ -24,6 +24,11 @@ pub struct Settings {
     pub excluded_processes: Vec<String>,
     /// Enable cleanup when Windows reports low physical memory.
     pub auto_cleanup_enabled: bool,
+    /// Physical memory usage percent (0–100) that triggers automatic cleanup.
+    /// `0` disables the threshold trigger.
+    pub auto_cleanup_threshold: u32,
+    /// Minutes between scheduled automatic cleanups. `0` disables the interval trigger.
+    pub auto_cleanup_interval_minutes: u32,
 }
 
 impl Default for Settings {
@@ -40,6 +45,8 @@ impl Default for Settings {
             cleanup_hotkey: crate::win32::hotkey::HotkeyBinding::DEFAULT_CLEANUP.into(),
             excluded_processes: Vec::new(),
             auto_cleanup_enabled: false,
+            auto_cleanup_threshold: 0,
+            auto_cleanup_interval_minutes: 0,
         }
     }
 }
@@ -80,6 +87,7 @@ impl Settings {
         settings.normalize_language();
         settings.normalize_cleanup_hotkey();
         settings.normalize_excluded_processes();
+        settings.normalize_auto_cleanup();
         settings
     }
 
@@ -87,6 +95,12 @@ impl Settings {
         if !matches!(self.language.as_str(), "auto" | "zh-CN" | "en") {
             self.language = "auto".into();
         }
+    }
+
+    /// Clamp auto-cleanup trigger inputs to their valid ranges. The threshold is a
+    /// usage percent; the interval is minutes. `0` disables each trigger.
+    fn normalize_auto_cleanup(&mut self) {
+        self.auto_cleanup_threshold = self.auto_cleanup_threshold.min(100);
     }
 
     fn normalize_cleanup_hotkey(&mut self) {
@@ -127,6 +141,7 @@ impl Settings {
         settings.normalize_language();
         settings.normalize_cleanup_hotkey();
         settings.normalize_excluded_processes();
+        settings.normalize_auto_cleanup();
         settings
     }
 
@@ -194,6 +209,8 @@ mod tests {
             crate::win32::hotkey::HotkeyBinding::DEFAULT_CLEANUP
         );
         assert!(!settings.auto_cleanup_enabled);
+        assert_eq!(settings.auto_cleanup_threshold, 0);
+        assert_eq!(settings.auto_cleanup_interval_minutes, 0);
     }
 
     #[test]
@@ -207,27 +224,60 @@ mod tests {
             ..Default::default()
         };
         let restored: Settings = toml::from_str(&toml::to_string(&original).unwrap()).unwrap();
-        assert_eq!(restored.always_on_top, true);
-        assert_eq!(restored.debug_logging, true);
+        assert!(restored.always_on_top);
+        assert!(restored.debug_logging);
         assert_eq!(restored.language, "en");
         assert_eq!(restored.memory_areas, MemoryAreas::WORKING_SET.bits());
         assert!(restored.auto_cleanup_enabled);
     }
 
     #[test]
-    fn legacy_automatic_cleanup_schedule_fields_are_ignored() {
+    fn auto_cleanup_schedule_fields_are_parsed() {
         let settings = Settings::from_toml(
             "auto_cleanup_enabled = true\nauto_cleanup_threshold = 90\nauto_cleanup_interval_minutes = 30",
         );
         assert!(settings.auto_cleanup_enabled);
+        assert_eq!(settings.auto_cleanup_threshold, 90);
+        assert_eq!(settings.auto_cleanup_interval_minutes, 30);
+    }
+
+    #[test]
+    fn auto_cleanup_defaults_disable_triggers() {
+        let settings = Settings::default();
+        assert_eq!(settings.auto_cleanup_threshold, 0);
+        assert_eq!(settings.auto_cleanup_interval_minutes, 0);
+    }
+
+    #[test]
+    fn auto_cleanup_threshold_is_clamped_to_100() {
+        let settings = Settings::from_toml("auto_cleanup_threshold = 150");
+        assert_eq!(settings.auto_cleanup_threshold, 100);
+    }
+
+    #[test]
+    fn auto_cleanup_fields_roundtrip() {
+        let original = Settings {
+            auto_cleanup_enabled: true,
+            auto_cleanup_threshold: 85,
+            auto_cleanup_interval_minutes: 60,
+            ..Default::default()
+        };
+        let restored: Settings = toml::from_str(&toml::to_string(&original).unwrap()).unwrap();
+        assert_eq!(restored.auto_cleanup_threshold, 85);
+        assert_eq!(restored.auto_cleanup_interval_minutes, 60);
     }
 
     #[test]
     fn effective_locale_resolves_explicit_values() {
-        let mut settings = Settings::default();
-        settings.language = "en".into();
+        let settings = Settings {
+            language: "en".into(),
+            ..Default::default()
+        };
         assert_eq!(settings.effective_locale(), "en");
-        settings.language = "zh-CN".into();
+        let settings = Settings {
+            language: "zh-CN".into(),
+            ..Default::default()
+        };
         assert_eq!(settings.effective_locale(), "zh-CN");
     }
 

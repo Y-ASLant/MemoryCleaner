@@ -11,6 +11,7 @@ use tray_icon::menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem};
 use tray_icon::{Icon, MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
 
 use crate::app::MemoryCleanerApp;
+use crate::auto_cleanup::AutoCleanupSource;
 use crate::memory::MemorySection;
 
 /// Delay between 90° rotation steps while optimizing.
@@ -292,7 +293,9 @@ pub fn dispatch_command(
             app.sync_tray();
         }
         TrayCommand::Optimize => app.run_optimize(cx),
-        TrayCommand::LowMemory => app.run_low_memory_cleanup(cx),
+        TrayCommand::LowMemory => {
+            app.run_auto_cleanup(AutoCleanupSource::LowMemoryNotification, cx)
+        }
         TrayCommand::MenuAction(action) => app.handle_tray_action(&action, cx),
         TrayCommand::SetSpinFrame {
             quarters,

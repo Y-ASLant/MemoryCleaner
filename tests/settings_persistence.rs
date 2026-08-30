@@ -49,11 +49,11 @@ fn settings_save_and_load_roundtrip_in_temp_config_dir() {
         settings.save();
 
         let loaded = Settings::load();
-        assert_eq!(loaded.always_on_top, true);
-        assert_eq!(loaded.close_to_notification_area, false);
+        assert!(loaded.always_on_top);
+        assert!(!loaded.close_to_notification_area);
         assert_eq!(loaded.memory_areas, MemoryAreas::WORKING_SET.bits());
         assert_eq!(loaded.language, "zh-CN");
-        assert_eq!(loaded.debug_logging, true);
+        assert!(loaded.debug_logging);
         assert_eq!(loaded.excluded_processes, vec!["chrome".to_string()]);
         assert!(loaded.auto_cleanup_enabled);
     });

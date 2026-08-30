@@ -92,8 +92,26 @@ fn ensure_elevated() {
 }
 
 fn main() {
+    // Wake an already-running instance before touching UAC: a same-integrity
+    // launch can activate the running window without an elevation round-trip.
+    if win32::single_instance::signal_existing_instance()
+        == win32::single_instance::InstanceSignal::Signaled
+    {
+        return;
+    }
+
     ensure_elevated();
-    if let Err(e) = win32::single_instance::ensure_single_instance() {
+
+    // The elevated relaunch enters here; retry the signal now that the
+    // integrity level matches the running instance, then claim the mutex.
+    if win32::single_instance::signal_existing_instance()
+        == win32::single_instance::InstanceSignal::Signaled
+    {
+        return;
+    }
+
+    let (command_tx, command_rx) = std::sync::mpsc::channel();
+    if let Err(e) = win32::single_instance::ensure_single_instance(command_tx.clone()) {
         log_msg(&e.to_string());
         std::process::exit(0);
     }
@@ -109,7 +127,6 @@ fn main() {
         log_msg(&format!("[notification] init failed: {e:#}"));
     }
 
-    let (command_tx, command_rx) = std::sync::mpsc::channel();
     win32::hotkey::bind_command_sender(command_tx.clone());
 
     if let Err(e) = Tray::install(command_tx.clone()) {
