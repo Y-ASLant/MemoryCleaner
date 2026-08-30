@@ -4,7 +4,7 @@
 
 # Memory Cleaner
 
-A Windows memory optimization tool built with Rust + GPUI. Real-time memory monitoring, configurable cleanup regions, system tray resident, global hotkey, and one-click optimization.
+A Windows memory optimization tool built with Rust + GPUI. Real-time memory monitoring, configurable cleanup regions, automatic cleanup, system tray resident, global hotkey, and one-click optimization.
 
 **[中文文档](README.md)**
 
@@ -13,16 +13,18 @@ A Windows memory optimization tool built with Rust + GPUI. Real-time memory moni
 - **Real-time Memory Monitoring** — Physical and virtual memory usage with ring progress charts; auto-refreshes every **1 second** when the main window is visible, pauses polling when minimized to tray to save CPU; tray icon tooltip updates instantly on hover
 - **One-Click Cleanup** — Executes cleanup steps sequentially based on selected regions; progress and result summary shown in the bottom button (retained for ~5 seconds after completion)
 - **Configurable Cleanup Regions** — 8 memory regions selectable via checkboxes (Standby List and Standby List Low Priority are mutually exclusive)
+- **Automatic Cleanup** — Can be enabled in the Window Behavior dialog; supports Windows low-physical-memory notifications and a sustained physical-memory usage threshold (two consecutive above-threshold checks, then a 10-minute cooldown)
 - **Global Hotkey** — Default `Ctrl+Alt+C` triggers cleanup; can be toggled and custom combo recorded in the Window Behavior dialog (`RegisterHotKey`)
 - **System Notifications** — Windows Toast popups on cleanup start and completion (can be disabled in the Window Behavior dialog)
 - **System Tray** — Right-click menu (Optimize Memory, Show/Hide Window, Exit); left-click shows/activates the main window; **spin animation** during cleanup (rotates 90° every 120ms to indicate activity)
-- **Window Behavior** — Title bar gear menu: Always on Top, Close to Tray, Debug Logging, Optimization Notifications, Global Hotkey, Language
+- **Window Behavior** — Title bar gear menu: Always on Top, Close to Tray, Run at Startup, Debug Logging, Optimization Notifications, Global Hotkey, Language, Automatic Cleanup threshold
+- **Process Exclusions** — Select running processes to exclude; Working Set cleanup skips excluded process base names
 - **Desktop Icon Cache Refresh** — Title bar refresh button; terminates and restarts Explorer to clear `IconCache.db` and related caches
 - **Custom Title Bar** — Settings, icon cache refresh, expand/collapse, minimize, close (no maximize button)
 - **Configuration Persistence** — `%APPDATA%\MemoryCleaner\settings.toml`, auto-created on first run
 - **Debug Logging** — Optional `App.log` output in the application directory, with automatic cleanup of entries older than 7 days based on timestamp
 - **Auto Elevation** — Detects admin privileges at startup and triggers UAC elevation if needed
-- **Single Instance** — Named mutex; second instance exits immediately
+- **Single Instance** — Named mutex plus wake event; repeated launches activate the existing instance and then exit the new process
 - **Platform UI Adaptation** — Windows 11 uses default rounded corners; Windows 10 automatically switches to square buttons, cards, dialogs, etc. (build < 22000)
 - **Interface Internationalization** — Simplified Chinese / English, switchable in the Window Behavior dialog; default is "Follow System" (detected via `GetUserDefaultUILanguage`)
 
@@ -118,6 +120,7 @@ Config file: `%APPDATA%\MemoryCleaner\settings.toml`
 | Setting | Type | Default | Description |
 |---------|------|---------|-------------|
 | `always_on_top` | bool | `false` | Window always on top |
+| `run_at_startup` | bool | `false` | Launch silently into the tray after Windows sign-in via a highest-privilege scheduled task |
 | `close_to_notification_area` | bool | `true` | Hide to tray on close instead of exiting |
 | `memory_areas` | u32 | `42` | Cleanup region bitmask (sum of `MemoryAreas` flag bits) |
 | `language` | string | `"auto"` | Interface language: `auto` (follow system), `zh-CN`, `en` |
@@ -125,6 +128,9 @@ Config file: `%APPDATA%\MemoryCleaner\settings.toml`
 | `show_optimization_notifications` | bool | `true` | Show Windows Toast on cleanup start/completion |
 | `cleanup_hotkey_enabled` | bool | `true` | Enable global cleanup hotkey |
 | `cleanup_hotkey` | string | `"Ctrl+Alt+C"` | Hotkey combo (`Ctrl`/`Alt`/`Shift`/`Win` + letter or digit) |
+| `excluded_processes` | array | `[]` | Process base names excluded from Working Set cleanup (lowercase, without `.exe`) |
+| `auto_cleanup_enabled` | bool | `false` | Enable automatic cleanup |
+| `auto_cleanup_threshold` | u32 | `0` | Physical-memory usage threshold percent; `0` disables threshold trigger, so automatic cleanup only reacts to low-memory notifications when enabled |
 
 ## Tech Stack
 
@@ -147,6 +153,8 @@ locales/
 └── zh-CN.yml            # Chinese & English UI strings (rust-i18n _version: 2 format)
 
 src/
+├── anim.rs              # Interpolators for memory values, ring charts, and layout transitions
+├── auto_cleanup.rs      # Automatic-cleanup trigger policy (low-memory notification, threshold, cooldown)
 ├── main.rs              # Entry: UAC, single-instance, notification init, tray/hotkey, GPUI launch
 ├── app.rs               # Application state, memory polling, optimization, window hide/restore, hotkey recording
 ├── icon_cache.rs        # Explorer icon cache cleanup
@@ -161,11 +169,14 @@ src/
 ├── version.rs           # Version constant
 ├── win32/               # Windows API wrappers
 │   ├── hotkey.rs        # RegisterHotKey global hotkey (dedicated message loop thread)
+│   ├── memory_notification.rs # Windows low/high memory resource notification monitor
 │   ├── notification.rs  # Windows Toast and Start Menu shortcut
 │   ├── nt.rs            # NtSetSystemInformation and NT primitives
 │   ├── os.rs            # RtlGetVersion, GetUserDefaultUILanguage
 │   ├── process.rs       # Process enumeration/termination (Explorer restart)
 │   ├── single_instance.rs
+│   ├── startup.rs       # Highest-privilege logon startup via Task Scheduler
+│   ├── volume.rs        # Mount Manager volume enumeration and modified-file-cache flushing
 │   └── window.rs        # Window always-on-top, hide to tray
 └── ui/                  # GPUI UI components
     ├── layout.rs

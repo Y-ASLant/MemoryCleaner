@@ -8,10 +8,10 @@ Memory Cleaner is a **Windows-only** GUI memory-optimization tool written in Rus
 
 ```
 main.rs → wake-signal check → ensure_elevated() → wake-signal retry → single-instance mutex + wake event
-       → notification::init → tray install + hotkey::sync → GPUI app launch
+       → startup::sync → notification::init → tray install + hotkey::sync → GPUI app launch
  │
  ├─ app.rs (core state, memory refresh, optimization, window hide/restore)
- ├─ auto_cleanup.rs (auto-cleanup trigger policy: threshold decisions)
+ ├─ auto_cleanup.rs (auto-cleanup trigger policy: low-memory notifications, threshold decisions, cooldown)
  ├─ log.rs (optional App.log file output, timestamp-based retention)
  ├─ locale.rs (rust-i18n locale apply, list separator, lang-id mapping)
  ├─ memory.rs (GlobalMemoryStatusEx → MemoryStatus)
@@ -22,16 +22,16 @@ main.rs → wake-signal check → ensure_elevated() → wake-signal retry → si
  ├─ icon_cache.rs (Explorer icon cache purge)
  ├─ version.rs (version constant)
  ├─ ui/ (GPUI components: layout, memory_card, settings_page, theme, title_bar)
- └─ win32/ (hotkey, notification, nt, os, process, single_instance, startup, volume, window)
+ └─ win32/ (hotkey, memory_notification, notification, nt, os, process, single_instance, startup, volume, window)
 ```
 
-- **Entry flow:** `main.rs` → wake any running instance via the named show-window event (before elevation, so a same-integrity launch needs no UAC) → `ensure_elevated()` → wake-signal retry → single-instance mutex + wake event watcher → `locale::apply` → `notification::init` → install tray + bind hotkey sender → `hotkey::sync` → GPUI app with `QuitMode::Explicit` → `open_main_window`.
+- **Entry flow:** `main.rs` → wake any running instance via the named show-window event (before elevation, so a same-integrity launch needs no UAC) → `ensure_elevated()` → wake-signal retry → single-instance mutex + wake event watcher → `startup::sync` → `locale::apply` → `notification::init` → install tray + bind hotkey sender → `hotkey::sync` → GPUI app with `QuitMode::Explicit` → `open_main_window`.
 - **i18n:** `rust-i18n` with `locales/zh-CN.yml` (single file, `_version: 2`, zh-CN + en). `rust_i18n::i18n!` is invoked once in `lib.rs`. `settings.language` is `auto` | `zh-CN` | `en`; `auto` uses `GetUserDefaultUILanguage` via `win32::os::system_ui_locale()`. Language changes call `MemoryCleanerApp::apply_locale()` to refresh memory labels and tray menu text immediately.
 - **Async runtime:** `smol` for async task execution (optimization progress updates, memory polling, toast display).
 - **UI stack:** GPUI + `gpui-component` (Button, Checkbox, Switch, GroupBox, ProgressCircle, Kbd).
 - **Native layer:** `src/win32/` wraps low-level Windows APIs; `src/optimize.rs` orchestrates the cleanup steps.
 - **Console suppression:** `main.rs` uses `#![windows_subsystem = "windows"]`; diagnostics go to `OutputDebugStringA` (viewable via DebugView). Optional file logging via `src/log.rs` when `debug_logging` is enabled.
-- **Tray command channel:** A single `mpsc` channel carries `TrayCommand` from tray events, global hotkeys, and (future) background tasks into `app.rs` via blocking `recv()` — no idle polling loop.
+- **Tray command channel:** A single `mpsc` channel carries `TrayCommand` from tray events, global hotkeys, the single-instance wake event, the low-memory monitor, and tray spin ticks into `app.rs` via blocking `recv()` — no idle polling loop.
 - **Window lifecycle:** Closing with `close_to_notification_area` hides the GPUI window to tray and may destroy the window handle; `activate_window` reopens it. Memory polling pauses while hidden.
 
 ## Key Directories
@@ -43,7 +43,7 @@ main.rs → wake-signal check → ensure_elevated() → wake-signal retry → si
 | `locales/` | rust-i18n translation YAML (`zh-CN.yml`, zh-CN + en strings) |
 | `docs/` | Project docs (`CHANGELOG.md`, technical comparisons) |
 | `.github/workflows/` | GitHub Actions build and tag-release workflows |
-| `src/win32/` | Win32/NT API bindings (hotkey, notification, nt, os, process, single_instance, startup, volume, window) |
+| `src/win32/` | Win32/NT API bindings (hotkey, memory_notification, notification, nt, os, process, single_instance, startup, volume, window) |
 | `vendor/proc-macro-error2/` | Vendored patch for Rust 1.97+ compatibility (see below) |
 | `.codegraph/` | Codegraph index (gitignored) |
 
@@ -98,6 +98,7 @@ make clean # cargo clean
 | `src/app.rs` | Core application state, memory refresh loop, optimization, window hide/restore, hotkey recording |
 | `src/tray.rs` | Tray icon install, cleanup spin animation, tooltip/menu sync, command dispatch |
 | `src/win32/hotkey.rs` | `RegisterHotKey` in dedicated thread; sends `TrayCommand::Optimize` |
+| `src/win32/memory_notification.rs` | `CreateMemoryResourceNotification` low/high memory monitor; sends `TrayCommand::LowMemory` once per pressure cycle |
 | `src/win32/notification.rs` | Windows Toast + Start Menu shortcut for AppUserModelID |
 | `src/log.rs` | Optional `App.log` file output with timestamp-based line retention |
 | `src/ui/theme.rs` | Light theme init + Win10 square-corner chrome |

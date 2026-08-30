@@ -4,7 +4,7 @@
 
 # Memory Cleaner
 
-Windows 内存清理工具，基于 Rust + GPUI 构建。提供实时内存监控、可配置的清理区域、系统托盘常驻、全局快捷键，以及一键优化。
+Windows 内存清理工具，基于 Rust + GPUI 构建。提供实时内存监控、可配置的清理区域、自动清理、系统托盘常驻、全局快捷键，以及一键优化。
 
 **[English](README_EN.md)**
 
@@ -13,16 +13,18 @@ Windows 内存清理工具，基于 Rust + GPUI 构建。提供实时内存监�
 - **实时内存监控** — 物理内存与虚拟内存使用情况，环形进度图可视化；主窗口可见时每 **1 秒** 自动刷新，隐藏到托盘后暂停轮询以节省 CPU；鼠标悬停托盘图标时也会即时刷新 Tooltip
 - **一键清理** — 按所选区域依次执行；进度与结果摘要显示在底部按钮内（完成后保留约 5 秒）
 - **可配置清理区域** — 8 种内存区域通过复选框勾选（待机列表与普通/低优先级互斥）
+- **自动清理** — 可在窗口行为对话框中启用；支持 Windows 低物理内存通知，以及连续两次超过所选物理内存占用阈值后触发（阈值触发后冷却 10 分钟）
 - **全局快捷键** — 默认 `Ctrl+Alt+C` 触发清理；可在窗口行为对话框中开关、录制自定义组合键（`RegisterHotKey`）
 - **系统通知** — 清理开始与完成时弹出 Windows Toast（可在窗口行为对话框中关闭）
 - **系统托盘** — 右键菜单（优化内存、显示/隐藏窗口、退出）；左键单击显示/激活主窗口；**执行内存清理时**托盘图标旋转动画（每 120ms 转 90°，表示进行中）
-- **窗口行为** — 标题栏齿轮菜单：置顶、关闭时隐藏到托盘、调试日志、优化通知、全局热键、语言
+- **窗口行为** — 标题栏齿轮菜单：置顶、关闭时隐藏到托盘、开机自启、调试日志、优化通知、全局热键、语言、自动清理阈值
+- **进程排除** — 可从运行中进程列表选择要排除的进程，Working Set 清理时跳过这些进程
 - **桌面图标缓存刷新** — 标题栏刷新按钮；结束并重启 Explorer 以清理 `IconCache.db` 等缓存
 - **自定义标题栏** — 设置、图标缓存、展开/收起、最小化、关闭（无最大化按钮）
 - **配置持久化** — `%APPDATA%\MemoryCleaner\settings.toml`，首次运行自动创建
 - **调试日志** — 可选写入程序目录下的 `App.log`，按行内时间戳自动清理 7 天前的记录
 - **自动提权** — 启动时检测管理员权限，不足时触发 UAC 提升
-- **单实例** — 命名互斥量；重复启动时第二个实例直接退出
+- **单实例** — 命名互斥量与唤醒事件；重复启动会激活已有实例并退出当前进程
 - **平台 UI 适配** — Windows 11 使用默认圆角；Windows 10 自动切换直角按钮、卡片、对话框等（build &lt; 22000）
 - **界面国际化** — 简体中文 / English，窗口行为对话框中可切换；默认「跟随系统」（通过 `GetUserDefaultUILanguage` 检测）
 
@@ -118,6 +120,7 @@ cargo run --release
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
 | `always_on_top` | bool | `false` | 窗口始终置顶 |
+| `run_at_startup` | bool | `false` | 登录 Windows 后通过最高权限计划任务静默启动到托盘 |
 | `close_to_notification_area` | bool | `true` | 点击关闭时隐藏到托盘而非退出 |
 | `memory_areas` | u32 | `42` | 清理区域位掩码（各 `MemoryAreas` 标志位之和） |
 | `language` | string | `"auto"` | 界面语言：`auto`（跟随系统）、`zh-CN`、`en` |
@@ -125,6 +128,9 @@ cargo run --release
 | `show_optimization_notifications` | bool | `true` | 清理开始/完成时弹出 Windows Toast |
 | `cleanup_hotkey_enabled` | bool | `true` | 启用全局清理热键 |
 | `cleanup_hotkey` | string | `"Ctrl+Alt+C"` | 热键组合（`Ctrl`/`Alt`/`Shift`/`Win` + 字母或数字） |
+| `excluded_processes` | array | `[]` | 工作集清理排除的进程基础名（小写、无 `.exe`） |
+| `auto_cleanup_enabled` | bool | `false` | 启用自动清理 |
+| `auto_cleanup_threshold` | u32 | `0` | 物理内存占用阈值百分比；`0` 表示关闭阈值触发，启用自动清理时仅由低内存通知触发 |
 
 ## 技术栈
 
@@ -147,6 +153,8 @@ locales/
 └── zh-CN.yml            # 中英文 UI 文案（rust-i18n _version: 2 格式）
 
 src/
+├── anim.rs              # 内存数值/环形图与布局过渡动画插值器
+├── auto_cleanup.rs      # 自动清理触发策略（低内存通知、阈值、冷却）
 ├── main.rs              # 入口：UAC、单实例、通知初始化、托盘/热键、GPUI 启动
 ├── app.rs               # 应用状态、内存轮询、优化流程、窗口隐藏/恢复、热键录制
 ├── icon_cache.rs        # Explorer 图标缓存清理
@@ -161,11 +169,14 @@ src/
 ├── version.rs           # 版本常量
 ├── win32/               # Windows API 封装
 │   ├── hotkey.rs        # RegisterHotKey 全局热键（独立消息循环线程）
+│   ├── memory_notification.rs # Windows 低/高内存资源通知监听
 │   ├── notification.rs  # Windows Toast 与开始菜单快捷方式
 │   ├── nt.rs            # NtSetSystemInformation 等 NT 原语
 │   ├── os.rs            # RtlGetVersion、GetUserDefaultUILanguage
 │   ├── process.rs       # 进程枚举/结束（Explorer 重启）
 │   ├── single_instance.rs
+│   ├── startup.rs       # 通过 Task Scheduler 实现最高权限登录自启
+│   ├── volume.rs        # Mount Manager 卷枚举与已修改文件缓存刷写
 │   └── window.rs        # 窗口置顶、隐藏到托盘
 └── ui/                  # GPUI UI 组件
     ├── layout.rs
