@@ -1,7 +1,5 @@
 use rust_i18n::t;
 
-use std::sync::Arc;
-use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
@@ -10,7 +8,7 @@ use gpui_component::ActiveTheme;
 use gpui_component::{Root, TitleBar, WindowExt};
 use smol::Timer;
 
-use crate::anim::{AnimatedValue, TimedAnimatedValue, ease_out_cubic};
+use crate::anim::{AnimatedValue, SampledAnimatedValue, TimedAnimatedValue, ease_out_cubic};
 use crate::auto_cleanup::{
     AUTO_CLEANUP_POLL_INTERVAL, AutoCleanupSource, threshold_cooldown_elapsed,
     threshold_trigger_due,
@@ -27,6 +25,13 @@ use crate::win32;
 const SETTINGS_SAVE_DEBOUNCE: Duration = Duration::from_millis(300);
 const OPTIMIZE_RESULT_DISPLAY: Duration = Duration::from_secs(5);
 const MEMORY_REFRESH_INTERVAL: Duration = Duration::from_secs(1);
+const MEMORY_INTERPOLATION_DURATION_SECS: f32 = MEMORY_REFRESH_INTERVAL.as_secs_f32();
+const fn memory_polling_enabled(window_visible: bool) -> bool {
+    window_visible
+}
+const fn threshold_polling_enabled(auto_cleanup_enabled: bool, threshold: u32) -> bool {
+    auto_cleanup_enabled && threshold > 0
+}
 
 async fn show_toast(title: String, body: String) {
     if let Err(e) = smol::unblock(move || win32::notification::show(&title, &body)).await {
@@ -141,7 +146,7 @@ pub struct MemoryCleanerApp {
     pub physical: MemorySection,
     pub virtual_mem: MemorySection,
     settings_save_gen: u32,
-    memory_refresh_generation: Arc<AtomicU32>,
+    memory_refresh_task: Option<Task<()>>,
     window_opening: bool,
     pub is_optimizing: bool,
     pub is_refreshing_icon_cache: bool,
@@ -153,15 +158,18 @@ pub struct MemoryCleanerApp {
     window_shown: bool,
     /// When the last automatic cleanup ran; anchors the threshold cooldown.
     last_auto_cleanup: Option<Instant>,
+    threshold_cleanup_task: Option<Task<()>>,
+    command_tx: std::sync::mpsc::Sender<TrayCommand>,
+    low_memory_monitor: Option<win32::memory_notification::MemoryNotificationMonitor>,
     pub cleanup_hotkey_recording: bool,
     pub(crate) hotkey_capture_focus: FocusHandle,
-    anim_physical: AnimatedValue,
-    anim_virtual: AnimatedValue,
+    anim_physical: SampledAnimatedValue,
+    anim_virtual: SampledAnimatedValue,
     anim_optimize: AnimatedValue,
-    anim_used_phys: AnimatedValue,
-    anim_avail_phys: AnimatedValue,
-    anim_used_virt: AnimatedValue,
-    anim_avail_virt: AnimatedValue,
+    anim_used_phys: SampledAnimatedValue,
+    anim_avail_phys: SampledAnimatedValue,
+    anim_used_virt: SampledAnimatedValue,
+    anim_avail_virt: SampledAnimatedValue,
     anim_settings_expand: TimedAnimatedValue,
     anim_dirty: bool,
     /// Wall-clock of the previous interpolator tick (`None` when settled).
@@ -208,7 +216,7 @@ impl MemoryCleanerApp {
             physical,
             virtual_mem,
             settings_save_gen: 0,
-            memory_refresh_generation: Arc::new(AtomicU32::new(0)),
+            memory_refresh_task: None,
             window_opening: false,
             is_optimizing: false,
             is_refreshing_icon_cache: false,
@@ -219,15 +227,36 @@ impl MemoryCleanerApp {
             settings_expanded: false,
             window_shown: !launch_hidden,
             last_auto_cleanup: None,
+            threshold_cleanup_task: None,
+            command_tx,
+            low_memory_monitor: None,
             cleanup_hotkey_recording: false,
             hotkey_capture_focus: cx.focus_handle(),
-            anim_physical: AnimatedValue::new(phys_percent),
-            anim_virtual: AnimatedValue::new(virt_percent),
+            anim_physical: SampledAnimatedValue::new(
+                phys_percent,
+                MEMORY_INTERPOLATION_DURATION_SECS,
+            ),
+            anim_virtual: SampledAnimatedValue::new(
+                virt_percent,
+                MEMORY_INTERPOLATION_DURATION_SECS,
+            ),
             anim_optimize: AnimatedValue::new(0.0),
-            anim_used_phys: AnimatedValue::new(phys_used),
-            anim_avail_phys: AnimatedValue::new(phys_avail),
-            anim_used_virt: AnimatedValue::new(virt_used),
-            anim_avail_virt: AnimatedValue::new(virt_avail),
+            anim_used_phys: SampledAnimatedValue::new(
+                phys_used,
+                MEMORY_INTERPOLATION_DURATION_SECS,
+            ),
+            anim_avail_phys: SampledAnimatedValue::new(
+                phys_avail,
+                MEMORY_INTERPOLATION_DURATION_SECS,
+            ),
+            anim_used_virt: SampledAnimatedValue::new(
+                virt_used,
+                MEMORY_INTERPOLATION_DURATION_SECS,
+            ),
+            anim_avail_virt: SampledAnimatedValue::new(
+                virt_avail,
+                MEMORY_INTERPOLATION_DURATION_SECS,
+            ),
             anim_settings_expand: TimedAnimatedValue::new(0.0, SETTINGS_EXPAND_DURATION_SECS),
             anim_dirty: false,
             last_anim_tick: None,
@@ -236,8 +265,7 @@ impl MemoryCleanerApp {
 
         cx.set_global(AppEntityHolder(cx.entity()));
         app.attach_window(window, cx, launch_hidden);
-        app.start_background_tasks(cx, command_tx, tray_rx);
-        app.sync_tray();
+        app.start_background_tasks(cx, tray_rx);
 
         app
     }
@@ -277,26 +305,21 @@ impl MemoryCleanerApp {
         }
     }
 
-    fn pause_memory_refresh(&self) {
-        self.memory_refresh_generation
-            .fetch_add(1, Ordering::Relaxed);
+    fn pause_memory_refresh(&mut self) {
+        self.memory_refresh_task.take();
     }
 
-    fn start_memory_refresh(&self, cx: &mut Context<Self>) {
-        if self.window.is_none() {
+    fn start_memory_refresh(&mut self, cx: &mut Context<Self>) {
+        self.pause_memory_refresh();
+        if !self.window_visible() {
             return;
         }
 
-        let generation = self.memory_refresh_generation.load(Ordering::Relaxed);
-        let gen_arc = Arc::clone(&self.memory_refresh_generation);
-        cx.spawn(async move |this, cx| {
+        self.memory_refresh_task = Some(cx.spawn(async move |this, cx| {
             loop {
                 Timer::after(MEMORY_REFRESH_INTERVAL).await;
-                if gen_arc.load(Ordering::Relaxed) != generation {
-                    break;
-                }
                 let Ok(()) = this.update(cx, |app, cx| {
-                    if app.window.is_none() || !app.window_shown {
+                    if !memory_polling_enabled(app.window_visible()) {
                         return;
                     }
                     if app.refresh_memory() {
@@ -307,8 +330,7 @@ impl MemoryCleanerApp {
                     break;
                 };
             }
-        })
-        .detach();
+        }));
     }
 
     fn open_window(&mut self, cx: &mut Context<Self>) {
@@ -374,12 +396,13 @@ impl MemoryCleanerApp {
     }
 
     fn sync_anim_targets_from_sections(&mut self) {
-        self.anim_physical.target = self.physical.used_percent;
-        self.anim_virtual.target = self.virtual_mem.used_percent;
-        self.anim_used_phys.target = self.physical.used as f32;
-        self.anim_avail_phys.target = self.physical.avail as f32;
-        self.anim_used_virt.target = self.virtual_mem.used as f32;
-        self.anim_avail_virt.target = self.virtual_mem.avail as f32;
+        self.anim_physical.set_target(self.physical.used_percent);
+        self.anim_virtual.set_target(self.virtual_mem.used_percent);
+        self.anim_used_phys.set_target(self.physical.used as f32);
+        self.anim_avail_phys.set_target(self.physical.avail as f32);
+        self.anim_used_virt.set_target(self.virtual_mem.used as f32);
+        self.anim_avail_virt
+            .set_target(self.virtual_mem.avail as f32);
         self.anim_dirty = true;
     }
 
@@ -637,15 +660,14 @@ impl MemoryCleanerApp {
     /// Tick all active animations each frame (render-driven, vsync-paced).
     /// Returns `true` if any animation is still running (caller schedules next frame).
     fn tick_animations(&mut self, window: &mut Window) -> bool {
-        // Memory ring / progress / text interpolators — real-dt exponential decay,
-        // frame-rate independent (60 Hz and 144 Hz displays animate at the same speed).
+        // Sampled memory values move linearly until the next poll. Event and
+        // layout animations retain their own easing and completion behavior.
         if self.anim_dirty {
             let now = Instant::now();
             let dt = self
                 .last_anim_tick
                 .map(|t| now.saturating_duration_since(t).as_secs_f32())
-                .unwrap_or(1.0 / 60.0)
-                .min(0.05);
+                .unwrap_or(1.0 / 60.0);
             let still = self.anim_physical.tick_dt(dt)
                 | self.anim_virtual.tick_dt(dt)
                 | self.anim_optimize.tick_dt(dt)
@@ -711,13 +733,22 @@ impl MemoryCleanerApp {
     }
 
     pub fn set_auto_cleanup_enabled(&mut self, enabled: bool, cx: &mut Context<Self>) {
+        if self.settings.auto_cleanup_enabled == enabled {
+            return;
+        }
         self.settings.auto_cleanup_enabled = enabled;
+        self.sync_auto_cleanup_monitors(cx);
         self.queue_settings_save(cx);
         cx.notify();
     }
 
     pub fn set_auto_cleanup_threshold(&mut self, value: u32, cx: &mut Context<Self>) {
-        self.settings.auto_cleanup_threshold = value.min(100);
+        let value = value.min(100);
+        if self.settings.auto_cleanup_threshold == value {
+            return;
+        }
+        self.settings.auto_cleanup_threshold = value;
+        self.sync_threshold_cleanup_monitor(cx);
         self.queue_settings_save(cx);
         cx.notify();
     }
@@ -809,13 +840,11 @@ impl MemoryCleanerApp {
     }
 
     pub fn start_background_tasks(
-        &self,
+        &mut self,
         cx: &mut Context<Self>,
-        command_tx: std::sync::mpsc::Sender<TrayCommand>,
         mut tray_rx: std::sync::mpsc::Receiver<TrayCommand>,
     ) {
-        crate::win32::memory_notification::start(command_tx);
-        self.start_auto_cleanup_monitor(cx);
+        self.sync_auto_cleanup_monitors(cx);
 
         // Tray, hotkey, and low-memory notification commands are handled on the GPUI thread.
         cx.spawn(async move |this, cx| {
@@ -1004,12 +1033,36 @@ impl MemoryCleanerApp {
         }
     }
 
-    /// Process-lifetime monitor for the configurable threshold trigger. The OS
-    /// low-memory notification keeps its own native monitor
-    /// (`win32::memory_notification`); this task only adds the trigger that needs
-    /// settings access. It runs independently of window visibility.
-    fn start_auto_cleanup_monitor(&self, cx: &mut Context<Self>) {
-        cx.spawn(async move |this, cx| {
+    fn sync_auto_cleanup_monitors(&mut self, cx: &mut Context<Self>) {
+        self.sync_low_memory_monitor();
+        self.sync_threshold_cleanup_monitor(cx);
+    }
+
+    fn sync_low_memory_monitor(&mut self) {
+        self.low_memory_monitor.take();
+        if !self.settings.auto_cleanup_enabled {
+            return;
+        }
+
+        match win32::memory_notification::MemoryNotificationMonitor::start(self.command_tx.clone())
+        {
+            Ok(monitor) => self.low_memory_monitor = Some(monitor),
+            Err(error) => crate::log_msg(&format!(
+                "[memory-notification] monitor start failed: {error:#}"
+            )),
+        }
+    }
+
+    fn sync_threshold_cleanup_monitor(&mut self, cx: &mut Context<Self>) {
+        self.threshold_cleanup_task.take();
+        if !threshold_polling_enabled(
+            self.settings.auto_cleanup_enabled,
+            self.settings.auto_cleanup_threshold,
+        ) {
+            return;
+        }
+
+        self.threshold_cleanup_task = Some(cx.spawn(async move |this, cx| {
             let mut above_threshold_ticks: u32 = 0;
             loop {
                 Timer::after(AUTO_CLEANUP_POLL_INTERVAL).await;
@@ -1021,8 +1074,7 @@ impl MemoryCleanerApp {
                     break;
                 };
             }
-        })
-        .detach();
+        }));
     }
 
     pub fn run_optimize(&mut self, cx: &mut Context<Self>) {
@@ -1317,5 +1369,23 @@ impl Render for MemoryCleanerApp {
                 ),
             )
             .children(gpui_component::Root::render_dialog_layer(window, cx))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{memory_polling_enabled, threshold_polling_enabled};
+
+    #[test]
+    fn memory_polling_follows_window_visibility() {
+        assert!(memory_polling_enabled(true));
+        assert!(!memory_polling_enabled(false));
+    }
+
+    #[test]
+    fn threshold_polling_requires_enabled_nonzero_threshold() {
+        assert!(threshold_polling_enabled(true, 80));
+        assert!(!threshold_polling_enabled(true, 0));
+        assert!(!threshold_polling_enabled(false, 80));
     }
 }

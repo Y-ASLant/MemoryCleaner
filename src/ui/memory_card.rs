@@ -43,7 +43,7 @@ fn render_usage_ring(
     } else {
         (
             animated_percent,
-            usage_color(section.used_percent, cx),
+            usage_color(animated_percent, cx),
             cx.theme().foreground,
             format!("{}%", animated_percent.round() as u32),
         )
