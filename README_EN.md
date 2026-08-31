@@ -22,7 +22,7 @@ A Windows memory optimization tool built with Rust + GPUI. Real-time memory moni
 - **Desktop Icon Cache Refresh** — Title bar refresh button; terminates and restarts Explorer to clear `IconCache.db` and related caches
 - **Custom Title Bar** — Settings, icon cache refresh, expand/collapse, minimize, close (no maximize button)
 - **Configuration Persistence** — `%APPDATA%\MemoryCleaner\settings.toml`, auto-created on first run
-- **Debug Logging** — Optional `App.log` output in the application directory, with automatic cleanup of entries older than 7 days based on timestamp
+- **Debug Logging** — Optional `App.log` output in the application directory; entries older than seven days are purged at most hourly, and malformed content is bounded
 - **Auto Elevation** — Detects admin privileges at startup and triggers UAC elevation if needed
 - **Single Instance** — Named mutex plus wake event; repeated launches activate the existing instance and then exit the new process
 - **Platform UI Adaptation** — Windows 11 uses default rounded corners; Windows 10 automatically switches to square buttons, cards, dialogs, etc. (build < 22000)
@@ -159,7 +159,7 @@ src/
 ├── app.rs               # Application state, memory polling, optimization, window hide/restore, hotkey recording
 ├── icon_cache.rs        # Explorer icon cache cleanup
 ├── locale.rs            # Locale apply, list separator, system language mapping
-├── log.rs               # Debug logging to App.log, timestamp-based entry retention
+├── log.rs               # Debug log writing, throttled retention, and file-error reporting
 ├── memory.rs            # Memory query (GlobalMemoryStatusEx)
 ├── messages.rs          # Cleanup result message assembly
 ├── optimize.rs          # 8 cleanup regions and NtSetSystemInformation calls
@@ -203,7 +203,7 @@ Check whether the hotkey is enabled in the Window Behavior dialog, and whether t
 **How do I view logs?**
 
 - **Always available:** Diagnostic output goes to `OutputDebugString`, viewable with [DebugView](https://learn.microsoft.com/en-us/sysinternals/downloads/debugview) (Release builds have no console window).
-- **Debug logging:** Enable "Debug Logging" in the title bar gear menu; detailed runtime info is written to `App.log` in the application directory (same directory as `MemoryCleaner.exe`). Each line is formatted as `[unix_secs.millis] message`; entries with timestamps older than 7 days are automatically purged on write.
+- **Debug logging:** Enable "Debug Logging" in the title bar gear menu; detailed runtime info is written to `App.log` in the application directory (same directory as `MemoryCleaner.exe`). Each line is formatted as `[unix_secs.millis] message`. Retention runs on the first write after enabling and at most hourly afterward, removing timestamped entries older than seven days. Untimestamped content is capped at the newest 256 lines and 64 KiB; file I/O failures are reported through `OutputDebugString`.
 
 **Which cleanup operations affect disk lifespan?**
 

@@ -22,7 +22,7 @@ Windows 内存清理工具，基于 Rust + GPUI 构建。提供实时内存监�
 - **桌面图标缓存刷新** — 标题栏刷新按钮；结束并重启 Explorer 以清理 `IconCache.db` 等缓存
 - **自定义标题栏** — 设置、图标缓存、展开/收起、最小化、关闭（无最大化按钮）
 - **配置持久化** — `%APPDATA%\MemoryCleaner\settings.toml`，首次运行自动创建
-- **调试日志** — 可选写入程序目录下的 `App.log`，按行内时间戳自动清理 7 天前的记录
+- **调试日志** — 可选写入程序目录下的 `App.log`；至多每小时清理一次 7 天前的记录，并限制异常格式内容增长
 - **自动提权** — 启动时检测管理员权限，不足时触发 UAC 提升
 - **单实例** — 命名互斥量与唤醒事件；重复启动会激活已有实例并退出当前进程
 - **平台 UI 适配** — Windows 11 使用默认圆角；Windows 10 自动切换直角按钮、卡片、对话框等（build &lt; 22000）
@@ -159,7 +159,7 @@ src/
 ├── app.rs               # 应用状态、内存轮询、优化流程、窗口隐藏/恢复、热键录制
 ├── icon_cache.rs        # Explorer 图标缓存清理
 ├── locale.rs            # locale 应用、列表分隔符、系统语言映射
-├── log.rs               # 调试日志写入 App.log，按行内时间戳清理过期记录
+├── log.rs               # 调试日志写入、低频保留清理与文件错误报告
 ├── memory.rs            # 内存查询（GlobalMemoryStatusEx）
 ├── messages.rs          # 清理结果文案组装
 ├── optimize.rs          # 8 种清理区域与 NtSetSystemInformation 调用
@@ -203,7 +203,7 @@ Windows 会按需将常用页面重新加载到内存。清理后短期内可能
 **如何查看日志？**
 
 - **始终可用：** 诊断信息通过 `OutputDebugString` 输出，可用 [DebugView](https://learn.microsoft.com/en-us/sysinternals/downloads/debugview) 查看（Release 构建无控制台窗口）。
-- **调试日志：** 在标题栏齿轮菜单中开启「调试日志」后，详细运行信息写入程序目录下的 `App.log`（与 `MemoryCleaner.exe` 同目录）。每行格式为 `[unix_secs.millis] 消息`；写入新日志时会自动删除时间戳早于 7 天的旧行。
+- **调试日志：** 在标题栏齿轮菜单中开启「调试日志」后，详细运行信息写入程序目录下的 `App.log`（与 `MemoryCleaner.exe` 同目录）。每行格式为 `[unix_secs.millis] 消息`；启用后首次写入会执行保留清理，之后至多每小时清理一次时间戳早于 7 天的旧行。无法解析时间戳的内容仅保留最新 256 行且不超过 64 KiB；文件读写失败会输出到 `OutputDebugString`。
 
 **哪些清理操作会影响磁盘寿命？**
 

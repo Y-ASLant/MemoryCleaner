@@ -12,7 +12,7 @@ main.rs → wake-signal check → ensure_elevated() → wake-signal retry → si
  │
  ├─ app.rs (core state, memory refresh, optimization, window hide/restore)
  ├─ auto_cleanup.rs (auto-cleanup trigger policy: low-memory notifications, threshold decisions, cooldown)
- ├─ log.rs (optional App.log file output, timestamp-based retention)
+ ├─ log.rs (optional App.log output, hourly retention, malformed-content bounds, I/O diagnostics)
  ├─ locale.rs (rust-i18n locale apply, list separator, lang-id mapping)
  ├─ memory.rs (GlobalMemoryStatusEx → MemoryStatus)
  ├─ optimize.rs (MemoryAreas bitflags → NT cache-purge steps)
@@ -32,6 +32,7 @@ main.rs → wake-signal check → ensure_elevated() → wake-signal retry → si
 - **Native layer:** `src/win32/` wraps low-level Windows APIs; `src/optimize.rs` orchestrates the cleanup steps.
 - **Console suppression:** `main.rs` uses `#![windows_subsystem = "windows"]`; diagnostics go to `OutputDebugStringA` (viewable via DebugView). Optional file logging via `src/log.rs` when `debug_logging` is enabled.
 - **Tray command channel:** A single `mpsc` channel carries `TrayCommand` from tray events, global hotkeys, the single-instance wake event, the low-memory monitor, and tray spin ticks into `app.rs` via blocking `recv()` — no idle polling loop.
+- **Automatic-cleanup monitors:** `MemoryCleanerApp` owns the cancellable native low/high-memory monitor and the threshold polling task. Both follow `auto_cleanup_enabled`; threshold polling exists only when `auto_cleanup_threshold > 0`, and threshold changes restart it with a fresh sustained-pressure count.
 - **Window lifecycle:** Closing with `close_to_notification_area` hides the GPUI window to tray and may destroy the window handle; `activate_window` reopens it. Memory polling pauses while hidden.
 
 ## Key Directories
@@ -87,7 +88,7 @@ make clean # cargo clean
 - **Settings persistence:** TOML file at `%APPDATA%\MemoryCleaner\settings.toml`, written atomically (temp file + rename), debounced 300 ms.
 - **Bitflags:** `MemoryAreas` in `optimize.rs` uses the `bitflags` crate to represent configurable cleaning regions.
 - **Embedded assets:** `App.ico` compiled into the binary via `winres` (`build.rs`); `App.png` embedded via `include_bytes!` in `tray.rs`.
-- **Debug logging:** `log_msg()` always writes to `OutputDebugString` (and stderr in debug builds). `log::write()` additionally appends to `App.log` beside the executable when `settings.debug_logging` is true. Before each write, `log.rs` purges lines whose `[unix_secs.millis]` prefix is older than 7 days (`LOG_RETENTION_SECS`).
+- **Debug logging:** `log_msg()` always writes to `OutputDebugString` (and stderr in debug builds). `log::write()` additionally appends to `App.log` beside the executable when `settings.debug_logging` is true. Retention runs on the first write after enabling and at most hourly thereafter: timestamped lines older than 7 days are removed, malformed content is capped at 256 lines / 64 KiB, and file I/O failures are reported through the debug stream.
 - **Platform UI chrome:** `win32::os::is_windows_11_or_later()` uses `RtlGetVersion` (build ≥ 22000 = Win11). `ui::theme::init_light_theme` sets gpui-component `radius` / `radius_lg` to 0 and disables `shadow` on Win10 so buttons, cards, and dialogs render with square corners. Custom UI must use `cx.theme().radius`, not hardcoded `rounded(px(...))`.
 
 ## Important Files
@@ -98,9 +99,9 @@ make clean # cargo clean
 | `src/app.rs` | Core application state, memory refresh loop, optimization, window hide/restore, hotkey recording |
 | `src/tray.rs` | Tray icon install, cleanup spin animation, tooltip/menu sync, command dispatch |
 | `src/win32/hotkey.rs` | `RegisterHotKey` in dedicated thread; sends `TrayCommand::Optimize` |
-| `src/win32/memory_notification.rs` | `CreateMemoryResourceNotification` low/high memory monitor; sends `TrayCommand::LowMemory` once per pressure cycle |
+| `src/win32/memory_notification.rs` | Cancellable `CreateMemoryResourceNotification` low/high monitor; follows the auto-cleanup switch and sends `TrayCommand::LowMemory` once per pressure cycle |
 | `src/win32/notification.rs` | Windows Toast + Start Menu shortcut for AppUserModelID |
-| `src/log.rs` | Optional `App.log` file output with timestamp-based line retention |
+| `src/log.rs` | Optional `App.log` output with throttled retention, malformed-content bounds, and file I/O diagnostics |
 | `src/ui/theme.rs` | Light theme init + Win10 square-corner chrome |
 | `src/locale.rs` | rust-i18n locale apply, list separator, lang-id mapping |
 | `src/win32/os.rs` | Windows build detection (Win10 vs Win11), system UI locale |
