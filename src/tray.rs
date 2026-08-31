@@ -15,7 +15,7 @@ use crate::auto_cleanup::AutoCleanupSource;
 use crate::memory::MemorySection;
 
 /// Delay between 90° rotation steps while optimizing.
-const SPIN_STEP_MS: u64 = 120;
+const SPIN_STEP_MS: u64 = 96;
 
 static TRAY: AtomicPtr<Tray> = AtomicPtr::new(std::ptr::null_mut());
 static ICON_FRAMES: OnceLock<[RgbaImage; 4]> = OnceLock::new();
