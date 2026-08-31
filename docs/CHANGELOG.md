@@ -14,7 +14,7 @@
 - **内存监控动画**：物理内存与虚拟内存卡片改为在每秒采样之间进行线性插值；新样本从当前显示位置连续重定向，圆环颜色与动画百分比同步，窗口隐藏时立即取消刷新任务。
 - **自动清理生命周期**：Windows 低内存监控现在严格跟随自动清理开关启停；阈值为 `0` 时不创建轮询任务，修改阈值会重置持续压力计数，重新启用时可正确检测当前低内存状态。
 - **调试日志**：日志保留扫描由每次写入改为至多每小时一次；合法时间戳日志继续保留 7 天，异常格式内容限制为最新 256 行且不超过 64 KiB，文件读写错误会输出到调试流。
-- **发布流程**：GitHub Actions 改为仅在推送 `v*` 标签时构建和发布；标签必须与 `Cargo.toml` 版本一致。
+- **发布流程**：GitHub Actions 改为仅在推送 `v*` 标签时构建和发布；标签必须与 `Cargo.toml` 版本一致，GitHub Release 说明直接提取 `docs/CHANGELOG.md` 中该版本的中英文区域。
 - **项目文档**：中英文 README 补充自动清理、开机启动、进程排除、单实例唤醒、设置字段及相关模块说明。
 
 
@@ -124,7 +124,7 @@ Final changes since [1.0.5].
 - **Memory-monitor animation** — Physical- and virtual-memory cards now interpolate linearly across each one-second sample interval. New samples retarget from the displayed value, ring colors track the animated percentage, and hiding the window cancels the refresh task immediately.
 - **Automatic-cleanup lifecycle** — The Windows low-memory monitor now strictly follows the Automatic Cleanup switch. A zero threshold creates no polling task, threshold changes reset sustained-pressure counting, and re-enabling the feature correctly observes an active low-memory condition.
 - **Debug logging** — Retention scanning now runs at most hourly instead of on every write. Valid timestamped entries retain the seven-day policy, malformed content is capped at the newest 256 lines and 64 KiB, and file I/O failures are reported to the debug stream.
-- **Release workflow** — GitHub Actions now builds and publishes only for pushed `v*` tags, which must match the version in `Cargo.toml`.
+- **Release workflow** — GitHub Actions now builds and publishes only for pushed `v*` tags, which must match the version in `Cargo.toml`; GitHub Release notes are extracted directly from that version's Chinese and English sections in `docs/CHANGELOG.md`.
 - **Project documentation** — The Chinese and English READMEs now cover automatic cleanup, startup, process exclusions, existing-instance activation, settings fields, and related modules.
 
 

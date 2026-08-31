@@ -59,6 +59,22 @@ jobs:
       contents: write
 
     steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Extract release notes
+        shell: pwsh
+        run: |
+          $version = [regex]::Escape($env:GITHUB_REF_NAME.Substring(1))
+          $content = Get-Content docs/CHANGELOG.md -Raw
+          $pattern = "(?ms)^## \[$version\].*?(?=^## \[|^---\s*$|\z)"
+          $sections = [regex]::Matches($content, $pattern)
+          if ($sections.Count -ne 2) {
+            throw "Expected Chinese and English changelog sections for $env:GITHUB_REF_NAME, found $($sections.Count)"
+          }
+          ($sections.Value.Trim() -join "`n`n---`n`n") |
+            Set-Content release-notes.md -Encoding utf8NoBOM
+
       - name: Download release binary
         uses: actions/download-artifact@v8
         with:
@@ -68,5 +84,5 @@ jobs:
       - name: Publish release
         uses: softprops/action-gh-release@v3
         with:
-          generate_release_notes: true
+          body_path: release-notes.md
           files: release/MemoryCleaner.exe

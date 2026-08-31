@@ -73,9 +73,9 @@ cargo run --release
 make clean # cargo clean
 ```
 
-**CI:** `.github/workflows/build.yml` runs only when a `v*` tag is pushed. The tag must match `Cargo.toml`'s version; the workflow checks formatting, runs Clippy and tests, builds the Windows release binary, then creates a GitHub Release with `MemoryCleaner.exe`.
+**CI:** `.github/workflows/build.yml` runs only when a `v*` tag is pushed. The tag must match `Cargo.toml`'s version; the workflow checks formatting, runs Clippy and tests, builds the Windows release binary, extracts that version's Chinese and English sections from `docs/CHANGELOG.md`, then creates a GitHub Release with those notes and `MemoryCleaner.exe`.
 
-**Tests:** `make test` / `cargo test` — 66 unit tests in `src/` plus 2 integration tests in `tests/settings_persistence.rs`.
+**Tests:** `make test` / `cargo test` — 77 unit tests in `src/` plus 2 integration tests in `tests/settings_persistence.rs`.
 
 ## Code Conventions & Common Patterns
 
