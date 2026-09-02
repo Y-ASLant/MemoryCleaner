@@ -33,7 +33,7 @@ A Windows memory optimization tool built with Rust + GPUI. Real-time memory moni
 | Item | Requirement |
 |------|-------------|
 | OS | Windows 10 / 11 Desktop (64-bit); Windows 11 requires build ≥ 22000 |
-| Rust | 1.96 or later (Edition 2024) |
+| Rust | 1.97.1 or later (Edition 2024) |
 | Build Tools | MSVC (Visual Studio Build Tools or Visual Studio) |
 | Other | Available GPU driver; most cleanup operations require administrator privileges |
 
@@ -136,7 +136,7 @@ Config file: `%APPDATA%\MemoryCleaner\settings.toml`
 
 | Dependency | Purpose |
 |------------|---------|
-| [Rust](https://www.rust-lang.org/) 1.96+ | Language and runtime |
+| [Rust](https://www.rust-lang.org/) 1.97.1+ | Language and runtime |
 | [GPUI](https://gpui.rs) (Zed source) | GPU-accelerated UI framework |
 | [gpui-component](https://longbridge.github.io/gpui-component/zh-CN/docs/components/) | UI components (Button, Checkbox, Switch, GroupBox, ProgressCircle, etc.) |
 | [windows-rs](https://github.com/microsoft/windows-rs) 0.62 | Win32 API (memory management, privileges, window control, Toast, RegisterHotKey) |

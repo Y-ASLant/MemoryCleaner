@@ -1189,7 +1189,6 @@ impl MemoryCleanerApp {
             alert
                 .title(t!("icon_cache.confirm_title"))
                 .description(t!("icon_cache.confirm_desc"))
-                .overlay_closable(false)
                 .button_props(
                     DialogButtonProps::default()
                         .ok_text(t!("dialog.confirm"))

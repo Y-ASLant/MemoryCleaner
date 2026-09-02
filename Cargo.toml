@@ -2,7 +2,7 @@
 name = "memory-cleaner"
 version = "1.0.6"
 edition = "2024"
-rust-version = "1.96"
+rust-version = "1.97.1"
 description = "Memory Cleaner"
 
 [package.metadata.winres]
@@ -27,8 +27,8 @@ anyhow = "1"
 bitflags = "2"
 gpui = { git = "https://github.com/zed-industries/zed" }
 gpui_platform = { git = "https://github.com/zed-industries/zed", features = ["font-kit"] }
-gpui-component = { git = "https://github.com/longbridge/gpui-component", rev = "0775df394083c1ed74f36f846b78868d1267398f" }
-gpui-component-assets = { git = "https://github.com/longbridge/gpui-component", rev = "0775df394083c1ed74f36f846b78868d1267398f" }
+gpui-component = { git = "https://github.com/longbridge/gpui-component", rev = "12054f596cbfef5b2070593ad95b8b8bc5d35eac" }
+gpui-component-assets = { git = "https://github.com/longbridge/gpui-component", rev = "12054f596cbfef5b2070593ad95b8b8bc5d35eac" }
 serde = { version = "1", features = ["derive"] }
 smol = "2"
 raw-window-handle = "0.6"
@@ -74,6 +74,3 @@ panic = "abort"
 
 [build-dependencies]
 winres = "0.1"
-
-[patch.crates-io]
-proc-macro-error2 = { path = "vendor/proc-macro-error2" }

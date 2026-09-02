@@ -45,7 +45,6 @@ main.rs → wake-signal check → ensure_elevated() → wake-signal retry → si
 | `docs/` | Project docs (`CHANGELOG.md`, technical comparisons) |
 | `.github/workflows/` | GitHub Actions build and tag-release workflows |
 | `src/win32/` | Win32/NT API bindings (hotkey, memory_notification, notification, nt, os, process, single_instance, startup, volume, window) |
-| `vendor/proc-macro-error2/` | Vendored patch for Rust 1.97+ compatibility (see below) |
 | `.codegraph/` | Codegraph index (gitignored) |
 
 ## Development Commands
@@ -79,7 +78,7 @@ make clean # cargo clean
 
 ## Code Conventions & Common Patterns
 
-- **Language:** Rust, Edition 2024 (requires Rust 1.96+).
+- **Language:** Rust, Edition 2024 (requires Rust 1.97.1+).
 - **Platform:** Windows-only. All modules assume `target_os = "windows"`.
 - **Error handling:** Functions return `Result<T, E>` or use `Option` for fallible lookups. `anyhow` is used in optimize/icon_cache paths; settings and most UI code use concrete errors.
 - **Unsafe / FFI:** `unsafe` is concentrated in `src/win32/` (NT API calls, privilege token manipulation, hotkey message loop) and `src/optimize.rs` (NtSetSystemInformation). Each unsafe block is narrowly scoped.
@@ -147,10 +146,9 @@ While `run_optimize` is in progress, `tray::start_spin()` posts `TrayCommand::Se
 
 ## Runtime / Tooling Preferences
 
-- **Toolchain:** Rust 1.96+ with MSVC (Windows Build Tools or Visual Studio required).
+- **Toolchain:** Rust 1.97.1+ with MSVC (Windows Build Tools or Visual Studio required).
 - **No rust-toolchain.toml, .cargo/config.toml, clippy.toml, or rustfmt.toml** — defaults only.
 - **Async:** `smol` (not tokio).
-- **Vendored patch:** `proc-macro-error2` 2.0.1 is vendored under `vendor/` to fix `E0365` on Rust 1.97+ (changes `extern crate proc_macro` to `pub extern crate proc_macro`). Remove when upstream releases a fix.
 - **Release profile:** Aggressive optimization — LTO enabled, symbols stripped, `opt-level = "s"` (size), single codegen unit, `panic = "abort"`.
 - **Package manager:** Cargo only. No npm, no other package managers.
 - **Binary name:** `MemoryCleaner.exe` (see `[[bin]]` name in `Cargo.toml`).

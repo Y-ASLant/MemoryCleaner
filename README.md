@@ -33,7 +33,7 @@ Windows 内存清理工具，基于 Rust + GPUI 构建。提供实时内存监�
 | 项目 | 要求 |
 |------|------|
 | 操作系统 | Windows 10 / 11 桌面版（64 位）；Windows 11 为 build ≥ 22000 |
-| Rust | 1.96 或更高（Edition 2024） |
+| Rust | 1.97.1 或更高（Edition 2024） |
 | 构建工具 | MSVC（Visual Studio Build Tools 或 Visual Studio） |
 | 其他 | 可用 GPU 驱动；大部分清理操作需管理员权限 |
 
@@ -136,7 +136,7 @@ cargo run --release
 
 | 依赖 | 用途 |
 |------|------|
-| [Rust](https://www.rust-lang.org/) 1.96+ | 语言与运行时 |
+| [Rust](https://www.rust-lang.org/) 1.97.1+ | 语言与运行时 |
 | [GPUI](https://gpui.rs)（Zed 源码） | GPU 加速 UI 框架 |
 | [gpui-component](https://longbridge.github.io/gpui-component/zh-CN/docs/components/) | UI 组件（Button、Checkbox、Switch、GroupBox、ProgressCircle 等） |
 | [windows-rs](https://github.com/microsoft/windows-rs) 0.62 | Win32 API（内存管理、权限、窗口控制、Toast、RegisterHotKey） |
