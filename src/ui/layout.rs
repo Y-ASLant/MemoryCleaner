@@ -60,10 +60,7 @@ pub fn process_exclusion_card_height() -> f32 {
 
 pub fn cleanup_areas_card_height() -> f32 {
     section_card_height(
-        CLEANUP_AREAS_HINT_H
-            + SECTION_GAP
-            + CLEANUP_AREA_ROW_H * CLEANUP_AREA_ROWS
-            + CLEANUP_ROW_GAPS,
+        CLEANUP_AREAS_HINT_H + CLEANUP_AREA_ROW_H * CLEANUP_AREA_ROWS + CLEANUP_ROW_GAPS,
     )
 }
 
@@ -149,5 +146,13 @@ mod tests {
         );
         assert_eq!(total, inner + EXCLUSION_LIST_PADDING * 2.);
         assert_eq!(total, 102.);
+    }
+
+    #[test]
+    fn settings_cards_heights_match_components() {
+        assert_eq!(process_exclusion_card_height(), 184.);
+        assert_eq!(cleanup_areas_card_height(), 180.);
+        assert_eq!(cleanup_section_height(), 370.);
+        assert_eq!(settings_reveal_height(), 376.);
     }
 }

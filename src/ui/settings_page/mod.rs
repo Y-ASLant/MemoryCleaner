@@ -89,7 +89,7 @@ fn render_settings_card(
         .child(
             v_flex()
                 .w_full()
-                .gap(px(4.))
+                .gap(px(SECTION_GAP))
                 .child(panel_section_title(title_icon, title))
                 .child(content),
         )
