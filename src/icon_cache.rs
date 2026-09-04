@@ -4,12 +4,13 @@ use std::ffi::OsStr;
 use std::os::windows::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 
+use crate::win32::handle::OwnedRegistryKey;
 use windows::Win32::Storage::FileSystem::{
     FILE_ATTRIBUTE_HIDDEN, FILE_ATTRIBUTE_READONLY, FILE_ATTRIBUTE_SYSTEM,
     FILE_FLAGS_AND_ATTRIBUTES, GetFileAttributesW, INVALID_FILE_ATTRIBUTES, SetFileAttributesW,
 };
 use windows::Win32::System::Registry::{
-    HKEY, HKEY_CLASSES_ROOT, KEY_SET_VALUE, RegCloseKey, RegDeleteValueW, RegOpenKeyExW,
+    HKEY, HKEY_CLASSES_ROOT, KEY_SET_VALUE, RegDeleteValueW, RegOpenKeyExW,
 };
 use windows::Win32::UI::Shell::{SHCNE_ASSOCCHANGED, SHCNF_IDLIST, SHChangeNotify};
 use windows::core::PCWSTR;
@@ -167,8 +168,9 @@ fn delete_reg_value(subkey: &str, value: &str, failures: &mut Vec<String>) {
         {
             return;
         }
+        let key = OwnedRegistryKey::from_raw(key);
         let value_wide = to_wide(value);
-        if RegDeleteValueW(key, PCWSTR(value_wide.as_ptr())).is_err() {
+        if RegDeleteValueW(key.raw(), PCWSTR(value_wide.as_ptr())).is_err() {
             failures.push(
                 t!(
                     "icon_cache.log.delete_reg_value_failed",
@@ -177,7 +179,6 @@ fn delete_reg_value(subkey: &str, value: &str, failures: &mut Vec<String>) {
                 .to_string(),
             );
         }
-        let _ = RegCloseKey(key);
     }
 }
 

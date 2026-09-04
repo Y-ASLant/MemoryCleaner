@@ -5,7 +5,7 @@ use std::mem::size_of;
 
 use anyhow::{Context, Result, bail};
 use rust_i18n::t;
-use windows::Win32::Foundation::{CloseHandle, GetLastError, HANDLE};
+use windows::Win32::Foundation::{GetLastError, HANDLE};
 use windows::Win32::Storage::FileSystem::{
     CreateFileW, FILE_ATTRIBUTE_NORMAL, FILE_READ_ATTRIBUTES, FILE_SHARE_READ, FILE_SHARE_WRITE,
     OPEN_EXISTING,
@@ -14,7 +14,8 @@ use windows::Win32::System::IO::DeviceIoControl;
 use windows::core::PCWSTR;
 
 use crate::log;
-use crate::win32::nt::{close_volume_handle, flush_volume_handle, open_volume_symbolic_link};
+use crate::win32::handle::OwnedWin32Handle;
+use crate::win32::nt::{flush_volume_handle, open_volume_symbolic_link};
 
 const SYNCHRONIZE_ACCESS: u32 = 0x0010_0000;
 
@@ -47,29 +48,6 @@ struct MountMgrMountPoint {
 struct MountMgrMountPointsHeader {
     size: u32,
     number_of_mount_points: u32,
-}
-
-/// RAII：保证 Mount Manager 句柄在任何路径下都会关闭。
-struct MountManagerHandle(HANDLE);
-
-impl MountManagerHandle {
-    fn open() -> Result<Self> {
-        open_mount_manager().map(Self)
-    }
-
-    fn handle(&self) -> HANDLE {
-        self.0
-    }
-}
-
-impl Drop for MountManagerHandle {
-    fn drop(&mut self) {
-        if !self.0.is_invalid() {
-            unsafe {
-                let _ = CloseHandle(self.0);
-            }
-        }
-    }
 }
 
 /// 待刷写的卷目标。
@@ -204,9 +182,7 @@ fn flush_volume_cache(target: &VolumeFlushTarget) -> Result<()> {
     let handle = open_volume_symbolic_link(&target.symbolic_link)
         .with_context(|| format!("open volume {}", target.label))?;
 
-    let flush_result = flush_volume_handle(handle);
-    close_volume_handle(handle);
-    flush_result.with_context(|| format!("flush volume {}", target.label))
+    flush_volume_handle(&handle).with_context(|| format!("flush volume {}", target.label))
 }
 
 fn log_volume_failure(label: &str, error: &anyhow::Error) {
@@ -235,12 +211,12 @@ fn log_volume_flush_summary(report: &VolumeFlushReport) {
 }
 
 fn query_mount_points() -> Result<Vec<Vec<u16>>> {
-    let mount_mgr = MountManagerHandle::open()?;
-    let buffer = query_mount_points_buffer(mount_mgr.handle())?;
+    let mount_mgr = open_mount_manager()?;
+    let buffer = query_mount_points_buffer(mount_mgr.raw())?;
     parse_volume_symbolic_links(&buffer)
 }
 
-fn open_mount_manager() -> Result<HANDLE> {
+fn open_mount_manager() -> Result<OwnedWin32Handle> {
     let wide: Vec<u16> = MOUNTMGR_DOS_DEVICE_NAME
         .encode_utf16()
         .chain(std::iter::once(0))
@@ -257,6 +233,7 @@ fn open_mount_manager() -> Result<HANDLE> {
             None,
         )
     }
+    .map(|handle| unsafe { OwnedWin32Handle::from_raw(handle) })
     .context("open MountPointManager")
 }
 

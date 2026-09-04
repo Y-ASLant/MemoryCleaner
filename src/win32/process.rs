@@ -3,7 +3,7 @@ use std::mem::MaybeUninit;
 use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
-use windows::Win32::Foundation::{CloseHandle, ERROR_ACCESS_DENIED, GetLastError};
+use windows::Win32::Foundation::{ERROR_ACCESS_DENIED, GetLastError};
 use windows::Win32::System::Diagnostics::ToolHelp::{
     CreateToolhelp32Snapshot, PROCESSENTRY32W, Process32FirstW, Process32NextW, TH32CS_SNAPPROCESS,
 };
@@ -16,6 +16,7 @@ use windows::Win32::System::Threading::{
 };
 
 use crate::memory::MemoryStatus;
+use crate::win32::handle::OwnedWin32Handle;
 
 /// Running process entry for the exclusion picker dropdown.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -25,6 +26,12 @@ pub struct ProcessPickerEntry {
     pub working_set_bytes: u64,
     /// How many instances returned a readable working-set size.
     pub memory_readable_count: u32,
+}
+#[derive(Default)]
+struct ProcessAggregate {
+    instance_count: u32,
+    working_set_bytes: u64,
+    memory_readable_count: u32,
 }
 
 impl ProcessPickerEntry {
@@ -46,18 +53,17 @@ fn query_process_working_set_bytes(pid: u32) -> Option<u64> {
     unsafe {
         let access = PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_QUERY_INFORMATION;
         let handle = match OpenProcess(access, false, pid) {
-            Ok(handle) => handle,
+            Ok(handle) => OwnedWin32Handle::from_raw(handle),
             Err(_) => return None,
         };
 
         let mut counters = PROCESS_MEMORY_COUNTERS::default();
         let ok = GetProcessMemoryInfo(
-            handle,
+            handle.raw(),
             &mut counters,
             size_of::<PROCESS_MEMORY_COUNTERS>() as u32,
         )
         .is_ok();
-        let _ = CloseHandle(handle);
 
         if ok {
             Some(counters.WorkingSetSize as u64)
@@ -69,25 +75,34 @@ fn query_process_working_set_bytes(pid: u32) -> Option<u64> {
 
 /// Normalize a process name for exclusion matching: lowercase, no whitespace, no `.exe`.
 pub fn normalize_process_name(name: &str) -> String {
-    let trimmed: String = name.chars().filter(|c| !c.is_whitespace()).collect();
-    let lower = trimmed.to_ascii_lowercase();
-    lower
-        .strip_suffix(".exe")
-        .unwrap_or(lower.as_str())
-        .to_string()
+    normalize_process_chars(name.chars(), name.len())
+}
+
+fn normalize_process_chars(chars: impl Iterator<Item = char>, capacity: usize) -> String {
+    let mut normalized = String::with_capacity(capacity);
+    normalized.extend(
+        chars
+            .filter(|c| !c.is_whitespace())
+            .map(|c| c.to_ascii_lowercase()),
+    );
+    if normalized.ends_with(".exe") {
+        normalized.truncate(normalized.len() - 4);
+    }
+    normalized
 }
 
 fn exe_name_matches(entry: &PROCESSENTRY32W, target: &[u16]) -> bool {
-    let name = entry.szExeFile;
+    let name = &entry.szExeFile;
     let len = name.iter().position(|&c| c == 0).unwrap_or(name.len());
     name[..len] == target[..]
 }
 
 fn exe_base_name_from_entry(entry: &PROCESSENTRY32W) -> String {
-    let name = entry.szExeFile;
+    let name = &entry.szExeFile;
     let len = name.iter().position(|&c| c == 0).unwrap_or(name.len());
-    let utf16 = &name[..len];
-    normalize_process_name(&String::from_utf16_lossy(utf16))
+    let chars = char::decode_utf16(name[..len].iter().copied())
+        .map(|result| result.unwrap_or(char::REPLACEMENT_CHARACTER));
+    normalize_process_chars(chars, len)
 }
 
 fn with_process_snapshot<F>(mut f: F) -> Result<()>
@@ -95,23 +110,22 @@ where
     F: FnMut(&PROCESSENTRY32W) -> bool,
 {
     unsafe {
-        let snapshot =
-            CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0).context("CreateToolhelp32Snapshot")?;
+        let snapshot = OwnedWin32Handle::from_raw(
+            CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0).context("CreateToolhelp32Snapshot")?,
+        );
         let mut entry = MaybeUninit::<PROCESSENTRY32W>::zeroed();
         (*entry.as_mut_ptr()).dwSize = size_of::<PROCESSENTRY32W>() as u32;
 
-        if Process32FirstW(snapshot, entry.as_mut_ptr()).is_ok() {
+        if Process32FirstW(snapshot.raw(), entry.as_mut_ptr()).is_ok() {
             loop {
                 if f(entry.assume_init_ref()) {
                     break;
                 }
-                if Process32NextW(snapshot, entry.as_mut_ptr()).is_err() {
+                if Process32NextW(snapshot.raw(), entry.as_mut_ptr()).is_err() {
                     break;
                 }
             }
         }
-
-        let _ = CloseHandle(snapshot);
     }
     Ok(())
 }
@@ -127,7 +141,7 @@ pub fn list_processes_for_exclusion_picker(
     excluded: &[String],
 ) -> Vec<ProcessPickerEntry> {
     let self_normalized = normalize_process_name(self_base);
-    let mut by_name: HashMap<String, ProcessPickerEntry> = HashMap::new();
+    let mut by_name: HashMap<String, ProcessAggregate> = HashMap::new();
 
     let _ = with_process_snapshot(|entry| {
         let name = exe_base_name_from_entry(entry);
@@ -140,25 +154,24 @@ pub fn list_processes_for_exclusion_picker(
         }
 
         let working_set = query_process_working_set_bytes(entry.th32ProcessID);
-        by_name
-            .entry(name.clone())
-            .and_modify(|item| {
-                item.instance_count += 1;
-                if let Some(bytes) = working_set {
-                    item.memory_readable_count += 1;
-                    item.working_set_bytes = item.working_set_bytes.saturating_add(bytes);
-                }
-            })
-            .or_insert(ProcessPickerEntry {
-                name,
-                instance_count: 1,
-                working_set_bytes: working_set.unwrap_or(0),
-                memory_readable_count: u32::from(working_set.is_some()),
-            });
+        let aggregate = by_name.entry(name).or_default();
+        aggregate.instance_count += 1;
+        if let Some(bytes) = working_set {
+            aggregate.memory_readable_count += 1;
+            aggregate.working_set_bytes = aggregate.working_set_bytes.saturating_add(bytes);
+        }
         false
     });
 
-    let mut entries: Vec<_> = by_name.into_values().collect();
+    let mut entries: Vec<_> = by_name
+        .into_iter()
+        .map(|(name, aggregate)| ProcessPickerEntry {
+            name,
+            instance_count: aggregate.instance_count,
+            working_set_bytes: aggregate.working_set_bytes,
+            memory_readable_count: aggregate.memory_readable_count,
+        })
+        .collect();
     entries.sort_by(|a, b| a.name.cmp(&b.name));
     entries
 }
@@ -169,7 +182,7 @@ pub fn empty_working_sets_except(excluded: &[String]) -> Result<()> {
 
     with_process_snapshot(|entry| {
         let name = exe_base_name_from_entry(entry);
-        if is_process_excluded(&name, excluded) {
+        if excluded.iter().any(|excluded| excluded == &name) {
             return false;
         }
 
@@ -177,18 +190,17 @@ pub fn empty_working_sets_except(excluded: &[String]) -> Result<()> {
         let handle =
             match unsafe { OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_SET_QUOTA, false, pid) }
             {
-                Ok(handle) => handle,
+                Ok(handle) => unsafe { OwnedWin32Handle::from_raw(handle) },
                 Err(_) => return false,
             };
 
-        let result = unsafe { K32EmptyWorkingSet(handle) };
+        let result = unsafe { K32EmptyWorkingSet(handle.raw()) };
         if !result.as_bool() {
             let last_error = unsafe { GetLastError() };
             if last_error != ERROR_ACCESS_DENIED {
                 errors.push(format!("{name} (pid {pid}): {last_error:?}"));
             }
         }
-        let _ = unsafe { CloseHandle(handle) };
         false
     })?;
 
@@ -238,10 +250,10 @@ pub fn kill_process_by_name(exe_name: &str) -> Result<u32> {
         }
         let pid = entry.th32ProcessID;
         if let Ok(handle) = unsafe { OpenProcess(PROCESS_TERMINATE, false, pid) } {
-            if unsafe { TerminateProcess(handle, 1) }.is_ok() {
+            let handle = unsafe { OwnedWin32Handle::from_raw(handle) };
+            if unsafe { TerminateProcess(handle.raw(), 1) }.is_ok() {
                 killed += 1;
             }
-            let _ = unsafe { CloseHandle(handle) };
         }
         false
     })?;

@@ -1,5 +1,6 @@
+use crate::win32::handle::OwnedWin32Handle;
 use anyhow::{Context, Result, bail};
-use windows::Win32::Foundation::{CloseHandle, ERROR_SUCCESS, GetLastError, HANDLE, LUID};
+use windows::Win32::Foundation::{ERROR_SUCCESS, GetLastError, HANDLE, LUID};
 use windows::Win32::Security::{
     AdjustTokenPrivileges, LUID_AND_ATTRIBUTES, LookupPrivilegeValueW, SE_PRIVILEGE_ENABLED,
     TOKEN_ACCESS_MASK, TOKEN_ADJUST_PRIVILEGES, TOKEN_PRIVILEGES, TOKEN_PRIVILEGES_ATTRIBUTES,
@@ -12,14 +13,13 @@ fn with_process_token<T>(
     access: TOKEN_ACCESS_MASK,
     f: impl FnOnce(HANDLE) -> Result<T>,
 ) -> Result<T> {
+    let mut token = HANDLE::default();
     unsafe {
-        let mut token = HANDLE::default();
         OpenProcessToken(GetCurrentProcess(), access, &mut token)
             .context("OpenProcessToken failed")?;
-        let result = f(token);
-        let _ = CloseHandle(token);
-        result
     }
+    let token = unsafe { OwnedWin32Handle::from_raw(token) };
+    f(token.raw())
 }
 
 pub fn enable_privilege(name: &str) -> Result<()> {

@@ -1,16 +1,13 @@
 //! Single-instance guard plus a wake-up signal for the already-running app.
 //!
-//! The first instance creates a named mutex (leaked handle keeps the kernel
-//! object alive for the process lifetime) and an auto-reset event watched by a
-//! dedicated thread. A second launch opens the event, sets it, and exits; the
-//! watcher forwards the signal as `TrayCommand::ActivateWindow` so the running
-//! instance shows its main window.
+//! The first instance creates a named mutex retained for the process lifetime
+//! and an auto-reset event watched by a dedicated thread. A second launch opens
+//! the event, sets it, and exits; the watcher forwards the signal as
+//! `TrayCommand::ActivateWindow` so the running instance shows its main window.
 
-use std::sync::mpsc::Sender;
+use std::sync::{OnceLock, mpsc::Sender};
 
-use windows::Win32::Foundation::{
-    CloseHandle, ERROR_ALREADY_EXISTS, GetLastError, HANDLE, WAIT_OBJECT_0,
-};
+use windows::Win32::Foundation::{ERROR_ALREADY_EXISTS, GetLastError, WAIT_OBJECT_0};
 use windows::Win32::System::Threading::{
     CreateEventW, CreateMutexW, EVENT_MODIFY_STATE, INFINITE, OpenEventW, SetEvent,
     WaitForSingleObject,
@@ -18,9 +15,11 @@ use windows::Win32::System::Threading::{
 use windows::core::{HRESULT, PCWSTR};
 
 use crate::tray::TrayCommand;
+use crate::win32::handle::OwnedWin32Handle;
 
 const MUTEX_NAME: &str = "MemoryCleaner_{B8F3A7E2-4C1D-4F5A-9B6E-2D8C3F7A1E9B}";
 const SHOW_EVENT_NAME: &str = "MemoryCleaner_{B8F3A7E2-4C1D-4F5A-9B6E-2D8C3F7A1E9B}_ShowWindow";
+static INSTANCE_MUTEX: OnceLock<OwnedWin32Handle> = OnceLock::new();
 
 /// Outcome of trying to wake a possibly running instance.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -40,14 +39,11 @@ pub fn signal_existing_instance() -> InstanceSignal {
     let name = wide_null(SHOW_EVENT_NAME);
 
     let event = match unsafe { OpenEventW(EVENT_MODIFY_STATE, false, PCWSTR(name.as_ptr())) } {
-        Ok(event) => event,
+        Ok(event) => unsafe { OwnedWin32Handle::from_raw(event) },
         Err(error) => return signal_from_open_event_error(error.code()),
     };
 
-    let signaled = unsafe { SetEvent(event) };
-    unsafe {
-        let _ = CloseHandle(event);
-    }
+    let signaled = unsafe { SetEvent(event.raw()) };
     match signaled {
         Ok(()) => InstanceSignal::Signaled,
         Err(_) => InstanceSignal::AccessDenied,
@@ -62,64 +58,51 @@ pub fn ensure_single_instance(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mutex_name = wide_null(MUTEX_NAME);
 
-    let mutex = unsafe { CreateMutexW(None, true, PCWSTR(mutex_name.as_ptr())) }
-        .map_err(|error| format!("CreateMutexW failed: {error}"))?;
+    let mutex = unsafe {
+        OwnedWin32Handle::from_raw(
+            CreateMutexW(None, true, PCWSTR(mutex_name.as_ptr()))
+                .map_err(|error| format!("CreateMutexW failed: {error}"))?,
+        )
+    };
     if unsafe { GetLastError() } == ERROR_ALREADY_EXISTS {
-        unsafe {
-            let _ = CloseHandle(mutex);
-        }
         return Err("Application is already running".into());
     }
 
     let event_name = wide_null(SHOW_EVENT_NAME);
-    let event = unsafe { CreateEventW(None, false, false, PCWSTR(event_name.as_ptr())) }
-        .map_err(|error| format!("CreateEventW failed: {error}"))?;
+    let event = unsafe {
+        OwnedWin32Handle::from_raw(
+            CreateEventW(None, false, false, PCWSTR(event_name.as_ptr()))
+                .map_err(|error| format!("CreateEventW failed: {error}"))?,
+        )
+    };
     spawn_event_watcher(event, command_tx)?;
-
-    // The mutex handle is intentionally leaked to preserve the process-lifetime lock.
-    let _ = mutex;
+    INSTANCE_MUTEX
+        .set(mutex)
+        .map_err(|_| "single-instance guard was initialized twice")?;
 
     Ok(())
 }
-
-/// A raw Win32 handle is a process-wide token; the Win32 API contract allows
-/// using it from any thread, so it is safe to move into the watcher thread.
-struct SendHandle(HANDLE);
-unsafe impl Send for SendHandle {}
 
 fn spawn_event_watcher(
-    event: HANDLE,
+    event: OwnedWin32Handle,
     command_tx: Sender<TrayCommand>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let wrapped = SendHandle(event);
     std::thread::Builder::new()
         .name("single-instance-watcher".into())
-        .spawn(move || watcher_loop(wrapped, command_tx))
-        .map_err(|error| {
-            unsafe {
-                let _ = CloseHandle(event);
-            }
-            format!("single-instance watcher start failed: {error}")
-        })?;
+        .spawn(move || watcher_loop(event, command_tx))
+        .map_err(|error| format!("single-instance watcher start failed: {error}"))?;
     Ok(())
 }
 
-/// Body of the watcher thread. Taking the wrapped handle as a by-value
-/// argument sidesteps closure field capture, which would move the raw
-/// `HANDLE` (not `Send`) into the thread.
-fn watcher_loop(event: SendHandle, command_tx: Sender<TrayCommand>) {
-    let event = event.0;
+fn watcher_loop(event: OwnedWin32Handle, command_tx: Sender<TrayCommand>) {
     loop {
-        let result = unsafe { WaitForSingleObject(event, INFINITE) };
+        let result = unsafe { WaitForSingleObject(event.raw(), INFINITE) };
         if result != WAIT_OBJECT_0 {
             break;
         }
         if command_tx.send(TrayCommand::ActivateWindow).is_err() {
             break;
         }
-    }
-    unsafe {
-        let _ = CloseHandle(event);
     }
 }
 

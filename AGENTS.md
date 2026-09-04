@@ -10,7 +10,7 @@ Memory Cleaner is a **Windows-only** GUI memory-optimization tool written in Rus
 main.rs → wake-signal check → ensure_elevated() → wake-signal retry → single-instance mutex + wake event
        → startup::sync → notification::init → tray install + hotkey::sync → GPUI app launch
  │
- ├─ app.rs (core state, memory refresh, optimization, window hide/restore)
+ ├─ app/ (core state plus window, settings, optimization, and rendering responsibilities)
  ├─ auto_cleanup.rs (auto-cleanup trigger policy: low-memory notifications, threshold decisions, cooldown)
  ├─ log.rs (optional App.log output, hourly retention, malformed-content bounds, I/O diagnostics)
  ├─ locale.rs (rust-i18n locale apply, list separator, lang-id mapping)
@@ -21,8 +21,8 @@ main.rs → wake-signal check → ensure_elevated() → wake-signal retry → si
  ├─ tray.rs (tray-icon crate, App.png embedded via include_bytes!)
  ├─ icon_cache.rs (Explorer icon cache purge)
  ├─ version.rs (version constant)
- ├─ ui/ (GPUI components: layout, memory_card, settings_page, theme, title_bar)
- └─ win32/ (hotkey, memory_notification, notification, nt, os, process, single_instance, startup, volume, window)
+ ├─ ui/ (GPUI components; settings_page/ separates cleanup, exclusions, behavior, and footer)
+ └─ win32/ (owned handle RAII plus hotkey, memory, notification, process, startup, volume, window)
 ```
 
 - **Entry flow:** `main.rs` → wake any running instance via the named show-window event (before elevation, so a same-integrity launch needs no UAC) → `ensure_elevated()` → wake-signal retry → single-instance mutex + wake event watcher → `startup::sync` → `locale::apply` → `notification::init` → install tray + bind hotkey sender → `hotkey::sync` → GPUI app with `QuitMode::Explicit` → `open_main_window`.
@@ -95,15 +95,18 @@ make clean # cargo clean
 | File | Role |
 |---|---|
 | `src/main.rs` | Entry point — elevation, single-instance, notification init, tray/hotkey setup, GPUI launch |
-| `src/app.rs` | Core application state, memory refresh loop, optimization, window hide/restore, hotkey recording |
+| `src/app/` | Core application state split into window lifecycle, settings, optimization, and rendering modules |
 | `src/tray.rs` | Tray icon install, cleanup spin animation, tooltip/menu sync, command dispatch |
 | `src/win32/hotkey.rs` | `RegisterHotKey` in dedicated thread; sends `TrayCommand::Optimize` |
 | `src/win32/memory_notification.rs` | Cancellable `CreateMemoryResourceNotification` low/high monitor; follows the auto-cleanup switch and sends `TrayCommand::LowMemory` once per pressure cycle |
 | `src/win32/notification.rs` | Windows Toast + Start Menu shortcut for AppUserModelID |
 | `src/log.rs` | Optional `App.log` output with throttled retention, malformed-content bounds, and file I/O diagnostics |
 | `src/ui/theme.rs` | Light theme init + Win10 square-corner chrome |
+| `src/ui/settings_page/` | Cleanup areas, process exclusions, cleanup footer, and window behavior dialog |
 | `src/locale.rs` | rust-i18n locale apply, list separator, lang-id mapping |
 | `src/win32/os.rs` | Windows build detection (Win10 vs Win11), system UI locale |
+| `src/win32/elevation.rs` | UAC elevation check and relaunch |
+| `src/win32/handle.rs` | RAII ownership for Win32 `HANDLE` and registry `HKEY` |
 | `src/optimize.rs` | Memory cleanup orchestration (8 cleaning regions) |
 | `src/settings.rs` | TOML settings schema and persistence |
 | `src/win32/nt.rs` | Raw NT API bindings (`NtSetSystemInformation`, `NtCreateFile`, structs, enums) |
@@ -116,7 +119,7 @@ make clean # cargo clean
 
 ## UI Layout Notes
 
-- **Window size:** fixed width 520px; collapsed height ~294px, expanded ~630px (`src/app.rs` + `src/ui/layout.rs`).
+- **Window size:** fixed width 520px; collapsed height ~294px, expanded ~630px (`src/app/` + `src/ui/layout.rs`).
 - **Collapsed view:** memory cards + cleanup button.
 - **Expanded view:** adds cleanup-area checkboxes panel (`settings_page::render_settings_content`).
 - **Window behavior dialog** (always on top, close-to-tray, run at startup, debug logging, optimization notifications, cleanup hotkey + recording, language, auto-cleanup threshold): opened from title-bar gear icon; `overlay_closable(false)` — clicking the backdrop does not close it.

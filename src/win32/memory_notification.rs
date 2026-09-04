@@ -1,4 +1,3 @@
-use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle};
 use std::sync::{Arc, mpsc::Sender};
 use std::thread::{self, JoinHandle};
 
@@ -10,34 +9,27 @@ use windows::Win32::System::Memory::{
 use windows::Win32::System::Threading::{CreateEventW, INFINITE, SetEvent, WaitForMultipleObjects};
 
 use crate::tray::TrayCommand;
+use crate::win32::handle::OwnedWin32Handle;
 
 /// Owns a Windows memory-resource notification handle.
-struct MemoryNotification(OwnedHandle);
+struct MemoryNotification(OwnedWin32Handle);
 
 impl MemoryNotification {
     fn create_low() -> Result<Self> {
         unsafe { CreateMemoryResourceNotification(LowMemoryResourceNotification) }
-            .map(|handle| Self(owned_handle(handle)))
+            .map(|handle| Self(unsafe { OwnedWin32Handle::from_raw(handle) }))
             .context("CreateMemoryResourceNotification(LowMemoryResourceNotification) failed")
     }
 
     fn create_high() -> Result<Self> {
         unsafe { CreateMemoryResourceNotification(HighMemoryResourceNotification) }
-            .map(|handle| Self(owned_handle(handle)))
+            .map(|handle| Self(unsafe { OwnedWin32Handle::from_raw(handle) }))
             .context("CreateMemoryResourceNotification(HighMemoryResourceNotification) failed")
     }
 
     fn handle(&self) -> HANDLE {
-        handle_from_owned(&self.0)
+        self.0.raw()
     }
-}
-
-fn owned_handle(handle: HANDLE) -> OwnedHandle {
-    unsafe { OwnedHandle::from_raw_handle(handle.0) }
-}
-
-fn handle_from_owned(handle: &OwnedHandle) -> HANDLE {
-    HANDLE(handle.as_raw_handle())
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -58,25 +50,24 @@ fn wait_or_stop(notification: &MemoryNotification, stop_event: HANDLE) -> Result
 
 /// Cancellable low-memory monitor. Dropping it wakes and joins its worker immediately.
 pub struct MemoryNotificationMonitor {
-    stop_event: Arc<OwnedHandle>,
+    stop_event: Arc<OwnedWin32Handle>,
     worker: Option<JoinHandle<()>>,
 }
 
 impl MemoryNotificationMonitor {
     pub fn start(command_tx: Sender<TrayCommand>) -> Result<Self> {
-        let stop_event = Arc::new(owned_handle(
-            unsafe { CreateEventW(None, true, false, None) }
-                .context("CreateEventW(stop) failed")?,
-        ));
+        let stop_event = Arc::new(unsafe {
+            OwnedWin32Handle::from_raw(
+                CreateEventW(None, true, false, None).context("CreateEventW(stop) failed")?,
+            )
+        });
         let low = MemoryNotification::create_low()?;
         let high = MemoryNotification::create_high()?;
         let worker_stop_event = Arc::clone(&stop_event);
         let worker = thread::Builder::new()
             .name("low-memory-monitor".into())
             .spawn(move || {
-                if let Err(error) =
-                    run(command_tx, handle_from_owned(&worker_stop_event), low, high)
-                {
+                if let Err(error) = run(command_tx, worker_stop_event.raw(), low, high) {
                     crate::log_msg(&format!("[memory-notification] monitor stopped: {error:#}"));
                 }
             })
@@ -92,7 +83,7 @@ impl MemoryNotificationMonitor {
 impl Drop for MemoryNotificationMonitor {
     fn drop(&mut self) {
         unsafe {
-            let _ = SetEvent(handle_from_owned(&self.stop_event));
+            let _ = SetEvent(self.stop_event.raw());
         }
         if let Some(worker) = self.worker.take() {
             let _ = worker.join();

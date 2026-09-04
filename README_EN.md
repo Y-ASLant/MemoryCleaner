@@ -155,7 +155,12 @@ src/
 ├── anim.rs              # Interpolators for memory values, ring charts, and layout transitions
 ├── auto_cleanup.rs      # Automatic-cleanup trigger policy (low-memory notification, threshold, cooldown)
 ├── main.rs              # Entry: UAC, single-instance, notification init, tray/hotkey, GPUI launch
-├── app.rs               # Application state, memory polling, optimization, window hide/restore, hotkey recording
+├── app/                  # Core state split into window, settings, optimization, and rendering
+│   ├── mod.rs
+│   ├── optimization.rs
+│   ├── render.rs
+│   ├── settings.rs
+│   └── window.rs
 ├── icon_cache.rs        # Explorer icon cache cleanup
 ├── locale.rs            # Locale apply, list separator, system language mapping
 ├── log.rs               # Debug log writing, throttled retention, and file-error reporting
@@ -167,6 +172,8 @@ src/
 ├── tray.rs              # System tray icon, tooltip, menu, cleanup spin animation
 ├── version.rs           # Version constant
 ├── win32/               # Windows API wrappers
+│   ├── elevation.rs     # UAC elevation check and relaunch
+│   ├── handle.rs        # RAII ownership for HANDLE/HKEY resources
 │   ├── hotkey.rs        # RegisterHotKey global hotkey (dedicated message loop thread)
 │   ├── memory_notification.rs # Windows low/high memory resource notification monitor
 │   ├── notification.rs  # Windows Toast and Start Menu shortcut
@@ -180,7 +187,12 @@ src/
 └── ui/                  # GPUI UI components
     ├── layout.rs
     ├── memory_card.rs
-    ├── settings_page.rs # Cleanup regions, window behavior dialog, hotkey recording
+    ├── settings_page/   # Settings UI split by responsibility
+    │   ├── mod.rs
+    │   ├── cleanup_areas.rs
+    │   ├── cleanup_footer.rs
+    │   ├── process_exclusion.rs
+    │   └── window_behavior.rs
     ├── theme.rs
     └── title_bar.rs
 ```

@@ -7,13 +7,13 @@
 //! is still deleted so users migrating from older versions are moved over.
 
 use anyhow::{Context, Result};
-use windows::Win32::Foundation::{CloseHandle, ERROR_FILE_NOT_FOUND, WAIT_OBJECT_0};
+use windows::Win32::Foundation::{ERROR_FILE_NOT_FOUND, WAIT_OBJECT_0};
 use windows::Win32::System::Com::{
     CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED, CoCreateInstance, CoInitializeEx,
     CoUninitialize,
 };
 use windows::Win32::System::Registry::{
-    HKEY, HKEY_CURRENT_USER, KEY_SET_VALUE, KEY_WRITE, RegCloseKey, RegDeleteValueW,
+    HKEY, HKEY_CURRENT_USER, KEY_SET_VALUE, KEY_WRITE, RegDeleteValueW,
 };
 use windows::Win32::System::TaskScheduler::{ITaskService, TaskScheduler};
 use windows::Win32::System::Threading::{
@@ -25,6 +25,8 @@ use windows::core::{BSTR, Error, HRESULT, PCWSTR, PWSTR};
 
 use crate::settings::Settings;
 use crate::version::PROCESS_BASE_NAME;
+use crate::win32::elevation::ELEVATED_ARG;
+use crate::win32::handle::{OwnedRegistryKey, OwnedWin32Handle};
 
 /// Registry / CLI flag for silent login autostart (tray only, no main window).
 pub const STARTUP_ARG: &str = "--startup";
@@ -41,8 +43,6 @@ pub fn elevation_relaunch_args() -> String {
         ELEVATED_ARG.to_string()
     }
 }
-
-const ELEVATED_ARG: &str = "--elevated";
 
 /// Name of the Task Scheduler task in the root folder.
 const TASK_NAME: &str = "MemoryCleaner_Autostart";
@@ -93,19 +93,15 @@ fn run_schtasks(arguments: &str) -> Result<i32> {
         )
         .context("CreateProcessW (schtasks) failed")?;
 
-        let wait = WaitForSingleObject(process_info.hProcess, INFINITE);
+        let process = OwnedWin32Handle::from_raw(process_info.hProcess);
+        let _thread = OwnedWin32Handle::from_raw(process_info.hThread);
+        let wait = WaitForSingleObject(process.raw(), INFINITE);
         if wait != WAIT_OBJECT_0 {
-            let _ = CloseHandle(process_info.hThread);
-            let _ = CloseHandle(process_info.hProcess);
             anyhow::bail!("schtasks wait returned {wait:?}");
         }
 
         let mut exit_code: u32 = 0;
-        let result =
-            GetExitCodeProcess(process_info.hProcess, &mut exit_code).context("GetExitCodeProcess");
-        let _ = CloseHandle(process_info.hThread);
-        let _ = CloseHandle(process_info.hProcess);
-        result?;
+        GetExitCodeProcess(process.raw(), &mut exit_code).context("GetExitCodeProcess")?;
         Ok(exit_code as i32)
     }
 }
@@ -223,10 +219,8 @@ fn delete_value_best_effort() {
     if !status.is_ok() {
         return;
     }
-    let delete = unsafe { RegDeleteValueW(key, PCWSTR(value_name.as_ptr())) };
-    unsafe {
-        let _ = RegCloseKey(key);
-    }
+    let key = unsafe { OwnedRegistryKey::from_raw(key) };
+    let delete = unsafe { RegDeleteValueW(key.raw(), PCWSTR(value_name.as_ptr())) };
     if let Err(error) = win32_ok(delete) {
         let missing = delete == ERROR_FILE_NOT_FOUND;
         if !missing {

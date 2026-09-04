@@ -155,7 +155,12 @@ src/
 ├── anim.rs              # 内存数值/环形图与布局过渡动画插值器
 ├── auto_cleanup.rs      # 自动清理触发策略（低内存通知、阈值、冷却）
 ├── main.rs              # 入口：UAC、单实例、通知初始化、托盘/热键、GPUI 启动
-├── app.rs               # 应用状态、内存轮询、优化流程、窗口隐藏/恢复、热键录制
+├── app/                  # 应用核心状态及按职责拆分的窗口、设置、优化与渲染
+│   ├── mod.rs
+│   ├── optimization.rs
+│   ├── render.rs
+│   ├── settings.rs
+│   └── window.rs
 ├── icon_cache.rs        # Explorer 图标缓存清理
 ├── locale.rs            # locale 应用、列表分隔符、系统语言映射
 ├── log.rs               # 调试日志写入、低频保留清理与文件错误报告
@@ -167,6 +172,8 @@ src/
 ├── tray.rs              # 系统托盘图标、Tooltip、菜单、清理过程旋转动画
 ├── version.rs           # 版本常量
 ├── win32/               # Windows API 封装
+│   ├── elevation.rs     # UAC 提权检测与重新启动
+│   ├── handle.rs        # HANDLE/HKEY RAII 所有权封装
 │   ├── hotkey.rs        # RegisterHotKey 全局热键（独立消息循环线程）
 │   ├── memory_notification.rs # Windows 低/高内存资源通知监听
 │   ├── notification.rs  # Windows Toast 与开始菜单快捷方式
@@ -180,7 +187,12 @@ src/
 └── ui/                  # GPUI UI 组件
     ├── layout.rs
     ├── memory_card.rs
-    ├── settings_page.rs # 清理区域、窗口行为对话框、热键录制
+    ├── settings_page/   # 设置页面按职责拆分
+    │   ├── mod.rs
+    │   ├── cleanup_areas.rs
+    │   ├── cleanup_footer.rs
+    │   ├── process_exclusion.rs
+    │   └── window_behavior.rs
     ├── theme.rs
     └── title_bar.rs
 ```

@@ -1,7 +1,8 @@
 use std::mem::size_of;
 
+use crate::win32::handle::OwnedWin32Handle;
 use anyhow::{Context, Result, bail};
-use windows::Win32::Foundation::{CloseHandle, HANDLE};
+use windows::Win32::Foundation::HANDLE;
 
 #[repr(u32)]
 #[derive(Clone, Copy)]
@@ -120,7 +121,7 @@ fn nt_status_to_result(status: i32, context: &str) -> Result<()> {
 }
 
 /// 使用 Mount Manager 返回的 `\??\Volume{GUID}` 符号链接打开卷（Mem Reduct 同款路径）。
-pub fn open_volume_symbolic_link(symbolic_link: &[u16]) -> Result<HANDLE> {
+pub(crate) fn open_volume_symbolic_link(symbolic_link: &[u16]) -> Result<OwnedWin32Handle> {
     if symbolic_link.is_empty() {
         bail!("open volume: empty symbolic link");
     }
@@ -168,26 +169,19 @@ pub fn open_volume_symbolic_link(symbolic_link: &[u16]) -> Result<HANDLE> {
     };
 
     nt_status_to_result(status, "NtCreateFile volume")?;
-    Ok(handle)
+    Ok(unsafe { OwnedWin32Handle::from_raw(handle) })
 }
 
 /// 刷写卷缓存（`NtFlushBuffersFile`）。
-pub fn flush_volume_handle(handle: HANDLE) -> Result<()> {
+pub(crate) fn flush_volume_handle(handle: &OwnedWin32Handle) -> Result<()> {
     let mut io_status = IoStatusBlock {
         status: IoStatusBlockStatus { status: 0 },
         information: 0,
     };
 
-    let status = unsafe { NtFlushBuffersFile(handle, &mut io_status) };
+    let status = unsafe { NtFlushBuffersFile(handle.raw(), &mut io_status) };
     nt_status_to_result(status, "NtFlushBuffersFile")?;
     Ok(())
-}
-
-/// 关闭 `NtCreateFile` 返回的句柄。
-pub fn close_volume_handle(handle: HANDLE) {
-    unsafe {
-        let _ = CloseHandle(handle);
-    }
 }
 
 /// # Safety

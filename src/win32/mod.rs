@@ -1,3 +1,5 @@
+pub mod elevation;
+pub(crate) mod handle;
 pub mod hotkey;
 pub mod memory_notification;
 pub mod notification;
