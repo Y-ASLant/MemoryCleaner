@@ -5,6 +5,18 @@
 **编写约定**（详见 `AGENTS.md` → Documentation & Changelog）：每个版本只记录相对上一 tag 的**最终差异**，不记录开发过程中的中间修改或逐步修复。
 
 
+## [1.0.7] - 2026-09-04
+
+相对 [1.0.6] 的最终变更如下。
+
+### 变更
+
+- **界面边距与卡片间距统一**：主窗口外围内边距、卡片间距、卡片标题与内容间隙及底部清理按钮间隙统一对齐为 6 px；修复展开状态下清理区域卡片与底部按钮之间的多余高度计算偏差，使折叠与展开状态下卡片到底部清理按钮的间距保持严格一致（均为 6 px）。
+- **UI 依赖迁移至 gpui-kit**：将原有的 `gpui` 与 `gpui-component` git 依赖统一迁移至 crates.io 发布的 `gpui-kit` 0.6；最低支持的 Rust 工具链升级至 1.97.1+（Edition 2024），并移除本地 `proc-macro-error2` patch 补丁。
+- **模块解耦与 Win32 资源 RAII**：将庞大的 `app.rs` 与 `settings_page.rs` 按职责拆分为子模块；新增 `src/win32/handle.rs` 提供 Win32 内核对象与注册表键的 RAII 封装，统一资源生命周期管理以防止句柄泄露；拆分独立 `elevation` 模块处理管理员提权检测与重新拉起。
+- **项目文档**：更新中英文 README 与开发者规范以反映模块化架构及 `gpui-kit` 依赖变更。
+
+
 ## [1.0.6] - 2026-08-31
 
 相对 [1.0.5] 的最终变更如下。
@@ -115,6 +127,18 @@ Records Memory Cleaner releases. Format follows [Keep a Changelog](https://keepa
 
 
 
+## [1.0.7] - 2026-09-04
+
+Final changes since [1.0.6].
+
+### Changed
+
+- **Unified UI padding and card spacing** — Window content padding, inter-card gaps, card title-to-content spacing, and the cleanup-button gap are now strictly aligned to a unified 6 px grid. Corrected the expanded-height calculation to remove excess bottom gap, ensuring the space between the bottom card and the cleanup button remains exactly 6 px in both collapsed and expanded states.
+- **Migrated UI dependencies to gpui-kit** — Replaced direct git dependencies for `gpui` and `gpui-component` with the crates.io release `gpui-kit` 0.6. The minimum supported Rust toolchain is updated to 1.97.1+ (Edition 2024), and the local `proc-macro-error2` patch is removed.
+- **Modular architecture and Win32 RAII handles** — Split the monolithic `app.rs` and `settings_page.rs` into dedicated submodules by responsibility. Added `src/win32/handle.rs` with RAII wrappers for Win32 kernel handles and registry keys to guarantee leak-free resource cleanup across NT, process, and volume subsystems, and isolated UAC elevation handling into `src/win32/elevation.rs`.
+- **Project documentation** — Updated Chinese and English READMEs and repository guidelines to document the modularized codebase and `gpui-kit` dependency.
+
+
 ## [1.0.6] - 2026-08-31
 
 Final changes since [1.0.5].
@@ -213,6 +237,7 @@ Since [1.0.0]: process exclusion, global cleanup hotkey (default Ctrl+Alt+C) wit
 
 Initial public release: 8 memory cleanup regions, GPUI UI, system tray, administrator elevation, settings persistence.
 
+[1.0.7]: https://github.com/Y-ASLant/MemoryCleaner/compare/v1.0.6...v1.0.7
 [1.0.6]: https://github.com/Y-ASLant/MemoryCleaner/compare/v1.0.5...v1.0.6
 [1.0.5]: https://github.com/Y-ASLant/MemoryCleaner/compare/v1.0.4...v1.0.5
 [1.0.4]: https://github.com/Y-ASLant/MemoryCleaner/compare/v1.0.3...v1.0.4
