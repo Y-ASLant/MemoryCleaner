@@ -1,11 +1,11 @@
 use crate::memory::{MemorySection, MemoryStatus};
 use rust_i18n::t;
 
-use gpui::*;
-use gpui_component::{
+use gpui_kit::component::{
     ActiveTheme, Icon, IconName, Sizable, Size, h_flex, label::Label, progress::ProgressCircle,
     v_flex,
 };
+use gpui_kit::*;
 
 pub const MEMORY_RING_SIZE: f32 = 108.;
 

@@ -1,5 +1,5 @@
-use gpui::{App, Window, px};
-use gpui_component::{Theme, ThemeMode};
+use gpui_kit::component::{Theme, ThemeMode};
+use gpui_kit::{App, Window, px};
 
 /// Initialize the light theme and apply Win10 square-corner chrome when needed.
 pub fn init_light_theme(window: &mut Window, cx: &mut App) {

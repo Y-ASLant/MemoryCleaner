@@ -85,7 +85,7 @@ cargo run --release
 
 ### Windows 10 / 11 界面风格
 
-启动时通过 `RtlGetVersion` 检测系统 build 号，自动调整 gpui-component 主题圆角，无需用户配置：
+启动时通过 `RtlGetVersion` 检测系统 build 号，自动调整 gpui-kit 主题圆角，无需用户配置：
 
 | 系统 | 条件 | 界面 |
 |------|------|------|
@@ -137,8 +137,7 @@ cargo run --release
 | 依赖 | 用途 |
 |------|------|
 | [Rust](https://www.rust-lang.org/) 1.97.1+ | 语言与运行时 |
-| [GPUI](https://gpui.rs)（Zed 源码） | GPU 加速 UI 框架 |
-| [gpui-component](https://longbridge.github.io/gpui-component/zh-CN/docs/components/) | UI 组件（Button、Checkbox、Switch、GroupBox、ProgressCircle 等） |
+| [gpui-kit](https://github.com/longbridge/gpui-kit) 0.6 | GPU 加速 UI 框架与组件库（内置 GPUI 与 gpui-component） |
 | [windows-rs](https://github.com/microsoft/windows-rs) 0.62 | Win32 API（内存管理、权限、窗口控制、Toast、RegisterHotKey） |
 | [tray-icon](https://crates.io/crates/tray-icon) | 系统托盘图标与菜单 |
 | [smol](https://crates.io/crates/smol) | 异步定时与阻塞任务卸载 |

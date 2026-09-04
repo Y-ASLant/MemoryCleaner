@@ -18,7 +18,7 @@ pub const SETTINGS_CARD_TITLE_H: f32 = 20.;
 pub const CLEANUP_AREAS_HINT_H: f32 = 24.;
 pub const CLEANUP_AREA_ROW_H: f32 = 22.;
 pub const CLEANUP_AREA_ROWS: f32 = 4.;
-/// Small outline Tag 行高（与 gpui-component `Tag::small` 一致）。
+/// Small outline Tag 行高（与 gpui-kit `Tag::small` 一致）。
 pub const EXCLUSION_TAG_ROW_HEIGHT: f32 = 26.;
 /// 标签 flex_wrap 间距（横/纵）。
 pub const EXCLUSION_TAG_GAP: f32 = 6.;

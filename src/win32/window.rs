@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use gpui::Window;
+use gpui_kit::Window;
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use windows::Win32::Foundation::HWND;
 use windows::Win32::UI::WindowsAndMessaging::{

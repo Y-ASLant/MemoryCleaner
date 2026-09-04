@@ -3,7 +3,7 @@ use std::sync::{Mutex, OnceLock};
 use std::thread::JoinHandle;
 
 use anyhow::{Context, Result, bail};
-use gpui::Keystroke;
+use gpui_kit::Keystroke;
 use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::System::Threading::GetCurrentThreadId;

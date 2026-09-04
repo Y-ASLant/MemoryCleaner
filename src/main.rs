@@ -1,6 +1,6 @@
 #![windows_subsystem = "windows"]
 
-use gpui::{actions, *};
+use gpui_kit::{actions, *};
 
 use memory_cleaner::{
     app::{self, AppEntityHolder},
@@ -134,12 +134,12 @@ fn main() {
     }
     win32::hotkey::sync(&settings);
 
-    let app = gpui_platform::application()
-        .with_assets(gpui_component_assets::Assets)
+    let app = gpui_kit::application()
+        .with_assets(gpui_kit::assets::Assets)
         .with_quit_mode(QuitMode::Explicit);
 
     app.run(move |cx| {
-        gpui_component::init(cx);
+        gpui_kit::init(cx);
 
         cx.bind_keys([KeyBinding::new("alt-f4", Quit, None)]);
         cx.on_action(|_: &Quit, cx: &mut App| {

@@ -1,12 +1,12 @@
 use rust_i18n::t;
 
-use gpui::*;
-use gpui_component::{
+use gpui_kit::component::{
     ActiveTheme, Disableable, Icon, IconName, Sizable, TITLE_BAR_HEIGHT,
     button::{Button, ButtonRounded, ButtonVariants},
     h_flex,
     label::Label,
 };
+use gpui_kit::*;
 
 use crate::app::MemoryCleanerApp;
 use crate::version::APP_NAME;

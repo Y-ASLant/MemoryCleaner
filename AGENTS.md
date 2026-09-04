@@ -28,7 +28,7 @@ main.rs → wake-signal check → ensure_elevated() → wake-signal retry → si
 - **Entry flow:** `main.rs` → wake any running instance via the named show-window event (before elevation, so a same-integrity launch needs no UAC) → `ensure_elevated()` → wake-signal retry → single-instance mutex + wake event watcher → `startup::sync` → `locale::apply` → `notification::init` → install tray + bind hotkey sender → `hotkey::sync` → GPUI app with `QuitMode::Explicit` → `open_main_window`.
 - **i18n:** `rust-i18n` with `locales/zh-CN.yml` (single file, `_version: 2`, zh-CN + en). `rust_i18n::i18n!` is invoked once in `lib.rs`. `settings.language` is `auto` | `zh-CN` | `en`; `auto` uses `GetUserDefaultUILanguage` via `win32::os::system_ui_locale()`. Language changes call `MemoryCleanerApp::apply_locale()` to refresh memory labels and tray menu text immediately.
 - **Async runtime:** `smol` for async task execution (optimization progress updates, memory polling, toast display).
-- **UI stack:** GPUI + `gpui-component` (Button, Checkbox, Switch, GroupBox, ProgressCircle, Kbd).
+- **UI stack:** `gpui-kit` (GPUI + Button, Checkbox, Switch, GroupBox, ProgressCircle, Kbd).
 - **Native layer:** `src/win32/` wraps low-level Windows APIs; `src/optimize.rs` orchestrates the cleanup steps.
 - **Console suppression:** `main.rs` uses `#![windows_subsystem = "windows"]`; diagnostics go to `OutputDebugStringA` (viewable via DebugView). Optional file logging via `src/log.rs` when `debug_logging` is enabled.
 - **Tray command channel:** A single `mpsc` channel carries `TrayCommand` from tray events, global hotkeys, the single-instance wake event, the low-memory monitor, and tray spin ticks into `app.rs` via blocking `recv()` — no idle polling loop.
@@ -88,7 +88,7 @@ make clean # cargo clean
 - **Bitflags:** `MemoryAreas` in `optimize.rs` uses the `bitflags` crate to represent configurable cleaning regions.
 - **Embedded assets:** `App.ico` compiled into the binary via `winres` (`build.rs`); `App.png` embedded via `include_bytes!` in `tray.rs`.
 - **Debug logging:** `log_msg()` always writes to `OutputDebugString` (and stderr in debug builds). `log::write()` additionally appends to `App.log` beside the executable when `settings.debug_logging` is true. Retention runs on the first write after enabling and at most hourly thereafter: timestamped lines older than 7 days are removed, malformed content is capped at 256 lines / 64 KiB, and file I/O failures are reported through the debug stream.
-- **Platform UI chrome:** `win32::os::is_windows_11_or_later()` uses `RtlGetVersion` (build ≥ 22000 = Win11). `ui::theme::init_light_theme` sets gpui-component `radius` / `radius_lg` to 0 and disables `shadow` on Win10 so buttons, cards, and dialogs render with square corners. Custom UI must use `cx.theme().radius`, not hardcoded `rounded(px(...))`.
+- **Platform UI chrome:** `win32::os::is_windows_11_or_later()` uses `RtlGetVersion` (build ≥ 22000 = Win11). `ui::theme::init_light_theme` sets gpui-kit `radius` / `radius_lg` to 0 and disables `shadow` on Win10 so buttons, cards, and dialogs render with square corners. Custom UI must use `cx.theme().radius`, not hardcoded `rounded(px(...))`.
 
 ## Important Files
 
@@ -122,7 +122,7 @@ make clean # cargo clean
 - **Window behavior dialog** (always on top, close-to-tray, run at startup, debug logging, optimization notifications, cleanup hotkey + recording, language, auto-cleanup threshold): opened from title-bar gear icon; `overlay_closable(false)` — clicking the backdrop does not close it.
 - **Optimization feedback:** progress and result text render inside the cleanup button; result clears after 5 seconds (`OPTIMIZE_RESULT_DISPLAY`).
 - **Memory refresh:** `MEMORY_REFRESH_INTERVAL` = 1 s while main window is visible; paused when hidden to tray (`pause_memory_refresh` / `start_memory_refresh`).
-- **Platform chrome:** Win10 (build &lt; 22000) uses square corners via theme tokens; Win11 keeps gpui-component defaults.
+- **Platform chrome:** Win10 (build &lt; 22000) uses square corners via theme tokens; Win11 keeps gpui-kit defaults.
 
 Implemented settings that must **not** be listed as unimplemented:
 

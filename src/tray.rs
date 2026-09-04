@@ -284,7 +284,7 @@ fn create_fallback_icon() -> Icon {
 pub fn dispatch_command(
     app: &mut MemoryCleanerApp,
     command: TrayCommand,
-    cx: &mut gpui::Context<MemoryCleanerApp>,
+    cx: &mut gpui_kit::Context<MemoryCleanerApp>,
 ) {
     match command {
         TrayCommand::ActivateWindow => app.activate_window(cx),

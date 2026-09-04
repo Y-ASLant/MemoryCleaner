@@ -85,7 +85,7 @@ Side-by-side comparison (numbered 1–4 consistent across platforms):
 
 ### Windows 10 / 11 UI Style
 
-At startup, the system build number is detected via `RtlGetVersion`, and gpui-component theme corner radius is adjusted automatically — no user configuration needed:
+At startup, the system build number is detected via `RtlGetVersion`, and gpui-kit theme corner radius is adjusted automatically — no user configuration needed:
 
 | System | Condition | UI |
 |--------|-----------|----|
@@ -137,8 +137,7 @@ Config file: `%APPDATA%\MemoryCleaner\settings.toml`
 | Dependency | Purpose |
 |------------|---------|
 | [Rust](https://www.rust-lang.org/) 1.97.1+ | Language and runtime |
-| [GPUI](https://gpui.rs) (Zed source) | GPU-accelerated UI framework |
-| [gpui-component](https://longbridge.github.io/gpui-component/zh-CN/docs/components/) | UI components (Button, Checkbox, Switch, GroupBox, ProgressCircle, etc.) |
+| [gpui-kit](https://github.com/longbridge/gpui-kit) 0.6 | GPU-accelerated UI framework and component library (built-in GPUI & gpui-component) |
 | [windows-rs](https://github.com/microsoft/windows-rs) 0.62 | Win32 API (memory management, privileges, window control, Toast, RegisterHotKey) |
 | [tray-icon](https://crates.io/crates/tray-icon) | System tray icon and menu |
 | [smol](https://crates.io/crates/smol) | Async scheduling and blocking task offload |

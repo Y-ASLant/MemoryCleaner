@@ -1,6 +1,4 @@
-use gpui::prelude::FluentBuilder;
-use gpui::*;
-use gpui_component::{
+use gpui_kit::component::{
     ActiveTheme, Disableable, Icon, IconName, Sizable,
     button::{Button, ButtonVariants},
     checkbox::Checkbox,
@@ -15,6 +13,8 @@ use gpui_component::{
     tag::Tag,
     v_flex,
 };
+use gpui_kit::prelude::FluentBuilder;
+use gpui_kit::*;
 use rust_i18n::t;
 
 use crate::app::MemoryCleanerApp;

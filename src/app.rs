@@ -3,9 +3,9 @@ use rust_i18n::t;
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
-use gpui::*;
-use gpui_component::ActiveTheme;
-use gpui_component::{Root, TitleBar, WindowExt};
+use gpui_kit::component::ActiveTheme;
+use gpui_kit::component::{Root, TitleBar, WindowExt};
+use gpui_kit::*;
 use smol::Timer;
 
 use crate::anim::{AnimatedValue, SampledAnimatedValue, TimedAnimatedValue, ease_out_cubic};
@@ -1181,8 +1181,8 @@ impl MemoryCleanerApp {
             return;
         }
 
-        use gpui_component::WindowExt;
-        use gpui_component::dialog::DialogButtonProps;
+        use gpui_kit::component::WindowExt;
+        use gpui_kit::component::dialog::DialogButtonProps;
 
         let weak = cx.weak_entity();
         window.open_alert_dialog(cx, move |alert, _window, _cx| {
@@ -1243,8 +1243,8 @@ impl MemoryCleanerApp {
 fn memory_group_box(
     id: &'static str,
     child: impl IntoElement,
-) -> gpui_component::group_box::GroupBox {
-    use gpui_component::group_box::{GroupBox, GroupBoxVariants};
+) -> gpui_kit::component::group_box::GroupBox {
+    use gpui_kit::component::group_box::{GroupBox, GroupBoxVariants};
 
     GroupBox::new()
         .id(id)
@@ -1260,8 +1260,8 @@ impl Render for MemoryCleanerApp {
         use crate::ui::memory_card::render_memory_card;
         use crate::ui::settings_page::{render_cleanup_footer, render_settings_content};
         use crate::ui::title_bar::render_title_bar;
-        use gpui::prelude::FluentBuilder;
-        use gpui_component::{h_flex, v_flex};
+        use gpui_kit::component::{h_flex, v_flex};
+        use gpui_kit::prelude::FluentBuilder;
 
         // Tick animations — if still running, schedule next frame.
         if self.tick_animations(window) {
@@ -1367,7 +1367,7 @@ impl Render for MemoryCleanerApp {
                         }),
                 ),
             )
-            .children(gpui_component::Root::render_dialog_layer(window, cx))
+            .children(gpui_kit::component::Root::render_dialog_layer(window, cx))
     }
 }
 
