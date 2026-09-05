@@ -7,6 +7,10 @@
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-09-05
+
+相对 [1.0.7] 的最终变更如下。
+
 ### 变更
 
 - **全局热键**：新组合键注册失败时保留原绑定和设置，并在设置界面显示错误；重复应用相同组合键不再重新注册。
@@ -144,6 +148,10 @@ Records Memory Cleaner releases. Format follows [Keep a Changelog](https://keepa
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-09-05
+
+Final changes since [1.0.7].
+
 ### Changed
 
 - **Global hotkey** — Failed registrations retain the previous binding and settings and display an error. Reapplying the same shortcut no longer re-registers it.
@@ -267,7 +275,8 @@ Since [1.0.0]: process exclusion, global cleanup hotkey (default Ctrl+Alt+C) wit
 
 Initial public release: 8 memory cleanup regions, GPUI UI, system tray, administrator elevation, settings persistence.
 
-[Unreleased]: https://github.com/Y-ASLant/MemoryCleaner/compare/v1.0.7...HEAD
+[Unreleased]: https://github.com/Y-ASLant/MemoryCleaner/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/Y-ASLant/MemoryCleaner/compare/v1.0.7...v1.1.0
 [1.0.7]: https://github.com/Y-ASLant/MemoryCleaner/compare/v1.0.6...v1.0.7
 [1.0.6]: https://github.com/Y-ASLant/MemoryCleaner/compare/v1.0.5...v1.0.6
 [1.0.5]: https://github.com/Y-ASLant/MemoryCleaner/compare/v1.0.4...v1.0.5
