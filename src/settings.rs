@@ -2,6 +2,8 @@ use crate::optimize::MemoryAreas;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
+const REMOVED_REGISTRY_CACHE_BIT: u32 = 1 << 7;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
@@ -109,13 +111,13 @@ impl Settings {
     }
 
     fn normalize_memory_areas(&mut self) {
-        let mut areas = MemoryAreas::from_bits_truncate(self.memory_areas);
-        if areas.contains(MemoryAreas::STANDBY_LIST)
-            && areas.contains(MemoryAreas::STANDBY_LIST_LOW_PRIORITY)
+        self.memory_areas &= !REMOVED_REGISTRY_CACHE_BIT;
+        let known_areas = MemoryAreas::from_bits_truncate(self.memory_areas);
+        if known_areas.contains(MemoryAreas::STANDBY_LIST)
+            && known_areas.contains(MemoryAreas::STANDBY_LIST_LOW_PRIORITY)
         {
-            areas.remove(MemoryAreas::STANDBY_LIST_LOW_PRIORITY);
+            self.memory_areas &= !MemoryAreas::STANDBY_LIST_LOW_PRIORITY.bits();
         }
-        self.memory_areas = areas.bits();
     }
 
     fn normalize_excluded_processes(&mut self) {
@@ -303,6 +305,15 @@ mod tests {
         let stored = MemoryAreas::WORKING_SET.bits() | removed_registry_cache;
         let settings = Settings::from_toml(&format!("memory_areas = {stored}"));
         assert_eq!(settings.memory_areas, MemoryAreas::WORKING_SET.bits());
+    }
+
+    #[test]
+    fn unknown_memory_area_bits_are_preserved() {
+        let future_area = 1u32 << 31;
+        let stored = MemoryAreas::WORKING_SET.bits() | future_area;
+        let settings = Settings::from_toml(&format!("memory_areas = {stored}"));
+        assert_eq!(settings.memory_areas, stored);
+        assert_eq!(settings.memory_areas(), MemoryAreas::WORKING_SET);
     }
 
     #[test]
