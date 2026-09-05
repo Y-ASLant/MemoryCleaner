@@ -1,3 +1,4 @@
+pub(crate) mod com;
 pub mod elevation;
 pub(crate) mod handle;
 pub mod hotkey;

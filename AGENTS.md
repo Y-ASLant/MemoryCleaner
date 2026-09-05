@@ -8,7 +8,8 @@ Memory Cleaner is a **Windows-only** GUI memory-optimization tool written in Rus
 
 ```
 main.rs → wake-signal check → ensure_elevated() → wake-signal retry → single-instance mutex + wake event
-       → startup::sync → notification::init → tray install + hotkey::sync → GPUI app launch
+       → notification::init → tray install + hotkey sender → GPUI app launch
+       → MemoryCleanerApp::new: hotkey sync + background startup sync
  │
  ├─ app/ (core state plus window, settings, optimization, and rendering responsibilities)
  ├─ auto_cleanup.rs (auto-cleanup trigger policy: low-memory notifications, threshold decisions, cooldown)
@@ -25,7 +26,7 @@ main.rs → wake-signal check → ensure_elevated() → wake-signal retry → si
  └─ win32/ (owned handle RAII plus hotkey, memory, notification, process, startup, volume, window)
 ```
 
-- **Entry flow:** `main.rs` → wake any running instance via the named show-window event (before elevation, so a same-integrity launch needs no UAC) → `ensure_elevated()` → wake-signal retry → single-instance mutex + wake event watcher → `startup::sync` → `locale::apply` → `notification::init` → install tray + bind hotkey sender → `hotkey::sync` → GPUI app with `QuitMode::Explicit` → `open_main_window`.
+- **Entry flow:** `main.rs` → wake any running instance via the named show-window event (before elevation, so a same-integrity launch needs no UAC) → `ensure_elevated()` → wake-signal retry → single-instance mutex + wake event watcher → `locale::apply` → `notification::init` → install tray + bind hotkey sender → GPUI app with `QuitMode::Explicit` → `open_main_window`. `MemoryCleanerApp::new` synchronizes the hotkey and schedules startup synchronization in the background.
 - **i18n:** `rust-i18n` with `locales/zh-CN.yml` (single file, `_version: 2`, zh-CN + en). `rust_i18n::i18n!` is invoked once in `lib.rs`. `settings.language` is `auto` | `zh-CN` | `en`; `auto` uses `GetUserDefaultUILanguage` via `win32::os::system_ui_locale()`. Language changes call `MemoryCleanerApp::apply_locale()` to refresh memory labels and tray menu text immediately.
 - **Async runtime:** `smol` for async task execution (optimization progress updates, memory polling, toast display).
 - **UI stack:** `gpui-kit` (GPUI + Button, Checkbox, Switch, GroupBox, ProgressCircle, Kbd).
@@ -34,6 +35,8 @@ main.rs → wake-signal check → ensure_elevated() → wake-signal retry → si
 - **Tray command channel:** A single `mpsc` channel carries `TrayCommand` from tray events, global hotkeys, the single-instance wake event, the low-memory monitor, and tray spin ticks into `app.rs` via blocking `recv()` — no idle polling loop.
 - **Automatic-cleanup monitors:** `MemoryCleanerApp` owns the cancellable native low/high-memory monitor and the threshold polling task. Both follow `auto_cleanup_enabled`; threshold polling exists only when `auto_cleanup_threshold > 0`, and threshold changes restart it with a fresh sustained-pressure count.
 - **Window lifecycle:** Closing with `close_to_notification_area` hides the GPUI window to tray and may destroy the window handle; `activate_window` reopens it. Memory polling pauses while hidden.
+- **Settings side effects:** Hotkey registration is transactional: register the replacement before releasing the previous worker, and commit settings only on success. Startup synchronization uses `smol::unblock`; pending updates disable the startup switch, failures retain settings, and each `schtasks` child wait has a 10-second deadline.
+- **COM lifetime:** `ComApartment::run` balances successful STA initialization on its originating thread. COM objects and error interfaces must be released before the apartment; only owned data and detached error diagnostics leave the scope. Toast activation uses local WinRT factories rather than static factory caches that can outlive an apartment.
 
 ## Key Directories
 
@@ -74,7 +77,7 @@ make clean # cargo clean
 
 **CI:** `.github/workflows/build.yml` runs only when a `v*` tag is pushed. The tag must match `Cargo.toml`'s version; the workflow checks formatting, runs Clippy and tests, builds the Windows release binary, extracts that version's Chinese and English sections from `docs/CHANGELOG.md`, then creates a GitHub Release with those notes and `MemoryCleaner.exe`.
 
-**Tests:** `make test` / `cargo test` — 78 unit tests in `src/` plus 2 integration tests in `tests/settings_persistence.rs`.
+**Tests:** `make test` / `cargo test` — 84 unit tests in `src/` plus 2 integration tests in `tests/settings_persistence.rs`.
 
 ## Code Conventions & Common Patterns
 
@@ -100,6 +103,7 @@ make clean # cargo clean
 | `src/win32/hotkey.rs` | `RegisterHotKey` in dedicated thread; sends `TrayCommand::Optimize` |
 | `src/win32/memory_notification.rs` | Cancellable `CreateMemoryResourceNotification` low/high monitor; follows the auto-cleanup switch and sends `TrayCommand::LowMemory` once per pressure cycle |
 | `src/win32/notification.rs` | Windows Toast + Start Menu shortcut for AppUserModelID |
+| `src/win32/com.rs` | Thread-bound COM apartment scope and apartment-independent error propagation |
 | `src/log.rs` | Optional `App.log` output with throttled retention, malformed-content bounds, and file I/O diagnostics |
 | `src/ui/theme.rs` | Light theme init + Win10 square-corner chrome |
 | `src/ui/settings_page/` | Cleanup areas, process exclusions, cleanup footer, and window behavior dialog |
@@ -158,7 +162,7 @@ While `run_optimize` is in progress, `tray::start_spin()` posts `TrayCommand::Se
 
 ## Testing & QA
 
-- **Unit tests:** `cargo test` — memory formatting, cleanup messages, settings TOML, tray tooltip, hotkey chord parse/format, optimize step plan, auto-cleanup trigger policy, startup task command line, layout metrics, icon-cache outcomes, notification XML escape, volume flush helpers.
+- **Unit tests:** `cargo test` — memory formatting, cleanup messages, settings TOML, tray tooltip, hotkey chord parse/format and failed rebind preservation, optimize step plan, auto-cleanup trigger policy, startup task command line and bounded child waits, layout metrics, icon-cache outcomes, notification XML escape and COM lifecycle, volume flush helpers.
 - **Integration tests:** `tests/settings_persistence.rs` — settings save/load and atomic write in isolated `%APPDATA%`.
 - **Manual QA:** Win32 memory cleanup, tray, GPUI dialogs, Explorer restart, global hotkey, Windows Toast (admin required for most cleanup).
 - **Diagnostics:** DebugView for `OutputDebugString`; optional `App.log` when debug logging is enabled.

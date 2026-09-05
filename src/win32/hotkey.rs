@@ -196,6 +196,7 @@ fn parse_virtual_key(key: &str) -> Option<VIRTUAL_KEY> {
 }
 
 struct HotkeyWorker {
+    binding: HotkeyBinding,
     thread_id: u32,
     join_handle: Option<JoinHandle<()>>,
 }
@@ -216,31 +217,27 @@ struct HotkeyService {
 }
 
 impl HotkeyService {
-    fn apply(&mut self, settings: &Settings) {
-        self.worker = None;
-
+    fn apply(&mut self, settings: &Settings) -> Result<()> {
         if !settings.cleanup_hotkey_enabled {
+            self.worker = None;
             crate::log_msg("[hotkey] disabled");
-            return;
+            return Ok(());
         }
 
-        let Some(binding) = HotkeyBinding::parse(&settings.cleanup_hotkey) else {
-            crate::log_msg("[hotkey] invalid chord; hotkey not registered");
-            return;
-        };
-
-        if COMMAND_TX.get().is_none() {
-            crate::log_msg("[hotkey] command channel unavailable");
-            return;
+        let binding =
+            HotkeyBinding::parse(&settings.cleanup_hotkey).context("invalid hotkey chord")?;
+        if self
+            .worker
+            .as_ref()
+            .is_some_and(|worker| worker.binding == binding)
+        {
+            return Ok(());
         }
 
-        match spawn_hotkey_worker(binding) {
-            Ok(worker) => {
-                crate::log_msg(&format!("[hotkey] registered {}", settings.cleanup_hotkey));
-                self.worker = Some(worker);
-            }
-            Err(e) => crate::log_msg(&format!("[hotkey] register failed: {e:#}")),
-        }
+        let worker = spawn_hotkey_worker(binding)?;
+        self.worker = Some(worker);
+        crate::log_msg(&format!("[hotkey] registered {}", settings.cleanup_hotkey));
+        Ok(())
     }
 }
 
@@ -264,18 +261,27 @@ fn spawn_hotkey_worker(binding: HotkeyBinding) -> Result<HotkeyWorker> {
             };
 
             unsafe {
-                message_loop(hwnd);
+                message_loop();
                 let _ = UnregisterHotKey(Some(hwnd), HOTKEY_ID_OPTIMIZE);
                 let _ = DestroyWindow(hwnd);
             }
         })
         .context("failed to spawn hotkey listener thread")?;
 
-    let thread_id = ready_rx
+    let thread_id = match ready_rx
         .recv()
-        .context("hotkey listener exited before registration completed")??;
+        .context("hotkey listener exited before registration completed")
+        .and_then(|result| result)
+    {
+        Ok(thread_id) => thread_id,
+        Err(error) => {
+            let _ = join_handle.join();
+            return Err(error);
+        }
+    };
 
     Ok(HotkeyWorker {
+        binding,
         thread_id,
         join_handle: Some(join_handle),
     })
@@ -285,12 +291,16 @@ pub fn bind_command_sender(tx: Sender<TrayCommand>) {
     let _ = COMMAND_TX.set(tx);
 }
 
-pub fn sync(settings: &Settings) {
+pub fn sync(settings: &Settings) -> Result<()> {
+    if settings.cleanup_hotkey_enabled && COMMAND_TX.get().is_none() {
+        bail!("hotkey command channel unavailable");
+    }
+
     SERVICE
         .get_or_init(|| Mutex::new(HotkeyService { worker: None }))
         .lock()
         .expect("hotkey service mutex poisoned")
-        .apply(settings);
+        .apply(settings)
 }
 
 fn run_hotkey_setup(binding: HotkeyBinding) -> Result<HWND> {
@@ -298,13 +308,15 @@ fn run_hotkey_setup(binding: HotkeyBinding) -> Result<HWND> {
         register_hotkey_window_class()?;
 
         let hwnd = create_message_window()?;
-        RegisterHotKey(
+        if let Err(error) = RegisterHotKey(
             Some(hwnd),
             HOTKEY_ID_OPTIMIZE,
             binding.modifiers,
             binding.virtual_key.0 as u32,
-        )
-        .context("RegisterHotKey failed")?;
+        ) {
+            let _ = DestroyWindow(hwnd);
+            return Err(error).context("RegisterHotKey failed");
+        }
 
         Ok(hwnd)
     }
@@ -381,7 +393,7 @@ unsafe extern "system" fn hotkey_wnd_proc(
     }
 }
 
-unsafe fn message_loop(hwnd: HWND) {
+unsafe fn message_loop() {
     let mut msg = MSG::default();
     loop {
         let result = unsafe { GetMessageW(&mut msg, None, 0, 0) };
@@ -390,8 +402,7 @@ unsafe fn message_loop(hwnd: HWND) {
         }
 
         if msg.message == WM_APP_SHUTDOWN {
-            let _ = unsafe { DestroyWindow(hwnd) };
-            continue;
+            break;
         }
 
         let _ = unsafe { TranslateMessage(&msg) };
@@ -402,6 +413,66 @@ unsafe fn message_loop(hwnd: HWND) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[cfg(target_os = "windows")]
+    fn rebinding_preserves_old_registration_on_collision_and_skips_equivalent_chords() {
+        let candidates = || {
+            ('0'..='9').chain('A'..='Z').map(|key| Settings {
+                cleanup_hotkey_enabled: true,
+                cleanup_hotkey: format!("Ctrl+Alt+Shift+{key}"),
+                ..Default::default()
+            })
+        };
+        let mut service = HotkeyService { worker: None };
+        let original = candidates()
+            .find(|settings| service.apply(settings).is_ok())
+            .expect("an uncommon hotkey must be available for the test");
+        let original_binding = HotkeyBinding::parse(&original.cleanup_hotkey).unwrap();
+
+        // A separate RAII worker reserves the conflicting chord for the entire test.
+        // Neither worker binds COMMAND_TX or synthesizes hotkey/cleanup commands.
+        let (conflicting, _reservation) = candidates()
+            .find_map(|settings| {
+                let binding = HotkeyBinding::parse(&settings.cleanup_hotkey).unwrap();
+                spawn_hotkey_worker(binding)
+                    .ok()
+                    .map(|worker| (settings, worker))
+            })
+            .expect("a second uncommon hotkey must be available for the test");
+
+        assert!(service.apply(&conflicting).is_err());
+        assert!(
+            spawn_hotkey_worker(original_binding).is_err(),
+            "the original chord must remain registered after a collision"
+        );
+
+        let mut equivalent = original.clone();
+        equivalent.cleanup_hotkey = format!(
+            "shift + ALT + control + {}",
+            original
+                .cleanup_hotkey
+                .rsplit('+')
+                .next()
+                .unwrap()
+                .to_ascii_lowercase()
+        );
+        service
+            .apply(&equivalent)
+            .expect("an equivalent binding must be a no-op");
+
+        equivalent.cleanup_hotkey = "invalid".into();
+        assert!(service.apply(&equivalent).is_err());
+        assert!(
+            spawn_hotkey_worker(original_binding).is_err(),
+            "invalid settings must not unregister the original chord"
+        );
+
+        equivalent.cleanup_hotkey_enabled = false;
+        service.apply(&equivalent).expect("disabling must succeed");
+        let _released = spawn_hotkey_worker(original_binding)
+            .expect("disabling must release the original chord");
+    }
 
     #[test]
     fn chord_to_keystroke_parses_settings_chords() {

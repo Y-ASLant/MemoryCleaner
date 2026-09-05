@@ -5,6 +5,14 @@
 **编写约定**（详见 `AGENTS.md` → Documentation & Changelog）：每个版本只记录相对上一 tag 的**最终差异**，不记录开发过程中的中间修改或逐步修复。
 
 
+## [Unreleased]
+
+### 变更
+
+- **全局热键**：新组合键注册失败时保留原绑定和设置，并在设置界面显示错误；重复应用相同组合键不再重新注册。
+- **通知资源生命周期**：通知与快捷方式操作配对初始化和释放 COM，通知使用局部 WinRT 激活工厂，避免重复调用累积 COM 初始化状态。
+- **开机自启**：启动同步和设置更新改为后台执行；更新期间禁用开关，失败时保留原设置并提示错误；`schtasks` 子进程等待上限为 10 秒，超时后请求终止该子进程。
+
 ## [1.0.7] - 2026-09-04
 
 相对 [1.0.6] 的最终变更如下。
@@ -127,6 +135,14 @@ Records Memory Cleaner releases. Format follows [Keep a Changelog](https://keepa
 
 
 
+## [Unreleased]
+
+### Changed
+
+- **Global hotkey** — Failed registrations retain the previous binding and settings and display an error. Reapplying the same shortcut no longer re-registers it.
+- **Notification resource lifecycle** — Notification and shortcut operations balance COM initialization and teardown; notifications use scoped WinRT activation factories to prevent repeated calls from accumulating COM initialization state.
+- **Run at startup** — Launch-time synchronization and setting updates run in the background. The switch is disabled while pending, and failed updates retain the previous setting and display an error. Each `schtasks` child wait is limited to 10 seconds, after which termination is requested.
+
 ## [1.0.7] - 2026-09-04
 
 Final changes since [1.0.6].
@@ -237,6 +253,7 @@ Since [1.0.0]: process exclusion, global cleanup hotkey (default Ctrl+Alt+C) wit
 
 Initial public release: 8 memory cleanup regions, GPUI UI, system tray, administrator elevation, settings persistence.
 
+[Unreleased]: https://github.com/Y-ASLant/MemoryCleaner/compare/v1.0.7...HEAD
 [1.0.7]: https://github.com/Y-ASLant/MemoryCleaner/compare/v1.0.6...v1.0.7
 [1.0.6]: https://github.com/Y-ASLant/MemoryCleaner/compare/v1.0.5...v1.0.6
 [1.0.5]: https://github.com/Y-ASLant/MemoryCleaner/compare/v1.0.4...v1.0.5

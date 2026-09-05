@@ -79,6 +79,12 @@ settings.run_at_startup:
 settings.run_at_startup_desc:
   zh-CN: "登录 Windows 后静默启动到系统托盘（不显示主窗口）"
   en: "Start silently in the system tray after sign-in (no main window)"
+settings.run_at_startup_pending:
+  zh-CN: "正在更新开机自启…"
+  en: "Updating startup settings…"
+settings.run_at_startup_failed:
+  zh-CN: "更新失败；可重试，详情见调试日志"
+  en: "Update failed; retry or check the debug log"
 settings.optimization_notifications:
   zh-CN: "优化后通知"
   en: "Post-Optimization Notification"
@@ -100,6 +106,9 @@ settings.cleanup_hotkey_desc:
 settings.cleanup_hotkey_recording:
   zh-CN: "按下快捷键…"
   en: "Press shortcut…"
+settings.cleanup_hotkey_failed:
+  zh-CN: "快捷键注册失败；原设置未更改，请尝试其他组合键"
+  en: "Registration failed; settings unchanged. Try another shortcut"
 settings.auto_cleanup:
   zh-CN: "自动清理"
   en: "Automatic Cleanup"

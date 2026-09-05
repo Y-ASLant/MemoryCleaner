@@ -38,9 +38,6 @@ fn main() {
     }
 
     let settings = Settings::load();
-    if let Err(error) = win32::startup::sync(&settings) {
-        log_msg(&format!("[startup] sync failed: {error:#}"));
-    }
     let launch_hidden = win32::startup::is_startup_launch();
     locale::apply(&settings);
 
@@ -53,7 +50,6 @@ fn main() {
     if let Err(e) = Tray::install(command_tx.clone()) {
         log_msg(&format!("[tray] install failed: {e:#}"));
     }
-    win32::hotkey::sync(&settings);
 
     let app = gpui_kit::application()
         .with_assets(gpui_kit::assets::Assets)

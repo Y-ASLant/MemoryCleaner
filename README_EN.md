@@ -14,7 +14,7 @@ A Windows memory optimization tool built with Rust + GPUI. Real-time memory moni
 - **One-Click Cleanup** — Executes cleanup steps sequentially based on selected regions; progress and result summary shown in the bottom button (retained for ~5 seconds after completion)
 - **Configurable Cleanup Regions** — 8 memory regions selectable via checkboxes (Standby List and Standby List Low Priority are mutually exclusive)
 - **Automatic Cleanup** — Can be enabled in the Window Behavior dialog; supports Windows low-physical-memory notifications and a sustained physical-memory usage threshold (two consecutive above-threshold checks, then a 10-minute cooldown)
-- **Global Hotkey** — Default `Ctrl+Alt+C` triggers cleanup; can be toggled and custom combo recorded in the Window Behavior dialog (`RegisterHotKey`)
+- **Global Hotkey** — Default `Ctrl+Alt+C` triggers cleanup; can be toggled and custom combo recorded in the Window Behavior dialog (`RegisterHotKey`); failed registrations retain the previous binding and settings and display an error
 - **System Notifications** — Windows Toast popups on cleanup start and completion (can be disabled in the Window Behavior dialog)
 - **System Tray** — Right-click menu (Optimize Memory, Show/Hide Window, Exit); left-click shows/activates the main window; **spin animation** during cleanup (rotates 90° every 96ms to indicate activity)
 - **Window Behavior** — Title bar gear menu: Always on Top, Close to Tray, Run at Startup, Debug Logging, Optimization Notifications, Global Hotkey, Language, Automatic Cleanup threshold
@@ -71,6 +71,8 @@ Main window has a fixed width of **520px**, height varies with expand state (col
 Collapsed by default, showing only memory cards and the cleanup button; expanding the window automatically increases height to accommodate cleanup region settings. Window behavior is configured via the dialog opened from the title bar gear icon; clicking the blank area outside the dialog will not close it.
 
 When closing the main window, if "Close to Tray" is enabled, the window hides and destroys the GPUI window handle, and the process continues running in the tray; clicking the tray icon again reopens the main window.
+
+Run-at-startup synchronization runs in the background both on launch and after setting changes, without blocking the UI. The switch is disabled while an update is pending. Each `schtasks` child wait is limited to 10 seconds; a timeout requests termination of that child. Failed updates retain the previous setting and display an error.
 
 ### Interface Screenshots (Windows 10 / 11 Comparison)
 
@@ -173,6 +175,7 @@ src/
 ├── version.rs           # Version constant
 ├── win32/               # Windows API wrappers
 │   ├── elevation.rs     # UAC elevation check and relaunch
+│   ├── com.rs           # Thread-bound COM lifetime and error-return boundary
 │   ├── handle.rs        # RAII ownership for HANDLE/HKEY resources
 │   ├── hotkey.rs        # RegisterHotKey global hotkey (dedicated message loop thread)
 │   ├── memory_notification.rs # Windows low/high memory resource notification monitor

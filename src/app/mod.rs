@@ -100,6 +100,9 @@ pub struct MemoryCleanerApp {
     command_tx: std::sync::mpsc::Sender<TrayCommand>,
     low_memory_monitor: Option<win32::memory_notification::MemoryNotificationMonitor>,
     pub cleanup_hotkey_recording: bool,
+    pub(crate) cleanup_hotkey_failed: bool,
+    pub(crate) startup_setting_pending: bool,
+    pub(crate) startup_setting_failed: bool,
     pub(crate) hotkey_capture_focus: FocusHandle,
     anim_physical: SampledAnimatedValue,
     anim_virtual: SampledAnimatedValue,
@@ -169,6 +172,9 @@ impl MemoryCleanerApp {
             command_tx,
             low_memory_monitor: None,
             cleanup_hotkey_recording: false,
+            cleanup_hotkey_failed: false,
+            startup_setting_pending: false,
+            startup_setting_failed: false,
             hotkey_capture_focus: cx.focus_handle(),
             anim_physical: SampledAnimatedValue::new(
                 phys_percent,
@@ -203,6 +209,8 @@ impl MemoryCleanerApp {
 
         cx.set_global(AppEntityHolder(cx.entity()));
         app.attach_window(window, cx, launch_hidden);
+        app.sync_cleanup_hotkey();
+        app.set_run_at_startup(app.settings.run_at_startup, cx);
         app.start_background_tasks(cx, tray_rx);
 
         app

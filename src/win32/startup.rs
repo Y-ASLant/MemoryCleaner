@@ -7,24 +7,23 @@
 //! is still deleted so users migrating from older versions are moved over.
 
 use anyhow::{Context, Result};
-use windows::Win32::Foundation::{ERROR_FILE_NOT_FOUND, WAIT_OBJECT_0};
-use windows::Win32::System::Com::{
-    CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED, CoCreateInstance, CoInitializeEx,
-    CoUninitialize,
+use windows::Win32::Foundation::{
+    ERROR_FILE_NOT_FOUND, ERROR_TIMEOUT, WAIT_FAILED, WAIT_OBJECT_0, WAIT_TIMEOUT,
 };
+use windows::Win32::System::Com::{CLSCTX_INPROC_SERVER, CoCreateInstance};
 use windows::Win32::System::Registry::{
     HKEY, HKEY_CURRENT_USER, KEY_SET_VALUE, KEY_WRITE, RegDeleteValueW,
 };
 use windows::Win32::System::TaskScheduler::{ITaskService, TaskScheduler};
 use windows::Win32::System::Threading::{
-    CREATE_NO_WINDOW, CreateProcessW, GetExitCodeProcess, INFINITE, PROCESS_INFORMATION,
-    STARTUPINFOW, WaitForSingleObject,
+    CREATE_NO_WINDOW, CreateProcessW, GetExitCodeProcess, PROCESS_INFORMATION, STARTUPINFOW,
+    TerminateProcess, WaitForSingleObject,
 };
 use windows::Win32::System::Variant::VARIANT;
 use windows::core::{BSTR, Error, HRESULT, PCWSTR, PWSTR};
 
-use crate::settings::Settings;
 use crate::version::PROCESS_BASE_NAME;
+use crate::win32::com::ComApartment;
 use crate::win32::elevation::ELEVATED_ARG;
 use crate::win32::handle::{OwnedRegistryKey, OwnedWin32Handle};
 
@@ -69,6 +68,37 @@ fn schtasks_create_arguments() -> Result<String> {
     ))
 }
 
+const SCHTASKS_TIMEOUT_MS: u32 = 10_000;
+
+/// Wait only for our owned child, requesting termination if its deadline expires.
+fn wait_for_process(process: &OwnedWin32Handle, timeout_ms: u32) -> Result<i32> {
+    let wait = unsafe { WaitForSingleObject(process.raw(), timeout_ms) };
+    if wait == WAIT_TIMEOUT {
+        let termination = unsafe { TerminateProcess(process.raw(), ERROR_TIMEOUT.0) };
+        let error = anyhow::Error::new(std::io::Error::new(
+            std::io::ErrorKind::TimedOut,
+            format!("process timed out after {timeout_ms} ms"),
+        ));
+        // Termination is asynchronous; never extend the deadline with another wait.
+        return Err(match termination {
+            Ok(()) => error,
+            Err(termination_error) => {
+                error.context(format!("TerminateProcess failed: {termination_error}"))
+            }
+        });
+    }
+    if wait == WAIT_FAILED {
+        return Err(Error::from_thread()).context("WaitForSingleObject failed");
+    }
+    if wait != WAIT_OBJECT_0 {
+        anyhow::bail!("process wait returned {wait:?}");
+    }
+
+    let mut exit_code: u32 = 0;
+    unsafe { GetExitCodeProcess(process.raw(), &mut exit_code) }.context("GetExitCodeProcess")?;
+    Ok(exit_code as i32)
+}
+
 /// Run `schtasks` detached from any console and return its exit code.
 fn run_schtasks(arguments: &str) -> Result<i32> {
     let mut command_line = wide_null(&format!("schtasks {arguments}"));
@@ -95,65 +125,38 @@ fn run_schtasks(arguments: &str) -> Result<i32> {
 
         let process = OwnedWin32Handle::from_raw(process_info.hProcess);
         let _thread = OwnedWin32Handle::from_raw(process_info.hThread);
-        let wait = WaitForSingleObject(process.raw(), INFINITE);
-        if wait != WAIT_OBJECT_0 {
-            anyhow::bail!("schtasks wait returned {wait:?}");
-        }
-
-        let mut exit_code: u32 = 0;
-        GetExitCodeProcess(process.raw(), &mut exit_code).context("GetExitCodeProcess")?;
-        Ok(exit_code as i32)
+        wait_for_process(&process, SCHTASKS_TIMEOUT_MS).context("schtasks failed")
     }
 }
 
 /// HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND), returned by `ITaskFolder::GetTask`.
 const TASK_NOT_FOUND_HRESULT: HRESULT = HRESULT(0x8007_0002_u32 as i32);
 
-struct ComApartment;
-
-impl ComApartment {
-    fn initialize() -> Result<Self> {
-        unsafe {
-            CoInitializeEx(None, COINIT_APARTMENTTHREADED)
-                .ok()
-                .context("CoInitializeEx(Task Scheduler) failed")?;
-        }
-        Ok(Self)
-    }
-}
-
-impl Drop for ComApartment {
-    fn drop(&mut self) {
-        unsafe {
-            CoUninitialize();
-        }
-    }
-}
-
 fn is_task_not_found(code: HRESULT) -> bool {
     code == TASK_NOT_FOUND_HRESULT
 }
 
 fn task_exists() -> Result<bool> {
-    let _com = ComApartment::initialize()?;
-    let service: ITaskService =
-        unsafe { CoCreateInstance(&TaskScheduler, None, CLSCTX_INPROC_SERVER) }
-            .context("CoCreateInstance(TaskScheduler) failed")?;
-    let empty = VARIANT::default();
-    let folder = unsafe {
-        service
-            .Connect(&empty, &empty, &empty, &empty)
-            .context("ITaskService::Connect failed")?;
-        service
-            .GetFolder(&BSTR::from("\\"))
-            .context("ITaskService::GetFolder failed")?
-    };
+    ComApartment::run(|| {
+        let service: ITaskService =
+            unsafe { CoCreateInstance(&TaskScheduler, None, CLSCTX_INPROC_SERVER) }
+                .context("CoCreateInstance(TaskScheduler) failed")?;
+        let empty = VARIANT::default();
+        let folder = unsafe {
+            service
+                .Connect(&empty, &empty, &empty, &empty)
+                .context("ITaskService::Connect failed")?;
+            service
+                .GetFolder(&BSTR::from("\\"))
+                .context("ITaskService::GetFolder failed")?
+        };
 
-    match unsafe { folder.GetTask(&BSTR::from(TASK_NAME)) } {
-        Ok(_) => Ok(true),
-        Err(error) if is_task_not_found(error.code()) => Ok(false),
-        Err(error) => Err(error).context("ITaskFolder::GetTask failed"),
-    }
+        match unsafe { folder.GetTask(&BSTR::from(TASK_NAME)) } {
+            Ok(_) => Ok(true),
+            Err(error) if is_task_not_found(error.code()) => Ok(false),
+            Err(error) => Err(error).context("ITaskFolder::GetTask failed"),
+        }
+    })
 }
 
 fn ensure_task() -> Result<()> {
@@ -185,10 +188,6 @@ pub fn set_enabled(enabled: bool) -> Result<()> {
         delete_value_best_effort();
     }
     Ok(())
-}
-
-pub fn sync(settings: &Settings) -> Result<()> {
-    set_enabled(settings.run_at_startup)
 }
 
 fn win32_ok(status: windows::Win32::Foundation::WIN32_ERROR) -> Result<()> {
@@ -234,6 +233,72 @@ fn delete_value_best_effort() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use windows::Win32::System::Threading::{CREATE_SUSPENDED, PROCESS_CREATION_FLAGS};
+
+    fn disposable_child(flags: PROCESS_CREATION_FLAGS) -> OwnedWin32Handle {
+        let executable = std::env::var("ComSpec").expect("ComSpec");
+        let application = wide_null(&executable);
+        let mut command_line = wide_null(&format!("\"{executable}\" /D /C exit /B 37"));
+        let startup_info = STARTUPINFOW {
+            cb: size_of::<STARTUPINFOW>() as u32,
+            ..Default::default()
+        };
+        let mut process_info = PROCESS_INFORMATION::default();
+        unsafe {
+            CreateProcessW(
+                PCWSTR(application.as_ptr()),
+                Some(PWSTR(command_line.as_mut_ptr())),
+                None,
+                None,
+                false,
+                flags | CREATE_NO_WINDOW,
+                None,
+                None,
+                &startup_info,
+                &mut process_info,
+            )
+            .expect("create disposable cmd child");
+            let _thread = OwnedWin32Handle::from_raw(process_info.hThread);
+            OwnedWin32Handle::from_raw(process_info.hProcess)
+        }
+    }
+
+    #[test]
+    fn process_wait_preserves_exit_code() {
+        let process = disposable_child(PROCESS_CREATION_FLAGS(0));
+        assert_eq!(wait_for_process(&process, 5_000).expect("child exits"), 37);
+    }
+
+    #[test]
+    fn process_wait_times_out_and_terminates_owned_child() {
+        // A suspended, disposable child cannot exit before the timeout.
+        let process = disposable_child(CREATE_SUSPENDED);
+        let started = std::time::Instant::now();
+        let result = wait_for_process(&process, 20);
+        let elapsed = started.elapsed();
+        let stopped = unsafe { WaitForSingleObject(process.raw(), 5_000) };
+        if stopped != WAIT_OBJECT_0 {
+            // Keep the regression itself from leaking a child if termination breaks.
+            unsafe { TerminateProcess(process.raw(), ERROR_TIMEOUT.0) }
+                .expect("clean up disposable child");
+        }
+        let error = result.expect_err("suspended child must time out");
+        assert_eq!(
+            error
+                .downcast_ref::<std::io::Error>()
+                .expect("timeout error")
+                .kind(),
+            std::io::ErrorKind::TimedOut,
+        );
+        assert!(elapsed < std::time::Duration::from_secs(5));
+        assert_eq!(
+            stopped, WAIT_OBJECT_0,
+            "timeout must request child termination"
+        );
+        let mut exit_code = 0;
+        unsafe { GetExitCodeProcess(process.raw(), &mut exit_code) }.expect("child exit code");
+        assert_eq!(exit_code, ERROR_TIMEOUT.0);
+    }
 
     #[test]
     fn task_trigger_value_quotes_exe_and_appends_startup_flag() {

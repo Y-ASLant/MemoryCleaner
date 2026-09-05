@@ -14,6 +14,7 @@ struct SwitchRowConfig {
     title: String,
     description: String,
     checked: bool,
+    disabled: bool,
 }
 
 fn switch_row_app(
@@ -80,6 +81,7 @@ fn switch_row_app(
             div().flex_shrink_0().child(
                 Switch::new(config.id)
                     .checked(config.checked)
+                    .disabled(config.disabled)
                     .on_click(on_click),
             ),
         )
@@ -437,11 +439,19 @@ fn render_cleanup_hotkey_row(
                                 .child(Icon::new(IconName::ALargeSmall).small()),
                         )
                         .child(
-                            Label::new(t!("settings.cleanup_hotkey_desc").to_string())
-                                .text_xs()
-                                .text_color(muted)
-                                .flex_1()
-                                .min_w_0(),
+                            Label::new(if app.cleanup_hotkey_failed {
+                                t!("settings.cleanup_hotkey_failed").to_string()
+                            } else {
+                                t!("settings.cleanup_hotkey_desc").to_string()
+                            })
+                            .text_xs()
+                            .text_color(if app.cleanup_hotkey_failed {
+                                cx.theme().danger
+                            } else {
+                                muted
+                            })
+                            .flex_1()
+                            .min_w_0(),
                         ),
                 ),
         )
@@ -518,7 +528,10 @@ pub fn render_window_behavior_dialog(
             .child(div().w_full().pt(px(4.)).child(render_version_row(cx)));
     };
 
-    let settings = app.read(cx).settings.clone();
+    let state = app.read(cx);
+    let settings = state.settings.clone();
+    let startup_pending = state.startup_setting_pending;
+    let startup_failed = state.startup_setting_failed;
 
     v_flex()
         .w_full()
@@ -535,6 +548,7 @@ pub fn render_window_behavior_dialog(
                     settings.auto_cleanup_threshold,
                 ),
                 checked: settings.auto_cleanup_enabled,
+                disabled: false,
             },
             muted,
             foreground,
@@ -570,6 +584,7 @@ pub fn render_window_behavior_dialog(
                 title: t!("settings.always_on_top").to_string(),
                 description: t!("settings.always_on_top_desc").to_string(),
                 checked: settings.always_on_top,
+                disabled: false,
             },
             muted,
             foreground,
@@ -589,6 +604,7 @@ pub fn render_window_behavior_dialog(
                 title: t!("settings.close_to_tray").to_string(),
                 description: t!("settings.close_to_tray_desc").to_string(),
                 checked: settings.close_to_notification_area,
+                disabled: false,
             },
             muted,
             foreground,
@@ -606,10 +622,21 @@ pub fn render_window_behavior_dialog(
                 id: "dialog-switch-run-at-startup",
                 icon: IconName::Play,
                 title: t!("settings.run_at_startup").to_string(),
-                description: t!("settings.run_at_startup_desc").to_string(),
+                description: if startup_pending {
+                    t!("settings.run_at_startup_pending").to_string()
+                } else if startup_failed {
+                    t!("settings.run_at_startup_failed").to_string()
+                } else {
+                    t!("settings.run_at_startup_desc").to_string()
+                },
                 checked: settings.run_at_startup,
+                disabled: startup_pending,
             },
-            muted,
+            if startup_failed {
+                cx.theme().danger
+            } else {
+                muted
+            },
             foreground,
             {
                 let weak = weak.clone();
@@ -627,6 +654,7 @@ pub fn render_window_behavior_dialog(
                 title: t!("settings.optimization_notifications").to_string(),
                 description: t!("settings.optimization_notifications_desc").to_string(),
                 checked: settings.show_optimization_notifications,
+                disabled: false,
             },
             muted,
             foreground,
@@ -646,6 +674,7 @@ pub fn render_window_behavior_dialog(
                 title: t!("settings.debug_logging").to_string(),
                 description: t!("settings.debug_logging_desc").to_string(),
                 checked: settings.debug_logging,
+                disabled: false,
             },
             muted,
             foreground,

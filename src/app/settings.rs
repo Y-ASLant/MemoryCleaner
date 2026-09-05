@@ -137,16 +137,33 @@ impl MemoryCleanerApp {
     }
 
     pub fn set_run_at_startup(&mut self, enabled: bool, cx: &mut Context<Self>) {
-        if let Err(error) = win32::startup::set_enabled(enabled) {
-            crate::log_msg(&format!(
-                "[startup] set_enabled({enabled}) failed: {error:#}"
-            ));
-            cx.notify();
+        if self.startup_setting_pending {
             return;
         }
-        self.settings.run_at_startup = enabled;
-        self.queue_settings_save(cx);
+        self.startup_setting_pending = true;
+        self.startup_setting_failed = false;
         cx.notify();
+
+        cx.spawn(async move |this, cx| {
+            let result = smol::unblock(move || win32::startup::set_enabled(enabled)).await;
+            let _ = this.update(cx, |app, cx| {
+                app.startup_setting_pending = false;
+                app.startup_setting_failed = result.is_err();
+                match result {
+                    Ok(()) => {
+                        if app.settings.run_at_startup != enabled {
+                            app.settings.run_at_startup = enabled;
+                            app.queue_settings_save(cx);
+                        }
+                    }
+                    Err(error) => crate::log_msg(&format!(
+                        "[startup] set_enabled({enabled}) failed: {error:#}"
+                    )),
+                }
+                cx.notify();
+            });
+        })
+        .detach();
     }
 
     pub fn set_show_optimization_notifications(&mut self, enabled: bool, cx: &mut Context<Self>) {
@@ -176,13 +193,28 @@ impl MemoryCleanerApp {
         cx.notify();
     }
 
+    pub(super) fn sync_cleanup_hotkey(&mut self) -> bool {
+        self.cleanup_hotkey_failed = match win32::hotkey::sync(&self.settings) {
+            Ok(()) => false,
+            Err(error) => {
+                crate::log_msg(&format!("[hotkey] sync failed: {error:#}"));
+                true
+            }
+        };
+        !self.cleanup_hotkey_failed
+    }
+
     pub fn set_cleanup_hotkey_enabled(&mut self, enabled: bool, cx: &mut Context<Self>) {
+        let previous = self.settings.cleanup_hotkey_enabled;
         self.settings.cleanup_hotkey_enabled = enabled;
-        if !enabled {
-            self.cleanup_hotkey_recording = false;
+        if self.sync_cleanup_hotkey() {
+            if !enabled {
+                self.cleanup_hotkey_recording = false;
+            }
+            self.queue_settings_save(cx);
+        } else {
+            self.settings.cleanup_hotkey_enabled = previous;
         }
-        win32::hotkey::sync(&self.settings);
-        self.queue_settings_save(cx);
         cx.notify();
     }
 
@@ -191,6 +223,7 @@ impl MemoryCleanerApp {
             return;
         }
         self.cleanup_hotkey_recording = true;
+        self.cleanup_hotkey_failed = false;
         window.focus(&self.hotkey_capture_focus, cx);
         cx.notify();
     }
@@ -217,10 +250,13 @@ impl MemoryCleanerApp {
             return;
         };
 
-        self.settings.cleanup_hotkey = chord;
+        let previous = std::mem::replace(&mut self.settings.cleanup_hotkey, chord);
         self.cleanup_hotkey_recording = false;
-        win32::hotkey::sync(&self.settings);
-        self.queue_settings_save(cx);
+        if self.sync_cleanup_hotkey() {
+            self.queue_settings_save(cx);
+        } else {
+            self.settings.cleanup_hotkey = previous;
+        }
         cx.notify();
     }
 
