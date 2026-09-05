@@ -114,8 +114,8 @@ impl Settings {
             && areas.contains(MemoryAreas::STANDBY_LIST_LOW_PRIORITY)
         {
             areas.remove(MemoryAreas::STANDBY_LIST_LOW_PRIORITY);
-            self.memory_areas = areas.bits();
         }
+        self.memory_areas = areas.bits();
     }
 
     fn normalize_excluded_processes(&mut self) {
@@ -295,6 +295,14 @@ mod tests {
         let areas = settings.memory_areas();
         assert!(areas.contains(MemoryAreas::STANDBY_LIST));
         assert!(!areas.contains(MemoryAreas::STANDBY_LIST_LOW_PRIORITY));
+    }
+
+    #[test]
+    fn removed_memory_area_bits_are_discarded() {
+        let removed_registry_cache = 1u32 << 7;
+        let stored = MemoryAreas::WORKING_SET.bits() | removed_registry_cache;
+        let settings = Settings::from_toml(&format!("memory_areas = {stored}"));
+        assert_eq!(settings.memory_areas, MemoryAreas::WORKING_SET.bits());
     }
 
     #[test]

@@ -3,7 +3,9 @@ use std::mem::MaybeUninit;
 use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
-use windows::Win32::Foundation::{ERROR_ACCESS_DENIED, GetLastError};
+use windows::Win32::Foundation::{
+    ERROR_ACCESS_DENIED, ERROR_INVALID_PARAMETER, ERROR_NO_MORE_FILES, GetLastError,
+};
 use windows::Win32::System::Diagnostics::ToolHelp::{
     CreateToolhelp32Snapshot, PROCESSENTRY32W, Process32FirstW, Process32NextW, TH32CS_SNAPPROCESS,
 };
@@ -116,14 +118,22 @@ where
         let mut entry = MaybeUninit::<PROCESSENTRY32W>::zeroed();
         (*entry.as_mut_ptr()).dwSize = size_of::<PROCESSENTRY32W>() as u32;
 
-        if Process32FirstW(snapshot.raw(), entry.as_mut_ptr()).is_ok() {
-            loop {
-                if f(entry.assume_init_ref()) {
+        if let Err(error) = Process32FirstW(snapshot.raw(), entry.as_mut_ptr()) {
+            if error.code() == windows::core::HRESULT::from_win32(ERROR_NO_MORE_FILES.0) {
+                return Ok(());
+            }
+            return Err(error).context("Process32FirstW");
+        }
+
+        loop {
+            if f(entry.assume_init_ref()) {
+                break;
+            }
+            if let Err(error) = Process32NextW(snapshot.raw(), entry.as_mut_ptr()) {
+                if error.code() == windows::core::HRESULT::from_win32(ERROR_NO_MORE_FILES.0) {
                     break;
                 }
-                if Process32NextW(snapshot.raw(), entry.as_mut_ptr()).is_err() {
-                    break;
-                }
+                return Err(error).context("Process32NextW");
             }
         }
     }
@@ -176,8 +186,26 @@ pub fn list_processes_for_exclusion_picker(
     entries
 }
 
+fn complete_working_set_cleanup(
+    succeeded: usize,
+    access_denied: usize,
+    errors: Vec<String>,
+) -> Result<()> {
+    if !errors.is_empty() {
+        bail!("Working Set per-process errors: {}", errors.join(", "));
+    }
+    if succeeded == 0 && access_denied > 0 {
+        bail!(
+            "Working Set per-process cleanup emptied no processes ({access_denied} access denied)"
+        );
+    }
+    Ok(())
+}
+
 /// Empty working sets for every running process except those in `excluded`.
 pub fn empty_working_sets_except(excluded: &[String]) -> Result<()> {
+    let mut succeeded = 0usize;
+    let mut access_denied = 0usize;
     let mut errors = Vec::new();
 
     with_process_snapshot(|entry| {
@@ -191,38 +219,41 @@ pub fn empty_working_sets_except(excluded: &[String]) -> Result<()> {
             match unsafe { OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_SET_QUOTA, false, pid) }
             {
                 Ok(handle) => unsafe { OwnedWin32Handle::from_raw(handle) },
-                Err(_) => return false,
+                Err(error)
+                    if error.code()
+                        == windows::core::HRESULT::from_win32(ERROR_ACCESS_DENIED.0) =>
+                {
+                    access_denied += 1;
+                    return false;
+                }
+                // Processes can exit between taking the snapshot and opening the handle.
+                Err(error)
+                    if error.code()
+                        == windows::core::HRESULT::from_win32(ERROR_INVALID_PARAMETER.0) =>
+                {
+                    return false;
+                }
+                Err(error) => {
+                    errors.push(format!("{name} (pid {pid}) open: {error}"));
+                    return false;
+                }
             };
 
         let result = unsafe { K32EmptyWorkingSet(handle.raw()) };
-        if !result.as_bool() {
+        if result.as_bool() {
+            succeeded += 1;
+        } else {
             let last_error = unsafe { GetLastError() };
-            if last_error != ERROR_ACCESS_DENIED {
-                errors.push(format!("{name} (pid {pid}): {last_error:?}"));
+            if last_error == ERROR_ACCESS_DENIED {
+                access_denied += 1;
+            } else {
+                errors.push(format!("{name} (pid {pid}) empty: {last_error:?}"));
             }
         }
         false
     })?;
 
-    if errors.is_empty() {
-        Ok(())
-    } else {
-        bail!("Working Set per-process errors: {}", errors.join(", "));
-    }
-}
-
-/// Return true if another process with the same executable name is running.
-pub fn has_sibling_process(current_pid: u32, exe_name: &str) -> bool {
-    let target: Vec<u16> = exe_name.encode_utf16().collect();
-    let mut found = false;
-    let _ = with_process_snapshot(|entry| {
-        if entry.th32ProcessID != current_pid && exe_name_matches(entry, &target) {
-            found = true;
-            return true;
-        }
-        false
-    });
-    found
+    complete_working_set_cleanup(succeeded, access_denied, errors)
 }
 
 /// Return true if any process with the given executable name is running.
@@ -273,18 +304,6 @@ pub fn wait_for_process_exit(exe_name: &str, timeout_ms: u32) -> bool {
     !is_process_running(exe_name)
 }
 
-/// Best-effort wait until an elevated relaunch is observed, or timeout.
-pub fn wait_for_elevated_relaunch(current_pid: u32, exe_name: &str, timeout_ms: u32) -> bool {
-    let steps = timeout_ms / 100;
-    for _ in 0..steps {
-        if has_sibling_process(current_pid, exe_name) {
-            return true;
-        }
-        std::thread::sleep(Duration::from_millis(100));
-    }
-    false
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -329,5 +348,11 @@ mod tests {
             readable.memory_display(),
             Some(MemoryStatus::format_bytes(readable.working_set_bytes))
         );
+    }
+
+    #[test]
+    fn working_set_cleanup_rejects_total_access_denial() {
+        assert!(complete_working_set_cleanup(0, 2, Vec::new()).is_err());
+        assert!(complete_working_set_cleanup(1, 2, Vec::new()).is_ok());
     }
 }

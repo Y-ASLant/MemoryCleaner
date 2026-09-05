@@ -1,8 +1,8 @@
 use rust_i18n::t;
 
-use std::sync::OnceLock;
 use std::sync::atomic::{AtomicBool, AtomicPtr, AtomicU32, Ordering};
 use std::sync::mpsc::Sender;
+use std::sync::{Mutex, OnceLock};
 use std::thread;
 use std::time::Duration;
 
@@ -16,6 +16,8 @@ use crate::memory::MemorySection;
 
 /// Delay between 90° rotation steps while optimizing.
 const SPIN_STEP_MS: u64 = 96;
+/// Native tray frames are pre-scaled once; animation must never copy the 512px source.
+const TRAY_ICON_SIZE: u32 = 32;
 
 static TRAY: AtomicPtr<Tray> = AtomicPtr::new(std::ptr::null_mut());
 static ICON_FRAMES: OnceLock<[RgbaImage; 4]> = OnceLock::new();
@@ -23,11 +25,37 @@ static CMD_TX: OnceLock<Sender<TrayCommand>> = OnceLock::new();
 static SPIN_GENERATION: AtomicU32 = AtomicU32::new(0);
 static SPIN_ACTIVE: AtomicBool = AtomicBool::new(false);
 
+struct TrayMenuState {
+    locale: String,
+    window_visible: bool,
+}
+
+impl TrayMenuState {
+    fn new(locale: &str, window_visible: bool) -> Self {
+        Self {
+            locale: locale.to_string(),
+            window_visible,
+        }
+    }
+
+    /// Records the requested state and reports whether native menu text must change.
+    fn changed(&mut self, locale: &str, window_visible: bool) -> bool {
+        if self.locale == locale && self.window_visible == window_visible {
+            return false;
+        }
+        self.locale.clear();
+        self.locale.push_str(locale);
+        self.window_visible = window_visible;
+        true
+    }
+}
+
 pub struct Tray {
     icon: TrayIcon,
     optimize: MenuItem,
     toggle_window: MenuItem,
     quit: MenuItem,
+    menu_state: Mutex<TrayMenuState>,
 }
 
 #[derive(Debug, Clone)]
@@ -76,6 +104,7 @@ impl Tray {
             optimize,
             toggle_window,
             quit,
+            menu_state: Mutex::new(TrayMenuState::new(rust_i18n::locale().as_ref(), true)),
         });
         let leaked = Box::leak(tray);
         TRAY.store(leaked, Ordering::Release);
@@ -203,6 +232,15 @@ pub fn sync_display(physical: &MemorySection, virtual_mem: &MemorySection, windo
     let _ = tray
         .icon
         .set_tooltip(Some(format_memory_tooltip(physical, virtual_mem)));
+    let locale = rust_i18n::locale();
+    let menu_changed = tray
+        .menu_state
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .changed(locale.as_ref(), window_visible);
+    if !menu_changed {
+        return;
+    }
     tray.optimize.set_text(t!("tray.optimize"));
     tray.quit.set_text(t!("tray.quit"));
     tray.toggle_window.set_text(if window_visible {
@@ -248,7 +286,11 @@ fn load_app_icon_rgba() -> Result<RgbaImage, Box<dyn std::error::Error>> {
     let png_data = include_bytes!("../App.png");
     let img = image::load_from_memory(png_data)?;
     Ok(img
-        .resize(32, 32, image::imageops::FilterType::Lanczos3)
+        .resize(
+            TRAY_ICON_SIZE,
+            TRAY_ICON_SIZE,
+            image::imageops::FilterType::Lanczos3,
+        )
         .to_rgba8())
 }
 
@@ -364,5 +406,21 @@ mod tests {
             assert_eq!(rotated.dimensions(), (2, 2));
         }
         assert_eq!(rotate_quarters(&source, 4), rotate_quarters(&source, 0));
+    }
+
+    #[test]
+    fn tray_menu_state_changes_only_for_locale_or_visibility() {
+        let mut state = TrayMenuState::new("en", true);
+        assert!(!state.changed("en", true));
+        assert!(state.changed("en", false));
+        assert!(!state.changed("en", false));
+        assert!(state.changed("zh-CN", false));
+    }
+
+    #[test]
+    fn tray_animation_source_is_pre_scaled() {
+        let source = load_icon_source();
+        assert_eq!(source.dimensions(), (TRAY_ICON_SIZE, TRAY_ICON_SIZE));
+        assert_eq!(source.len(), (TRAY_ICON_SIZE * TRAY_ICON_SIZE * 4) as usize);
     }
 }

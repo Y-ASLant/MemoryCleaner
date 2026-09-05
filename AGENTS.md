@@ -111,7 +111,7 @@ make clean # cargo clean
 | `src/win32/os.rs` | Windows build detection (Win10 vs Win11), system UI locale |
 | `src/win32/elevation.rs` | UAC elevation check and relaunch |
 | `src/win32/handle.rs` | RAII ownership for Win32 `HANDLE` and registry `HKEY` |
-| `src/optimize.rs` | Memory cleanup orchestration (8 cleaning regions) |
+| `src/optimize.rs` | Memory cleanup orchestration (7 cleaning regions) |
 | `src/settings.rs` | TOML settings schema and persistence |
 | `src/win32/nt.rs` | Raw NT API bindings (`NtSetSystemInformation`, `NtCreateFile`, structs, enums) |
 | `src/win32/volume.rs` | Mount Manager volume enumeration and modified-file-cache flush |

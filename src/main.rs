@@ -21,7 +21,9 @@ fn main() {
         return;
     }
 
-    win32::elevation::ensure_elevated();
+    if win32::elevation::ensure_elevated() {
+        return;
+    }
 
     // The elevated relaunch enters here; retry the signal now that the
     // integrity level matches the running instance, then claim the mutex.

@@ -22,9 +22,6 @@ area.combined_page_list:
 area.modified_file_cache:
   zh-CN: "已修改文件"
   en: "Modified File Cache"
-area.registry_cache:
-  zh-CN: "注册表缓存"
-  en: "Registry Cache"
 area.unknown:
   zh-CN: "未知区域"
   en: "Unknown"

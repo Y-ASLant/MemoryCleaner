@@ -12,6 +12,13 @@
 - **全局热键**：新组合键注册失败时保留原绑定和设置，并在设置界面显示错误；重复应用相同组合键不再重新注册。
 - **通知资源生命周期**：通知与快捷方式操作配对初始化和释放 COM，通知使用局部 WinRT 激活工厂，避免重复调用累积 COM 初始化状态。
 - **开机自启**：启动同步和设置更新改为后台执行；更新期间禁用开关，失败时保留原设置并提示错误；`schtasks` 子进程等待上限为 10 秒，超时后请求终止该子进程。
+- **工作集清理结果**：进程枚举、打开进程和清空工作集的异常失败现在会返回错误；所有目标均因权限不足而失败时不再报告成功。
+- **管理员提升**：UAC 重新启动改用 `ShellExecuteExW` 返回的确切子进程句柄确认创建成功，不再用同名进程判断。
+- **托盘显示同步**：内存轮询仍更新 Tooltip，但仅在语言或窗口可见性变化时写入原生菜单文本。
+
+### 移除
+
+- **注册表缓存清理**：移除不释放内存、只通过 `RegFlushKey` 强制注册表配置单元写盘的清理区域；旧设置中的对应位会在规范化时丢弃。
 
 ## [1.0.7] - 2026-09-04
 
@@ -142,6 +149,13 @@ Records Memory Cleaner releases. Format follows [Keep a Changelog](https://keepa
 - **Global hotkey** — Failed registrations retain the previous binding and settings and display an error. Reapplying the same shortcut no longer re-registers it.
 - **Notification resource lifecycle** — Notification and shortcut operations balance COM initialization and teardown; notifications use scoped WinRT activation factories to prevent repeated calls from accumulating COM initialization state.
 - **Run at startup** — Launch-time synchronization and setting updates run in the background. The switch is disabled while pending, and failed updates retain the previous setting and display an error. Each `schtasks` child wait is limited to 10 seconds, after which termination is requested.
+- **Working Set cleanup results** — Unexpected process-enumeration, process-open, and working-set-emptying failures now return errors. Cleanup no longer reports success when every target failed with access denied.
+- **Administrator elevation** — UAC relaunch now confirms creation through the exact child-process handle returned by `ShellExecuteExW`, rather than treating any same-name process as successful.
+- **Tray display synchronization** — Memory polling still refreshes the tooltip, while native menu text is updated only when the locale or window visibility changes.
+
+### Removed
+
+- **Registry Cache cleanup** — Removed the cleanup region that did not release memory and only forced registry hives to disk through `RegFlushKey`; normalization discards its legacy settings bit.
 
 ## [1.0.7] - 2026-09-04
 

@@ -12,7 +12,7 @@ A Windows memory optimization tool built with Rust + GPUI. Real-time memory moni
 
 - **Real-time Memory Monitoring** — Physical and virtual memory usage with ring progress charts; auto-refreshes every **1 second** when the main window is visible, pauses polling when minimized to tray to save CPU; tray icon tooltip updates instantly on hover
 - **One-Click Cleanup** — Executes cleanup steps sequentially based on selected regions; progress and result summary shown in the bottom button (retained for ~5 seconds after completion)
-- **Configurable Cleanup Regions** — 8 memory regions selectable via checkboxes (Standby List and Standby List Low Priority are mutually exclusive)
+- **Configurable Cleanup Regions** — 7 memory regions selectable via checkboxes (Standby List and Standby List Low Priority are mutually exclusive)
 - **Automatic Cleanup** — Can be enabled in the Window Behavior dialog; supports Windows low-physical-memory notifications and a sustained physical-memory usage threshold (two consecutive above-threshold checks, then a 10-minute cooldown)
 - **Global Hotkey** — Default `Ctrl+Alt+C` triggers cleanup; can be toggled and custom combo recorded in the Window Behavior dialog (`RegisterHotKey`); failed registrations retain the previous binding and settings and display an error
 - **System Notifications** — Windows Toast popups on cleanup start and completion (can be disabled in the Window Behavior dialog)
@@ -107,13 +107,12 @@ Buttons, GroupBox cards, switches, checkboxes, dialogs, settings panels, etc. al
 | Standby List (Low Priority) | Clear low-priority standby list | Yes |
 | Merged Pages | Release merged pages | Yes |
 | Modified Files | Flush file system cache for all volumes via Mount Manager | Yes |
-| Registry Cache | Flush registry cache | No |
 
 > "Standby List" and "Standby List (Low Priority)" are mutually exclusive — selecting one automatically deselects the other.
 >
-> **Disk impact:** Of the 8 cleanup regions, only "Modified Files", "Modified Pages", and "Registry Cache" involve disk writes; the remaining 5 (Working Set, System File Cache, Standby List, Standby List Low Priority, Merged Pages) are pure RAM operations. See FAQ below.
+> **Disk impact:** Of the 7 cleanup regions, only "Modified Files" and "Modified Pages" involve disk writes; the remaining 5 (Working Set, System File Cache, Standby List, Standby List Low Priority, Merged Pages) are pure RAM operations. See FAQ below.
 
-Default enabled regions: Working Set, System File Cache, Standby List, Merged Pages (bitmask `42`). Modified Pages, Modified Files, and Registry Cache are disabled by default as they involve disk writes.
+Default enabled regions: Working Set, System File Cache, Standby List, Merged Pages (bitmask `42`). Modified Pages and Modified Files are disabled by default as they involve disk writes.
 
 ## Configuration
 
@@ -168,7 +167,7 @@ src/
 ├── log.rs               # Debug log writing, throttled retention, and file-error reporting
 ├── memory.rs            # Memory query (GlobalMemoryStatusEx)
 ├── messages.rs          # Cleanup result message assembly
-├── optimize.rs          # 8 cleanup regions and NtSetSystemInformation calls
+├── optimize.rs          # 7 cleanup regions and NtSetSystemInformation calls
 ├── privileges.rs        # Windows privilege elevation
 ├── settings.rs          # TOML config read/write
 ├── tray.rs              # System tray icon, tooltip, menu, cleanup spin animation
@@ -221,14 +220,13 @@ Check whether the hotkey is enabled in the Window Behavior dialog, and whether t
 
 **Which cleanup operations affect disk lifespan?**
 
-The 8 cleanup regions fall into two categories by disk behavior:
+The 7 cleanup regions fall into two categories by disk behavior:
 
 - **Pure RAM operations (no disk impact):** Working Set, System File Cache, Standby List, Standby List (Low Priority), Merged Pages. These only reclaim or discard cached pages in memory without any disk writes. Re-accessing files after cleanup triggers re-reads from disk, but reads do not consume SSD write endurance.
 
 - **Involve disk writes:**
   - **Modified Files** — Flushes file system cache for all volumes via `NtFlushBuffersFile`; write volume depends on accumulated dirty data — highest impact
   - **Modified Pages** — Writes dirty pages from memory back to their backing files via `FlushModifiedList`
-  - **Registry Cache** — Writes registry hives to disk via `RegFlushKey`; small data volume — lowest impact
 
 Occasional manual use is not a concern. If you clean frequently, consider excluding "Modified Files" and "Modified Pages" to reduce disk writes.
 

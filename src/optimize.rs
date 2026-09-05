@@ -23,7 +23,6 @@ bitflags::bitflags! {
         const STANDBY_LIST_LOW_PRIORITY = 1 << 4;
         const COMBINED_PAGE_LIST        = 1 << 5;
         const MODIFIED_FILE_CACHE       = 1 << 6;
-        const REGISTRY_CACHE            = 1 << 7;
     }
 }
 
@@ -43,7 +42,6 @@ impl MemoryAreas {
             Self::STANDBY_LIST_LOW_PRIORITY => "area.standby_list_low_priority",
             Self::COMBINED_PAGE_LIST => "area.combined_page_list",
             Self::MODIFIED_FILE_CACHE => "area.modified_file_cache",
-            Self::REGISTRY_CACHE => "area.registry_cache",
             _ => "area.unknown",
         }
     }
@@ -80,9 +78,6 @@ const OPTIMIZE_STEPS: &[OptimizeStep] = &[
     OptimizeStep {
         area: MemoryAreas::MODIFIED_FILE_CACHE,
     },
-    OptimizeStep {
-        area: MemoryAreas::REGISTRY_CACHE,
-    },
 ];
 
 pub fn step_plan(areas: MemoryAreas, excluded_processes: &[String]) -> Result<StepPlan> {
@@ -107,7 +102,6 @@ pub fn step_plan(areas: MemoryAreas, excluded_processes: &[String]) -> Result<St
                 MemoryAreas::STANDBY_LIST_LOW_PRIORITY => Box::new(|| optimize_standby_list(true)),
                 MemoryAreas::COMBINED_PAGE_LIST => Box::new(optimize_combined_page_list),
                 MemoryAreas::MODIFIED_FILE_CACHE => Box::new(optimize_modified_file_cache),
-                MemoryAreas::REGISTRY_CACHE => Box::new(optimize_registry_cache),
                 _ => unreachable!("all defined MemoryAreas variants in OPTIMIZE_STEPS are covered"),
             };
             (label, run)
@@ -213,26 +207,6 @@ fn optimize_modified_file_cache() -> Result<()> {
     complete_volume_flush(flush_all_volume_caches()?)
 }
 
-fn optimize_registry_cache() -> Result<()> {
-    use windows::Win32::System::Registry::{
-        HKEY_CLASSES_ROOT, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, HKEY_USERS, RegFlushKey,
-    };
-
-    unsafe {
-        let keys = [
-            HKEY_CURRENT_USER,
-            HKEY_LOCAL_MACHINE,
-            HKEY_CLASSES_ROOT,
-            HKEY_USERS,
-        ];
-        for key in keys {
-            let _ = RegFlushKey(key);
-        }
-    }
-
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -267,7 +241,7 @@ mod tests {
     fn memory_area_labels_are_stable_zh() {
         with_locale("zh-CN", || {
             assert_eq!(MemoryAreas::WORKING_SET.label(), "工作集");
-            assert_eq!(MemoryAreas::REGISTRY_CACHE.label(), "注册表缓存");
+            assert_eq!(MemoryAreas::MODIFIED_FILE_CACHE.label(), "已修改文件");
         });
     }
 
@@ -275,7 +249,10 @@ mod tests {
     fn memory_area_labels_are_stable_en() {
         with_locale("en", || {
             assert_eq!(MemoryAreas::WORKING_SET.label(), "Working Set");
-            assert_eq!(MemoryAreas::REGISTRY_CACHE.label(), "Registry Cache");
+            assert_eq!(
+                MemoryAreas::MODIFIED_FILE_CACHE.label(),
+                "Modified File Cache"
+            );
         });
     }
 }

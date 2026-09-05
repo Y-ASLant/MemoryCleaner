@@ -24,7 +24,7 @@ fn memory_area_checkbox(
 
 fn cleanup_area_row(
     left: (&'static str, MemoryAreas),
-    right: (&'static str, MemoryAreas),
+    right: Option<(&'static str, MemoryAreas)>,
     app: &MemoryCleanerApp,
     cx: &mut Context<MemoryCleanerApp>,
 ) -> impl IntoElement {
@@ -33,7 +33,9 @@ fn cleanup_area_row(
         .h(px(CLEANUP_AREA_ROW_H))
         .gap_4()
         .child(memory_area_checkbox(left.0, left.1, app, cx))
-        .child(memory_area_checkbox(right.0, right.1, app, cx))
+        .when_some(right, |row, (id, area)| {
+            row.child(memory_area_checkbox(id, area, app, cx))
+        })
 }
 
 pub(super) fn render_cleanup_areas(
@@ -60,25 +62,25 @@ pub(super) fn render_cleanup_areas(
         )
         .child(cleanup_area_row(
             ("area-standby", MemoryAreas::STANDBY_LIST),
-            ("area-standby-low", MemoryAreas::STANDBY_LIST_LOW_PRIORITY),
+            Some(("area-standby-low", MemoryAreas::STANDBY_LIST_LOW_PRIORITY)),
             app,
             cx,
         ))
         .child(cleanup_area_row(
             ("area-working-set", MemoryAreas::WORKING_SET),
-            ("area-system-cache", MemoryAreas::SYSTEM_FILE_CACHE),
+            Some(("area-system-cache", MemoryAreas::SYSTEM_FILE_CACHE)),
             app,
             cx,
         ))
         .child(cleanup_area_row(
             ("area-modified-page", MemoryAreas::MODIFIED_PAGE_LIST),
-            ("area-combined", MemoryAreas::COMBINED_PAGE_LIST),
+            Some(("area-combined", MemoryAreas::COMBINED_PAGE_LIST)),
             app,
             cx,
         ))
         .child(cleanup_area_row(
             ("area-modified-file", MemoryAreas::MODIFIED_FILE_CACHE),
-            ("area-registry", MemoryAreas::REGISTRY_CACHE),
+            None,
             app,
             cx,
         ))

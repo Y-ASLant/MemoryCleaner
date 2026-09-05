@@ -1,25 +1,18 @@
+use std::mem::size_of;
 use std::os::windows::ffi::OsStrExt;
+use std::path::Path;
 
+use anyhow::{Context, Result, bail};
 use windows::Win32::Foundation::HANDLE;
 use windows::Win32::Security::{GetTokenInformation, TOKEN_ELEVATION, TOKEN_QUERY, TokenElevation};
 use windows::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
+use windows::Win32::UI::Shell::{SEE_MASK_NOCLOSEPROCESS, SHELLEXECUTEINFOW, ShellExecuteExW};
+use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+use windows::core::PCWSTR;
 
-use crate::version::PROCESS_BASE_NAME;
-use crate::win32::handle::OwnedWin32Handle;
+use crate::win32::{com::ComApartment, handle::OwnedWin32Handle};
 
 pub(super) const ELEVATED_ARG: &str = "--elevated";
-
-#[link(name = "shell32")]
-unsafe extern "system" {
-    fn ShellExecuteW(
-        hwnd: isize,
-        lpszverb: *const u16,
-        lpszfile: *const u16,
-        lpszparams: *const u16,
-        lpszdir: *const u16,
-        nshowcmd: i32,
-    ) -> isize;
-}
 
 fn is_elevated() -> bool {
     let mut raw_token = HANDLE::default();
@@ -41,38 +34,50 @@ fn is_elevated() -> bool {
     result.is_ok() && elevation.TokenIsElevated != 0
 }
 
-/// Relaunches the process through UAC unless it is already elevated.
-pub fn ensure_elevated() {
+fn shell_execute_process(exe: &Path, parameters: &str, verb: &str) -> Result<OwnedWin32Handle> {
+    ComApartment::run(|| {
+        let path: Vec<u16> = exe.as_os_str().encode_wide().chain(Some(0)).collect();
+        let verb: Vec<u16> = verb.encode_utf16().chain(Some(0)).collect();
+        let params: Vec<u16> = parameters.encode_utf16().chain(Some(0)).collect();
+        let mut info = SHELLEXECUTEINFOW {
+            cbSize: size_of::<SHELLEXECUTEINFOW>() as u32,
+            fMask: SEE_MASK_NOCLOSEPROCESS,
+            lpVerb: PCWSTR(verb.as_ptr()),
+            lpFile: PCWSTR(path.as_ptr()),
+            lpParameters: PCWSTR(params.as_ptr()),
+            nShow: SW_SHOWNORMAL.0,
+            ..Default::default()
+        };
+
+        unsafe { ShellExecuteExW(&raw mut info) }.context("ShellExecuteExW failed")?;
+        if info.hProcess.is_invalid() {
+            bail!("ShellExecuteExW returned no process handle");
+        }
+        Ok(unsafe { OwnedWin32Handle::from_raw(info.hProcess) })
+    })
+}
+
+fn launch_elevated(exe: &Path, parameters: &str) -> Result<OwnedWin32Handle> {
+    shell_execute_process(exe, parameters, "runas").context("elevated process launch failed")
+}
+
+/// Relaunches through UAC when needed. Returns `true` after creating the
+/// specific elevated child, so the unelevated caller can return normally.
+pub fn ensure_elevated() -> bool {
     if std::env::args().any(|arg| arg == ELEVATED_ARG) || is_elevated() {
-        return;
+        return false;
     }
 
-    let Ok(exe) = std::env::current_exe() else {
-        crate::log_msg("[elevation] cannot determine executable path");
-        return;
-    };
-    let path: Vec<u16> = exe.as_os_str().encode_wide().chain(Some(0)).collect();
-    let verb: Vec<u16> = "runas".encode_utf16().chain(Some(0)).collect();
-    let param_string = super::startup::elevation_relaunch_args();
-    let params: Vec<u16> = param_string.encode_utf16().chain(Some(0)).collect();
-
-    let result = unsafe {
-        ShellExecuteW(
-            0,
-            verb.as_ptr(),
-            path.as_ptr(),
-            params.as_ptr(),
-            std::ptr::null(),
-            1,
-        )
-    };
-    // ShellExecute may return > 32 even when the user later cancels UAC.
-    // Wait for the elevated child before exiting; otherwise continue unelevated.
-    let process_name = format!("{PROCESS_BASE_NAME}.exe");
-    if result as usize > 32
-        && super::process::wait_for_elevated_relaunch(std::process::id(), &process_name, 10_000)
-    {
-        std::process::exit(0);
+    let result = std::env::current_exe()
+        .context("cannot determine executable path")
+        .and_then(|exe| launch_elevated(&exe, &super::startup::elevation_relaunch_args()));
+    match result {
+        Ok(_child) => true,
+        Err(error) => {
+            crate::log_msg(&format!("[elevation] relaunch failed: {error:#}"));
+            // UAC was declined or launch failed. Continue without admin so
+            // non-privileged features remain available.
+            false
+        }
     }
-    // User cancelled UAC — continue without admin; some cleanup areas will fail.
 }
