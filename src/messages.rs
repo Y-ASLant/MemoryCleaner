@@ -66,8 +66,8 @@ mod tests {
                 "清理完成 · +512.00 MB"
             );
             assert_eq!(
-                build_cleanup_result_message(&["工作集", "待机列表"], &["注册表缓存"], ""),
-                "完成 2 项，失败：注册表缓存"
+                build_cleanup_result_message(&["工作集", "待机列表"], &["已修改页面"], ""),
+                "完成 2 项，失败：已修改页面"
             );
         });
     }
@@ -80,8 +80,8 @@ mod tests {
                 "No cleanup performed"
             );
             assert_eq!(
-                build_cleanup_result_message(&[], &["Working Set", "Registry Cache"], ""),
-                "Cleanup failed: Working Set, Registry Cache"
+                build_cleanup_result_message(&[], &["Working Set", "Modified Pages"], ""),
+                "Cleanup failed: Working Set, Modified Pages"
             );
             assert_eq!(
                 build_cleanup_result_message(&["Working Set"], &[], ""),
@@ -90,10 +90,10 @@ mod tests {
             assert_eq!(
                 build_cleanup_result_message(
                     &["Working Set", "Standby List"],
-                    &["Registry Cache"],
+                    &["Modified Pages"],
                     ""
                 ),
-                "2 done, failed: Registry Cache"
+                "2 done, failed: Modified Pages"
             );
         });
     }
