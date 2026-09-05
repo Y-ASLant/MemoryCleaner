@@ -74,7 +74,7 @@ make clean # cargo clean
 
 **CI:** `.github/workflows/build.yml` runs only when a `v*` tag is pushed. The tag must match `Cargo.toml`'s version; the workflow checks formatting, runs Clippy and tests, builds the Windows release binary, extracts that version's Chinese and English sections from `docs/CHANGELOG.md`, then creates a GitHub Release with those notes and `MemoryCleaner.exe`.
 
-**Tests:** `make test` / `cargo test` — 77 unit tests in `src/` plus 2 integration tests in `tests/settings_persistence.rs`.
+**Tests:** `make test` / `cargo test` — 78 unit tests in `src/` plus 2 integration tests in `tests/settings_persistence.rs`.
 
 ## Code Conventions & Common Patterns
 
@@ -145,7 +145,7 @@ Implemented settings that must **not** be listed as unimplemented:
 
 ## Tray Icon Spin During Cleanup
 
-While `run_optimize` is in progress, `tray::start_spin()` posts `TrayCommand::SetSpinFrame` ticks every 120ms; the GPUI thread applies them via `set_icon`. Do not call `TrayIcon::set_icon` from background threads — `tray-icon` requires the Win32 tray window thread.
+While `run_optimize` is in progress, `tray::start_spin()` posts `TrayCommand::SetSpinFrame` ticks every 96ms; the GPUI thread applies them via `set_icon`. Do not call `TrayIcon::set_icon` from background threads — `tray-icon` requires the Win32 tray window thread.
 
 ## Runtime / Tooling Preferences
 
