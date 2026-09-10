@@ -7,6 +7,10 @@
 
 ## [Unreleased]
 
+### 变更
+
+- **Release 构建**：`opt-level` 由 `s` 调整为 `z`，二进制体积约减少 12%（9.76 MB → 8.58 MB）。
+
 ## [1.1.0] - 2026-09-05
 
 相对 [1.0.7] 的最终变更如下。
@@ -147,6 +151,10 @@ Records Memory Cleaner releases. Format follows [Keep a Changelog](https://keepa
 
 
 ## [Unreleased]
+
+### Changed
+
+- **Release build** — `opt-level` changed from `s` to `z`; binary size reduced by about 12% (9.76 MB → 8.58 MB).
 
 ## [1.1.0] - 2026-09-05
 

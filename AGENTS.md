@@ -156,7 +156,7 @@ While `run_optimize` is in progress, `tray::start_spin()` posts `TrayCommand::Se
 - **Toolchain:** Rust 1.97.1+ with MSVC (Windows Build Tools or Visual Studio required).
 - **No rust-toolchain.toml, .cargo/config.toml, clippy.toml, or rustfmt.toml** — defaults only.
 - **Async:** `smol` (not tokio).
-- **Release profile:** Aggressive optimization — LTO enabled, symbols stripped, `opt-level = "s"` (size), single codegen unit, `panic = "abort"`.
+- **Release profile:** Aggressive optimization — LTO enabled, symbols stripped, `opt-level = "z"` (size), single codegen unit, `panic = "abort"`.
 - **Package manager:** Cargo only. No npm, no other package managers.
 - **Binary name:** `MemoryCleaner.exe` (see `[[bin]]` name in `Cargo.toml`).
 
