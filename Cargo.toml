@@ -4,6 +4,8 @@ version = "1.1.0"
 edition = "2024"
 rust-version = "1.97.1"
 description = "Memory Cleaner"
+license = "MIT"
+repository = "https://github.com/Y-ASLant/MemoryCleaner"
 
 [package.metadata.winres]
 OriginalFilename = "MemoryCleaner.exe"

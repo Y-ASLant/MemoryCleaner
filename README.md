@@ -167,7 +167,7 @@ src/
 ├── log.rs               # 调试日志写入、低频保留清理与文件错误报告
 ├── memory.rs            # 内存查询（GlobalMemoryStatusEx）
 ├── messages.rs          # 清理结果文案组装
-├── optimize.rs          # 8 种清理区域与 NtSetSystemInformation 调用
+├── optimize.rs          # 7 种清理区域与 NtSetSystemInformation 调用
 ├── privileges.rs        # Windows 特权提升
 ├── settings.rs          # TOML 配置读写
 ├── tray.rs              # 系统托盘图标、Tooltip、菜单、清理过程旋转动画
