@@ -71,3 +71,16 @@ fn settings_save_uses_atomic_replace() {
         assert!(!tmp_path.exists());
     });
 }
+
+#[test]
+fn settings_save_replaces_existing_file() {
+    with_temp_appdata(|_| {
+        Settings::default().save();
+        let updated = Settings {
+            always_on_top: true,
+            ..Settings::default()
+        };
+        updated.save();
+        assert!(Settings::load().always_on_top);
+    });
+}

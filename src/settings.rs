@@ -2,6 +2,14 @@ use crate::optimize::MemoryAreas;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
+#[cfg(windows)]
+use std::os::windows::ffi::OsStrExt;
+
+#[cfg(windows)]
+use windows::Win32::Storage::FileSystem::{MOVEFILE_REPLACE_EXISTING, MoveFileExW};
+#[cfg(windows)]
+use windows::core::PCWSTR;
+
 const REMOVED_REGISTRY_CACHE_BIT: u32 = 1 << 7;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -51,6 +59,33 @@ impl Default for Settings {
 }
 
 impl Settings {
+    #[cfg(windows)]
+    fn replace_config_file(tmp: &std::path::Path, dest: &std::path::Path) -> std::io::Result<()> {
+        let tmp_w: Vec<u16> = tmp
+            .as_os_str()
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect();
+        let dest_w: Vec<u16> = dest
+            .as_os_str()
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect();
+        unsafe {
+            MoveFileExW(
+                PCWSTR(tmp_w.as_ptr()),
+                PCWSTR(dest_w.as_ptr()),
+                MOVEFILE_REPLACE_EXISTING,
+            )
+        }
+        .map_err(std::io::Error::other)
+    }
+
+    #[cfg(not(windows))]
+    fn replace_config_file(tmp: &std::path::Path, dest: &std::path::Path) -> std::io::Result<()> {
+        std::fs::rename(tmp, dest)
+    }
+
     fn config_dir() -> PathBuf {
         std::env::var_os("APPDATA")
             .map(PathBuf::from)
@@ -158,7 +193,7 @@ impl Settings {
             ));
             return;
         }
-        if let Err(e) = std::fs::rename(&tmp_path, &final_path) {
+        if let Err(e) = Self::replace_config_file(&tmp_path, &final_path) {
             crate::log_msg(&format!(
                 "[settings] failed to rename {} -> {}: {e}",
                 tmp_path.display(),
