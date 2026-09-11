@@ -9,6 +9,7 @@ use gpui_kit::component::{
 use gpui_kit::*;
 
 use crate::app::MemoryCleanerApp;
+use crate::ui::layout::ICON_CONTROL_SIZE;
 use crate::version::APP_NAME;
 const TITLE_BAR_LEFT_PADDING: Pixels = px(12.);
 
@@ -58,7 +59,7 @@ fn title_bar_control(
     div()
         .id(id)
         .flex()
-        .w(TITLE_BAR_HEIGHT)
+        .w(px(ICON_CONTROL_SIZE))
         .h_full()
         .flex_shrink_0()
         .justify_center()
@@ -82,7 +83,7 @@ fn title_bar_action_control(
     let mut control = div()
         .id(id)
         .flex()
-        .w(TITLE_BAR_HEIGHT)
+        .w(px(ICON_CONTROL_SIZE))
         .h_full()
         .flex_shrink_0()
         .justify_center()
@@ -146,8 +147,8 @@ fn icon_cache_control(
     Button::new("titlebar-refresh-icon-cache")
         .ghost()
         .rounded(ButtonRounded::None)
-        .w(TITLE_BAR_HEIGHT)
-        .h(TITLE_BAR_HEIGHT)
+        .w(px(ICON_CONTROL_SIZE))
+        .h(px(ICON_CONTROL_SIZE))
         .flex_shrink_0()
         .disabled(app.is_busy())
         .tooltip(icon_cache_tooltip(app))

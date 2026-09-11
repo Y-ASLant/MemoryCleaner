@@ -22,8 +22,8 @@ use crate::optimize::MemoryAreas;
 use crate::ui::layout::{
     CLEANUP_AREA_ROW_H, CLEANUP_AREAS_HINT_H, CLEANUP_BUTTON_H, EXCLUSION_LIST_PADDING,
     EXCLUSION_SELECTOR_H, EXCLUSION_TAG_GAP, MAIN_CONTENT_PADDING, MAIN_WINDOW_WIDTH,
-    PROCESS_PICKER_MENU_MAX_H, SECTION_GAP, SETTINGS_CARD_TITLE_H, cleanup_areas_card_height,
-    process_exclusion_card_height, process_exclusion_list_max_height,
+    PROCESS_PICKER_MENU_MAX_H, ROW_PADDING_Y, SECTION_GAP, SETTINGS_CARD_TITLE_H,
+    cleanup_areas_card_height, process_exclusion_card_height, process_exclusion_list_max_height,
     process_exclusion_selector_width,
 };
 use crate::version::PROCESS_BASE_NAME;
@@ -45,6 +45,76 @@ pub use window_behavior::render_window_behavior_dialog;
 
 const ROW_GAP: f32 = 6.;
 const BUTTON_STATUS_TRUNCATE_CHARS: usize = 24;
+
+pub(super) struct SettingsRowStyle {
+    pub muted: Hsla,
+    pub description_color: Hsla,
+    pub foreground: Hsla,
+    pub dim: bool,
+}
+
+pub(super) fn settings_row(
+    icon: IconName,
+    title: String,
+    description: String,
+    right: impl IntoElement,
+    style: SettingsRowStyle,
+) -> Div {
+    h_flex()
+        .w_full()
+        .items_center()
+        .justify_between()
+        .gap_3()
+        .py(px(ROW_PADDING_Y))
+        .when(style.dim, |row| row.opacity(0.5))
+        .child(
+            v_flex()
+                .flex_1()
+                .min_w_0()
+                .gap(px(1.))
+                .child(
+                    h_flex()
+                        .w_full()
+                        .items_center()
+                        .gap_2()
+                        .child(
+                            div()
+                                .flex_shrink_0()
+                                .flex()
+                                .items_center()
+                                .child(Icon::new(icon.clone()).small().text_color(style.muted)),
+                        )
+                        .child(
+                            Label::new(title)
+                                .text_sm()
+                                .font_weight(FontWeight::MEDIUM)
+                                .text_color(style.foreground),
+                        ),
+                )
+                .child(
+                    h_flex()
+                        .w_full()
+                        .items_start()
+                        .gap_2()
+                        .child(
+                            div()
+                                .flex_shrink_0()
+                                .invisible()
+                                .flex()
+                                .items_center()
+                                .child(Icon::new(icon).small()),
+                        )
+                        .child(
+                            Label::new(description)
+                                .text_xs()
+                                .text_color(style.description_color)
+                                .flex_1()
+                                .min_w_0(),
+                        ),
+                ),
+        )
+        .child(div().flex_shrink_0().child(right))
+}
 
 fn panel_section_title(icon: IconName, label: String) -> impl IntoElement {
     h_flex()

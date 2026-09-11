@@ -19,7 +19,9 @@ use crate::messages::{build_cleanup_result_message, format_freed_message};
 use crate::optimize::{self, MemoryAreas};
 use crate::settings::Settings;
 use crate::tray::{TrayCommand, dispatch_command};
-use crate::ui::layout::{SECTION_GAP, settings_reveal_height};
+use crate::ui::layout::{
+    MAIN_CONTENT_PADDING, MAIN_WINDOW_WIDTH, SECTION_GAP, settings_reveal_height,
+};
 use crate::win32;
 
 mod optimization;
@@ -42,9 +44,9 @@ const fn threshold_polling_enabled(auto_cleanup_enabled: bool, threshold: u32) -
     auto_cleanup_enabled && threshold > 0
 }
 
-const WINDOW_WIDTH: f32 = 520.;
-const WINDOW_MIN_WIDTH: f32 = 520.;
-pub const CONTENT_PADDING: f32 = 6.;
+const WINDOW_WIDTH: f32 = MAIN_WINDOW_WIDTH;
+const WINDOW_MIN_WIDTH: f32 = MAIN_WINDOW_WIDTH;
+pub const CONTENT_PADDING: f32 = MAIN_CONTENT_PADDING;
 const SETTINGS_PANEL_VISIBLE_EPSILON: f32 = 0.01;
 const SETTINGS_EXPAND_DURATION_SECS: f32 = 0.22;
 

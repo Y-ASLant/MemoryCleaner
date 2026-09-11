@@ -14,4 +14,4 @@ build: check
 
 clean:
 	cargo clean
-	-if exist dist rmdir /s /q dist
+	cmd /C if exist dist rmdir /s /q dist

@@ -1,4 +1,5 @@
 use super::*;
+use crate::ui::layout::{CONTROL_HEIGHT, SELECTOR_WIDTH};
 
 fn language_options() -> [(&'static str, String); 3] {
     [
@@ -23,68 +24,21 @@ fn switch_row_app(
     foreground: Hsla,
     on_click: impl Fn(&bool, &mut Window, &mut App) + 'static,
 ) -> impl IntoElement {
-    let icon = config.icon;
-
-    h_flex()
-        .w_full()
-        .items_center()
-        .justify_between()
-        .gap_3()
-        .py(px(3.))
-        .child(
-            v_flex()
-                .flex_1()
-                .min_w_0()
-                .gap(px(1.))
-                .child(
-                    h_flex()
-                        .w_full()
-                        .items_center()
-                        .gap_2()
-                        .child(
-                            div()
-                                .flex_shrink_0()
-                                .flex()
-                                .items_center()
-                                .child(Icon::new(icon.clone()).small().text_color(muted)),
-                        )
-                        .child(
-                            Label::new(config.title)
-                                .text_sm()
-                                .font_weight(FontWeight::MEDIUM)
-                                .text_color(foreground),
-                        ),
-                )
-                .child(
-                    h_flex()
-                        .w_full()
-                        .items_start()
-                        .gap_2()
-                        .child(
-                            div()
-                                .flex_shrink_0()
-                                .invisible()
-                                .flex()
-                                .items_center()
-                                .child(Icon::new(icon).small()),
-                        )
-                        .child(
-                            Label::new(config.description)
-                                .text_xs()
-                                .text_color(muted)
-                                .flex_1()
-                                .min_w_0(),
-                        ),
-                ),
-        )
-        .child(
-            div().flex_shrink_0().child(
-                Switch::new(config.id)
-                    .checked(config.checked)
-                    .disabled(config.disabled)
-                    .on_click(on_click),
-            ),
-        )
+    settings_row(
+        config.icon,
+        config.title,
+        config.description,
+        Switch::new(config.id)
+            .checked(config.checked)
+            .disabled(config.disabled)
+            .on_click(on_click),
+        SettingsRowStyle {
+            muted,
+            description_color: muted,
+            foreground,
+            dim: false,
+        },
+    )
 }
 
 fn render_version_row(cx: &App) -> impl IntoElement {
@@ -125,64 +79,16 @@ fn render_language_selector(
         .map(|(_, l)| l.clone())
         .unwrap_or_else(|| t!("settings.language_auto").to_string());
 
-    h_flex()
-        .w_full()
-        .items_center()
-        .justify_between()
-        .gap_3()
-        .py(px(3.))
-        .child(
-            v_flex()
-                .flex_1()
-                .min_w_0()
-                .gap(px(1.))
-                .child(
-                    h_flex()
-                        .w_full()
-                        .items_center()
-                        .gap_2()
-                        .child(
-                            div()
-                                .flex_shrink_0()
-                                .flex()
-                                .items_center()
-                                .child(Icon::new(IconName::Globe).small().text_color(muted)),
-                        )
-                        .child(
-                            Label::new(t!("settings.language").to_string())
-                                .text_sm()
-                                .font_weight(FontWeight::MEDIUM)
-                                .text_color(foreground),
-                        ),
-                )
-                .child(
-                    h_flex()
-                        .w_full()
-                        .items_start()
-                        .gap_2()
-                        .child(
-                            div()
-                                .flex_shrink_0()
-                                .invisible()
-                                .flex()
-                                .items_center()
-                                .child(Icon::new(IconName::Globe).small()),
-                        )
-                        .child(
-                            Label::new(t!("settings.language_desc").to_string())
-                                .text_xs()
-                                .text_color(muted)
-                                .flex_1()
-                                .min_w_0(),
-                        ),
-                ),
-        )
-        .child({
+    settings_row(
+        IconName::Globe,
+        t!("settings.language").to_string(),
+        t!("settings.language_desc").to_string(),
+        {
             let weak = weak.clone();
             Button::new("language-select")
                 .ghost()
                 .small()
-                .min_w(px(128.))
+                .min_w(px(SELECTOR_WIDTH))
                 .label(current_label)
                 .dropdown_caret(true)
                 .dropdown_menu_with_anchor(Anchor::TopRight, move |menu, _, _| {
@@ -205,7 +111,14 @@ fn render_language_selector(
                         ))
                     })
                 })
-        })
+        },
+        SettingsRowStyle {
+            muted,
+            description_color: muted,
+            foreground,
+            dim: false,
+        },
+    )
 }
 
 fn cleanup_hotkey_display(
@@ -294,64 +207,15 @@ fn render_auto_cleanup_option_row(
     let current_label = format_value(current);
     let weak_row = weak.clone();
 
-    h_flex()
-        .w_full()
-        .items_center()
-        .justify_between()
-        .gap_3()
-        .py(px(3.))
-        .when(dim, |row| row.opacity(0.5))
-        .child(
-            v_flex()
-                .flex_1()
-                .min_w_0()
-                .gap(px(1.))
-                .child(
-                    h_flex()
-                        .w_full()
-                        .items_center()
-                        .gap_2()
-                        .child(
-                            div()
-                                .flex_shrink_0()
-                                .flex()
-                                .items_center()
-                                .child(Icon::new(icon.clone()).small().text_color(muted)),
-                        )
-                        .child(
-                            Label::new(title)
-                                .text_sm()
-                                .font_weight(FontWeight::MEDIUM)
-                                .text_color(foreground),
-                        ),
-                )
-                .child(
-                    h_flex()
-                        .w_full()
-                        .items_start()
-                        .gap_2()
-                        .child(
-                            div()
-                                .flex_shrink_0()
-                                .invisible()
-                                .flex()
-                                .items_center()
-                                .child(Icon::new(icon).small()),
-                        )
-                        .child(
-                            Label::new(description)
-                                .text_xs()
-                                .text_color(muted)
-                                .flex_1()
-                                .min_w_0(),
-                        ),
-                ),
-        )
-        .child(
+    settings_row(
+        icon,
+        title,
+        description,
+        {
             Button::new(id)
                 .ghost()
                 .small()
-                .min_w(px(128.))
+                .min_w(px(SELECTOR_WIDTH))
                 .label(current_label)
                 .dropdown_caret(true)
                 .dropdown_menu_with_anchor(Anchor::TopRight, move |menu, _, _| {
@@ -367,8 +231,15 @@ fn render_auto_cleanup_option_row(
                                 }),
                         )
                     })
-                }),
-        )
+                })
+        },
+        SettingsRowStyle {
+            muted,
+            description_color: muted,
+            foreground,
+            dim,
+        },
+    )
 }
 
 fn render_cleanup_hotkey_row(
@@ -378,7 +249,7 @@ fn render_cleanup_hotkey_row(
     cx: &App,
 ) -> impl IntoElement {
     let Some(app) = weak.upgrade() else {
-        return div();
+        return div().into_any_element();
     };
 
     let app = app.read(cx);
@@ -395,124 +266,82 @@ fn render_cleanup_hotkey_row(
     let weak_capture = weak.clone();
     let focus_capture = focus.clone();
 
-    h_flex()
-        .w_full()
-        .items_center()
-        .justify_between()
-        .gap_3()
-        .py(px(3.))
-        .child(
-            v_flex()
-                .flex_1()
-                .min_w_0()
-                .gap(px(1.))
-                .child(
-                    h_flex()
-                        .w_full()
-                        .items_center()
-                        .gap_2()
-                        .child(
-                            div()
-                                .flex_shrink_0()
-                                .flex()
-                                .items_center()
-                                .child(Icon::new(IconName::ALargeSmall).small().text_color(muted)),
-                        )
-                        .child(
-                            Label::new(t!("settings.cleanup_hotkey").to_string())
-                                .text_sm()
-                                .font_weight(FontWeight::MEDIUM)
-                                .text_color(foreground),
-                        ),
-                )
-                .child(
-                    h_flex()
-                        .w_full()
-                        .items_start()
-                        .gap_2()
-                        .child(
-                            div()
-                                .flex_shrink_0()
-                                .invisible()
-                                .flex()
-                                .items_center()
-                                .child(Icon::new(IconName::ALargeSmall).small()),
-                        )
-                        .child(
-                            Label::new(if app.cleanup_hotkey_failed {
-                                t!("settings.cleanup_hotkey_failed").to_string()
-                            } else {
-                                t!("settings.cleanup_hotkey_desc").to_string()
-                            })
-                            .text_xs()
-                            .text_color(if app.cleanup_hotkey_failed {
-                                cx.theme().danger
-                            } else {
-                                muted
-                            })
-                            .flex_1()
-                            .min_w_0(),
-                        ),
-                ),
-        )
-        .child(
-            h_flex()
-                .flex_shrink_0()
-                .items_center()
-                .gap_2()
-                .child(
-                    div()
-                        .id("cleanup-hotkey-capture")
-                        .track_focus(&focus)
-                        .min_w(px(128.))
-                        .h(px(28.))
-                        .px_2()
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .rounded(radius)
-                        .border_1()
-                        .border_color(if recording { primary } else { border })
-                        .bg(background)
-                        .when(enabled, |this| this.cursor_pointer())
-                        .when(!enabled, |this| this.opacity(0.5))
-                        .on_key_down({
-                            let weak = weak_capture.clone();
-                            move |event, _, cx| {
-                                let _ = weak.update(cx, |app, cx| {
-                                    app.handle_cleanup_hotkey_key(event, cx);
-                                });
+    settings_row(
+        IconName::ALargeSmall,
+        t!("settings.cleanup_hotkey").to_string(),
+        if app.cleanup_hotkey_failed {
+            t!("settings.cleanup_hotkey_failed").to_string()
+        } else {
+            t!("settings.cleanup_hotkey_desc").to_string()
+        },
+        h_flex()
+            .flex_shrink_0()
+            .items_center()
+            .gap_2()
+            .child(
+                div()
+                    .id("cleanup-hotkey-capture")
+                    .track_focus(&focus)
+                    .min_w(px(SELECTOR_WIDTH))
+                    .h(px(CONTROL_HEIGHT - 4.))
+                    .px_2()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .rounded(radius)
+                    .border_1()
+                    .border_color(if recording { primary } else { border })
+                    .bg(background)
+                    .when(enabled, |this| this.cursor_pointer())
+                    .when(!enabled, |this| this.opacity(0.5))
+                    .on_key_down({
+                        let weak = weak_capture.clone();
+                        move |event, _, cx| {
+                            let _ = weak.update(cx, |app, cx| {
+                                app.handle_cleanup_hotkey_key(event, cx);
+                            });
+                        }
+                    })
+                    .on_click({
+                        let weak = weak_capture;
+                        move |_, window, cx| {
+                            if !enabled {
+                                return;
                             }
-                        })
-                        .on_click({
-                            let weak = weak_capture;
-                            move |_, window, cx| {
-                                if !enabled {
-                                    return;
-                                }
-                                let _ = weak.update(cx, |app, cx| {
-                                    app.start_cleanup_hotkey_recording(window, cx);
-                                });
-                                window.focus(&focus_capture, cx);
-                            }
-                        })
-                        .child(cleanup_hotkey_display(
-                            recording, &chord, border, background, foreground, primary, muted,
-                        )),
-                )
-                .child(
-                    Switch::new("dialog-switch-cleanup-hotkey")
-                        .checked(enabled)
-                        .on_click({
-                            let weak = weak_switch;
-                            move |checked, _, cx| {
-                                let _ = weak.update(cx, |app, cx| {
-                                    app.set_cleanup_hotkey_enabled(*checked, cx);
-                                });
-                            }
-                        }),
-                ),
-        )
+                            let _ = weak.update(cx, |app, cx| {
+                                app.start_cleanup_hotkey_recording(window, cx);
+                            });
+                            window.focus(&focus_capture, cx);
+                        }
+                    })
+                    .child(cleanup_hotkey_display(
+                        recording, &chord, border, background, foreground, primary, muted,
+                    )),
+            )
+            .child(
+                Switch::new("dialog-switch-cleanup-hotkey")
+                    .checked(enabled)
+                    .on_click({
+                        let weak = weak_switch;
+                        move |checked, _, cx| {
+                            let _ = weak.update(cx, |app, cx| {
+                                app.set_cleanup_hotkey_enabled(*checked, cx);
+                            });
+                        }
+                    }),
+            ),
+        SettingsRowStyle {
+            muted,
+            description_color: if app.cleanup_hotkey_failed {
+                cx.theme().danger
+            } else {
+                muted
+            },
+            foreground,
+            dim: false,
+        },
+    )
+    .into_any_element()
 }
 
 pub fn render_window_behavior_dialog(

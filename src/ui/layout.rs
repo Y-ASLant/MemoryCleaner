@@ -1,6 +1,13 @@
 //! Shared layout metrics for window sizing and spacing.
 
 pub const SECTION_GAP: f32 = 6.;
+pub const SPACE_XS: f32 = 4.;
+pub const SPACE_SM: f32 = 6.;
+pub const SPACE_MD: f32 = 8.;
+pub const ROW_PADDING_Y: f32 = 3.;
+pub const CONTROL_HEIGHT: f32 = 32.;
+pub const ICON_CONTROL_SIZE: f32 = 34.;
+pub const SELECTOR_WIDTH: f32 = 128.;
 pub const DIALOG_PADDING_TOP: f32 = 16.;
 pub const DIALOG_PADDING_HORIZONTAL: f32 = 16.;
 /// 「窗口行为」对话框宽度（相对 520px 主窗口左右各留 20px）。
@@ -79,7 +86,7 @@ pub const PROCESS_PICKER_MENU_MAX_H: f32 = 300.;
 /// 主窗口固定宽度（与 `app.rs` 中 `WINDOW_WIDTH` 保持一致）。
 pub const MAIN_WINDOW_WIDTH: f32 = 520.;
 /// 主窗口内容区内边距（与 `app.rs` 中 `CONTENT_PADDING` 保持一致）。
-pub const MAIN_CONTENT_PADDING: f32 = 6.;
+pub const MAIN_CONTENT_PADDING: f32 = SPACE_SM;
 const GROUP_BOX_OUTLINE_BORDER: f32 = 2.;
 const GROUP_BOX_CONTENT_PADDING_H: f32 = 16.; // outline GroupBox `p_2()` 左右各 8px
 
