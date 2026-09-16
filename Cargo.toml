@@ -31,7 +31,7 @@ gpui-kit = "0.6.1"
 serde = { version = "1", features = ["derive"] }
 smol = "2"
 raw-window-handle = "0.6"
-tray-icon = { version = "0.24", default-features = false }
+tray-icon = { version = "0.25.1", default-features = false }
 image = { version = "0.25", default-features = false, features = ["png"] }
 toml = { version = "1", default-features = false, features = ["parse", "display", "serde"] }
 rust-i18n = "4"

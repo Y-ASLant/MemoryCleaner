@@ -10,6 +10,7 @@
 ### 变更
 
 - **Release 构建**：`opt-level` 由 `s` 调整为 `z`，二进制体积约减少 12%（9.76 MB → 8.58 MB）。
+- **依赖更新**：直接与传递 Rust 依赖更新至最新稳定兼容版本，`tray-icon` 升级至 0.25。
 
 ## [1.1.0] - 2026-09-05
 
@@ -155,6 +156,7 @@ Records Memory Cleaner releases. Format follows [Keep a Changelog](https://keepa
 ### Changed
 
 - **Release build** — `opt-level` changed from `s` to `z`; binary size reduced by about 12% (9.76 MB → 8.58 MB).
+- **Dependency updates** — Direct and transitive Rust dependencies updated to the latest stable compatible releases, including `tray-icon` 0.25.
 
 ## [1.1.0] - 2026-09-05
 
