@@ -139,21 +139,25 @@ fn icon_cache_tooltip(app: &MemoryCleanerApp) -> SharedString {
     }
 }
 
-fn icon_cache_control(
-    app: &MemoryCleanerApp,
+fn title_bar_icon_button(
+    id: &'static str,
+    tooltip: SharedString,
+    disabled: bool,
+    icon: impl IntoElement,
     colors: TitleBarActionColors,
     app_cx: &mut Context<MemoryCleanerApp>,
+    on_click: impl Fn(&mut MemoryCleanerApp, &mut Window, &mut Context<MemoryCleanerApp>) + 'static,
 ) -> impl IntoElement {
-    Button::new("titlebar-refresh-icon-cache")
+    Button::new(id)
         .ghost()
         .rounded(ButtonRounded::None)
         .w(px(ICON_CONTROL_SIZE))
         .h(px(ICON_CONTROL_SIZE))
         .flex_shrink_0()
-        .disabled(app.is_busy())
-        .tooltip(icon_cache_tooltip(app))
-        .on_click(app_cx.listener(|app, _, window, cx| {
-            app.open_icon_cache_confirm_dialog(window, cx);
+        .disabled(disabled)
+        .tooltip(tooltip)
+        .on_click(app_cx.listener(move |app, _, window, cx| {
+            on_click(app, window, cx);
         }))
         .child(
             div()
@@ -161,19 +165,51 @@ fn icon_cache_control(
                 .justify_center()
                 .content_center()
                 .text_color(colors.foreground)
-                .child(Icon::new(IconName::GalleryVerticalEnd).small()),
+                .child(icon),
         )
+}
+
+fn icon_cache_control(
+    app: &MemoryCleanerApp,
+    colors: TitleBarActionColors,
+    app_cx: &mut Context<MemoryCleanerApp>,
+) -> impl IntoElement {
+    title_bar_icon_button(
+        "titlebar-refresh-icon-cache",
+        icon_cache_tooltip(app),
+        app.is_busy(),
+        Icon::new(IconName::GalleryVerticalEnd).small(),
+        colors,
+        app_cx,
+        |app, window, cx| app.open_icon_cache_confirm_dialog(window, cx),
+    )
+}
+
+fn cleanup_history_control(
+    colors: TitleBarActionColors,
+    app_cx: &mut Context<MemoryCleanerApp>,
+) -> impl IntoElement {
+    title_bar_icon_button(
+        "titlebar-cleanup-history",
+        t!("cleanup.history").to_string().into(),
+        false,
+        crate::ui::cleanup_history::history_icon(),
+        colors,
+        app_cx,
+        |app, window, cx| app.open_cleanup_history_dialog(window, cx),
+    )
 }
 
 fn window_settings_control(
     colors: TitleBarActionColors,
     app_cx: &mut Context<MemoryCleanerApp>,
 ) -> impl IntoElement {
-    title_bar_action_control(
+    title_bar_icon_button(
         "titlebar-window-settings",
-        IconName::Settings2,
-        colors,
+        t!("dialog.window_behavior").to_string().into(),
         false,
+        Icon::new(IconName::Settings2).small(),
+        colors,
         app_cx,
         |app, window, cx| app.open_window_behavior_dialog(window, cx),
     )
@@ -272,11 +308,11 @@ pub fn render_title_bar(
                 action_colors.foreground,
             ))
             .child({
-                let mut actions = h_flex()
-                    .items_center()
-                    .flex_shrink_0()
-                    .h_full()
-                    .child(icon_cache_control(app, action_colors, cx));
+                let mut actions = h_flex().items_center().flex_shrink_0().h_full();
+                actions = actions.child(icon_cache_control(app, action_colors, cx));
+                if app.settings_expanded {
+                    actions = actions.child(cleanup_history_control(action_colors, cx));
+                }
                 if app.settings_expanded {
                     actions = actions.child(window_settings_control(action_colors, cx));
                 }

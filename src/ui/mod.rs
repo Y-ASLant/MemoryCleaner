@@ -1,3 +1,4 @@
+pub mod cleanup_history;
 pub mod layout;
 pub mod memory_card;
 pub mod settings_page;

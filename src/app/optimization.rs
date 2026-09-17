@@ -183,7 +183,7 @@ impl MemoryCleanerApp {
         }
         crate::log::write(&format!("[auto-cleanup] trigger: {}", source.log_label()));
         self.last_auto_cleanup = Some(Instant::now());
-        self.run_optimize(cx);
+        self.run_optimize_from(source.into(), cx);
     }
 
     /// Re-evaluate the configurable threshold trigger. `above_threshold_ticks`
@@ -264,6 +264,14 @@ impl MemoryCleanerApp {
     }
 
     pub fn run_optimize(&mut self, cx: &mut Context<Self>) {
+        self.run_optimize_from(crate::settings::CleanupHistorySource::Manual, cx);
+    }
+
+    fn run_optimize_from(
+        &mut self,
+        source: crate::settings::CleanupHistorySource,
+        cx: &mut Context<Self>,
+    ) {
         if self.is_optimizing {
             return;
         }
@@ -280,6 +288,9 @@ impl MemoryCleanerApp {
         };
 
         let avail_before = self.physical.avail;
+        let memory_load_before = self.physical.used_percent.round() as u32;
+        let selected_areas = areas.bits();
+        let started_at = Instant::now();
         let total = steps.len();
         let notify = self.settings.show_optimization_notifications;
         self.is_optimizing = true;
@@ -321,7 +332,13 @@ impl MemoryCleanerApp {
                 .update(cx, |app, cx| {
                     let _ = app.refresh_memory();
                     let avail_after = app.physical.avail;
-                    let freed_detail = format_freed_message(avail_before, avail_after);
+                    let memory_load_after = app.physical.used_percent.round() as u32;
+                    let effect_detail = format_cleanup_effect(
+                        avail_before,
+                        avail_after,
+                        memory_load_before,
+                        memory_load_after,
+                    );
                     app.optimize_step.clear();
                     app.is_optimizing = false;
                     app.set_optimize_percent(0.0);
@@ -331,7 +348,20 @@ impl MemoryCleanerApp {
                     let errors_refs: Vec<&str> = errors.iter().map(|s| s.as_str()).collect();
                     app.optimize_has_errors = !errors.is_empty();
                     app.optimize_status =
-                        build_cleanup_result_message(&completed_refs, &errors_refs, &freed_detail);
+                        build_cleanup_result_message(&completed_refs, &errors_refs, &effect_detail);
+                    app.settings
+                        .record_cleanup(crate::settings::CleanupHistoryEntry::new(
+                            source,
+                            selected_areas,
+                            completed.len() as u32,
+                            errors.len() as u32,
+                            started_at.elapsed().as_millis() as u64,
+                            memory_load_before,
+                            memory_load_after,
+                            avail_before,
+                            avail_after,
+                        ));
+                    app.queue_settings_save(cx);
                     crate::log::write(&format!("[optimize] result: {}", app.optimize_status));
                     app.sync_tray();
                     cx.notify();

@@ -15,7 +15,7 @@ use crate::auto_cleanup::{
 };
 use crate::locale;
 use crate::memory::{MemorySection, MemoryStatus};
-use crate::messages::{build_cleanup_result_message, format_freed_message};
+use crate::messages::{build_cleanup_result_message, format_cleanup_effect};
 use crate::optimize::{self, MemoryAreas};
 use crate::settings::Settings;
 use crate::tray::{TrayCommand, dispatch_command};

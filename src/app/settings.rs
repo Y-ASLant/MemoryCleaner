@@ -112,6 +112,29 @@ impl MemoryCleanerApp {
         });
     }
 
+    pub fn open_cleanup_history_dialog(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        use crate::ui::cleanup_history::render_cleanup_history_dialog;
+        use crate::ui::layout::{
+            DIALOG_PADDING_HORIZONTAL, DIALOG_PADDING_TOP, WINDOW_BEHAVIOR_DIALOG_WIDTH,
+        };
+
+        let weak = cx.weak_entity();
+        window.open_dialog(cx, move |dialog, _window, _cx| {
+            let weak = weak.clone();
+            dialog
+                .title(t!("cleanup.history"))
+                .w(px(WINDOW_BEHAVIOR_DIALOG_WIDTH))
+                .pt(px(DIALOG_PADDING_TOP))
+                .pb(px(DIALOG_PADDING_TOP))
+                .pl(px(DIALOG_PADDING_HORIZONTAL))
+                .pr(px(DIALOG_PADDING_HORIZONTAL))
+                .overlay_closable(false)
+                .content(move |content, _window, cx| {
+                    content.child(render_cleanup_history_dialog(weak.clone(), cx))
+                })
+        });
+    }
+
     pub fn set_always_on_top(
         &mut self,
         enabled: bool,

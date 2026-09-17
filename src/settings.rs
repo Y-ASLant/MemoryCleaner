@@ -1,6 +1,7 @@
 use crate::optimize::MemoryAreas;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 #[cfg(windows)]
 use std::os::windows::ffi::OsStrExt;
@@ -11,6 +12,60 @@ use windows::Win32::Storage::FileSystem::{MOVEFILE_REPLACE_EXISTING, MoveFileExW
 use windows::core::PCWSTR;
 
 const REMOVED_REGISTRY_CACHE_BIT: u32 = 1 << 7;
+pub const MAX_CLEANUP_HISTORY_ENTRIES: usize = 5;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CleanupHistorySource {
+    Manual,
+    LowMemoryNotification,
+    Threshold,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CleanupHistoryEntry {
+    pub completed_at_unix_secs: u64,
+    pub source: CleanupHistorySource,
+    pub selected_areas: u32,
+    pub completed_count: u32,
+    pub failed_count: u32,
+    pub duration_millis: u64,
+    pub memory_load_before: u32,
+    pub memory_load_after: u32,
+    pub available_before: u64,
+    pub available_after: u64,
+}
+
+impl CleanupHistoryEntry {
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        source: CleanupHistorySource,
+        selected_areas: u32,
+        completed_count: u32,
+        failed_count: u32,
+        duration_millis: u64,
+        memory_load_before: u32,
+        memory_load_after: u32,
+        available_before: u64,
+        available_after: u64,
+    ) -> Self {
+        Self {
+            completed_at_unix_secs: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs(),
+            source,
+            selected_areas,
+            completed_count,
+            failed_count,
+            duration_millis,
+            memory_load_before,
+            memory_load_after,
+            available_before,
+            available_after,
+        }
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
@@ -37,6 +92,8 @@ pub struct Settings {
     /// Physical memory usage percent (0–100) that triggers automatic cleanup.
     /// `0` disables the threshold trigger.
     pub auto_cleanup_threshold: u32,
+    /// The most recent cleanup outcomes, newest entry last.
+    pub cleanup_history: Vec<CleanupHistoryEntry>,
 }
 
 impl Default for Settings {
@@ -54,6 +111,7 @@ impl Default for Settings {
             excluded_processes: Vec::new(),
             auto_cleanup_enabled: false,
             auto_cleanup_threshold: 0,
+            cleanup_history: Vec::new(),
         }
     }
 }
@@ -122,6 +180,7 @@ impl Settings {
         settings.normalize_cleanup_hotkey();
         settings.normalize_excluded_processes();
         settings.normalize_auto_cleanup();
+        settings.normalize_cleanup_history();
         settings
     }
 
@@ -134,6 +193,13 @@ impl Settings {
     /// Clamp the auto-cleanup threshold to its valid usage-percent range.
     fn normalize_auto_cleanup(&mut self) {
         self.auto_cleanup_threshold = self.auto_cleanup_threshold.min(100);
+    }
+
+    fn normalize_cleanup_history(&mut self) {
+        if self.cleanup_history.len() > MAX_CLEANUP_HISTORY_ENTRIES {
+            let retained_from = self.cleanup_history.len() - MAX_CLEANUP_HISTORY_ENTRIES;
+            self.cleanup_history.drain(..retained_from);
+        }
     }
 
     fn normalize_cleanup_hotkey(&mut self) {
@@ -175,6 +241,7 @@ impl Settings {
         settings.normalize_cleanup_hotkey();
         settings.normalize_excluded_processes();
         settings.normalize_auto_cleanup();
+        settings.normalize_cleanup_history();
         settings
     }
 
@@ -211,6 +278,11 @@ impl Settings {
             areas.remove(MemoryAreas::STANDBY_LIST_LOW_PRIORITY);
         }
         areas
+    }
+
+    pub fn record_cleanup(&mut self, entry: CleanupHistoryEntry) {
+        self.cleanup_history.push(entry);
+        self.normalize_cleanup_history();
     }
 
     /// Returns the effective locale string for `rust_i18n::set_locale`.
@@ -297,6 +369,28 @@ mod tests {
         };
         let restored: Settings = toml::from_str(&toml::to_string(&original).unwrap()).unwrap();
         assert_eq!(restored.auto_cleanup_threshold, 85);
+    }
+
+    #[test]
+    fn cleanup_history_retains_the_newest_entries() {
+        let mut settings = Settings::default();
+        for timestamp in 0..=MAX_CLEANUP_HISTORY_ENTRIES as u64 {
+            settings.record_cleanup(CleanupHistoryEntry {
+                completed_at_unix_secs: timestamp,
+                source: CleanupHistorySource::Manual,
+                selected_areas: MemoryAreas::WORKING_SET.bits(),
+                completed_count: 1,
+                failed_count: 0,
+                duration_millis: 1,
+                memory_load_before: 50,
+                memory_load_after: 49,
+                available_before: 1,
+                available_after: 2,
+            });
+        }
+
+        assert_eq!(settings.cleanup_history.len(), MAX_CLEANUP_HISTORY_ENTRIES);
+        assert_eq!(settings.cleanup_history[0].completed_at_unix_secs, 1);
     }
 
     #[test]

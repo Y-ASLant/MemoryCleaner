@@ -12,6 +12,7 @@ A Windows memory optimization tool built with Rust + GPUI. Real-time memory moni
 
 - **Real-time Memory Monitoring** — Physical and virtual memory usage with ring progress charts; auto-refreshes every **1 second** when the main window is visible, pauses polling when minimized to tray to save CPU; tray icon tooltip updates instantly on hover
 - **One-Click Cleanup** — Executes cleanup steps sequentially based on selected regions; progress and result summary shown in the bottom button (retained for ~5 seconds after completion)
+- **Cleanup Results & History** — The result reports available-memory and physical-memory-pressure changes; the latest 5 cleanup records retain their trigger, selected/completed/failed count, duration, and before/after memory values. Use the title-bar Cleanup History button to view all records
 - **Configurable Cleanup Regions** — 7 memory regions selectable via checkboxes (Standby List and Standby List Low Priority are mutually exclusive)
 - **Automatic Cleanup** — Can be enabled in the Window Behavior dialog; supports Windows low-physical-memory notifications and a sustained physical-memory usage threshold (two consecutive above-threshold checks, then a 10-minute cooldown)
 - **Global Hotkey** — Default `Ctrl+Alt+C` triggers cleanup; can be toggled and custom combo recorded in the Window Behavior dialog (`RegisterHotKey`); failed registrations retain the previous binding and settings and display an error
@@ -132,6 +133,7 @@ Config file: `%APPDATA%\MemoryCleaner\settings.toml`
 | `excluded_processes` | array | `[]` | Process base names excluded from Working Set cleanup (lowercase, without `.exe`) |
 | `auto_cleanup_enabled` | bool | `false` | Enable automatic cleanup |
 | `auto_cleanup_threshold` | u32 | `0` | Physical-memory usage threshold percent; `0` disables threshold trigger, so automatic cleanup only reacts to low-memory notifications when enabled |
+| `cleanup_history` | array | `[]` | Latest 5 cleanup outcome records, automatically maintained by the app |
 
 ## Tech Stack
 

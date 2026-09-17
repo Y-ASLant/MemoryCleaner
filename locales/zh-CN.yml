@@ -211,6 +211,42 @@ cleanup.completed_detail:
 cleanup.partial:
   zh-CN: "完成 %{count} 项，失败：%{errors}"
   en: "%{count} done, failed: %{errors}"
+cleanup.partial_detail:
+  zh-CN: "完成 %{count} 项，失败：%{errors} · %{detail}"
+  en: "%{count} done, failed: %{errors} · %{detail}"
+cleanup.pressure_change:
+  zh-CN: "%{before}% → %{after}%"
+  en: "%{before}% → %{after}%"
+cleanup.history:
+  zh-CN: "清理历史"
+  en: "Cleanup History"
+cleanup.history_empty:
+  zh-CN: "暂无已完成的清理记录"
+  en: "No completed cleanup records yet"
+cleanup.history_source_manual:
+  zh-CN: "手动清理"
+  en: "Manual cleanup"
+cleanup.history_source_low_memory:
+  zh-CN: "Windows 内存不足"
+  en: "Windows low memory"
+cleanup.history_source_threshold:
+  zh-CN: "内存阈值"
+  en: "Memory threshold"
+cleanup.history_just_now:
+  zh-CN: "刚刚"
+  en: "Just now"
+cleanup.history_minutes_ago:
+  zh-CN: "%{count} 分钟前"
+  en: "%{count}m ago"
+cleanup.history_hours_ago:
+  zh-CN: "%{count} 小时前"
+  en: "%{count}h ago"
+cleanup.history_days_ago:
+  zh-CN: "%{count} 天前"
+  en: "%{count}d ago"
+cleanup.history_detail:
+  zh-CN: "选中 %{selected} 项 · 成功 %{completed} · 失败 %{failed} · %{before}% → %{after}% · 可用 %{available} · %{duration}"
+  en: "%{selected} selected · %{completed} done · %{failed} failed · %{before}% → %{after}% · available %{available} · %{duration}"
 
 notification.optimize_title:
   zh-CN: "内存优化完成"

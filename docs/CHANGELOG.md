@@ -5,11 +5,16 @@
 **编写约定**（详见 `AGENTS.md` → Documentation & Changelog）：每个版本只记录相对上一 tag 的**最终差异**，不记录开发过程中的中间修改或逐步修复。
 
 
-## [Unreleased]
+## [1.1.1] - 2026-09-17
+
+### 新增
+
+- **清理历史**：标题栏新增清理历史弹窗，并在配置中保留最近五次的触发原因、区域数量、执行结果和耗时。
 
 ### 变更
 
-- **Release 构建**：`opt-level` 由 `s` 调整为 `z`，二进制体积约减少 12%（9.76 MB → 8.58 MB）。
+- **Release 构建**：`opt-level` 由 `s` 调整为 `z`，以减小发布二进制体积。
+- **清理效果**：清理结果显示可用内存及物理内存压力的前后变化。
 - **依赖更新**：直接与传递 Rust 依赖更新至最新稳定兼容版本，`tray-icon` 升级至 0.25。
 
 ## [1.1.0] - 2026-09-05
@@ -151,11 +156,16 @@ Records Memory Cleaner releases. Format follows [Keep a Changelog](https://keepa
 
 
 
-## [Unreleased]
+## [1.1.1] - 2026-09-17
+
+### Added
+
+- **Cleanup History** — Added a title-bar Cleanup History dialog. Configuration retains the latest five records with trigger, area count, outcome, and duration.
 
 ### Changed
 
-- **Release build** — `opt-level` changed from `s` to `z`; binary size reduced by about 12% (9.76 MB → 8.58 MB).
+- **Release build** — Changed `opt-level` from `s` to `z` to reduce the release binary size.
+- **Cleanup results** — Cleanup results now show available-memory and physical-memory-pressure changes.
 - **Dependency updates** — Direct and transitive Rust dependencies updated to the latest stable compatible releases, including `tray-icon` 0.25.
 
 ## [1.1.0] - 2026-09-05
@@ -285,7 +295,8 @@ Since [1.0.0]: process exclusion, global cleanup hotkey (default Ctrl+Alt+C) wit
 
 Initial public release: 8 memory cleanup regions, GPUI UI, system tray, administrator elevation, settings persistence.
 
-[Unreleased]: https://github.com/Y-ASLant/MemoryCleaner/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/Y-ASLant/MemoryCleaner/compare/v1.1.1...HEAD
+[1.1.1]: https://github.com/Y-ASLant/MemoryCleaner/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/Y-ASLant/MemoryCleaner/compare/v1.0.7...v1.1.0
 [1.0.7]: https://github.com/Y-ASLant/MemoryCleaner/compare/v1.0.6...v1.0.7
 [1.0.6]: https://github.com/Y-ASLant/MemoryCleaner/compare/v1.0.5...v1.0.6
