@@ -14,7 +14,7 @@
 ### 变更
 
 - **Release 构建**：`opt-level` 由 `s` 调整为 `z`，以减小发布二进制体积。
-- **清理效果**：清理结果显示可用内存及物理内存压力的前后变化。
+- **清理效果**：清理通知与历史记录显示可用内存及物理内存压力的前后变化。
 - **依赖更新**：直接与传递 Rust 依赖更新至最新稳定兼容版本，`tray-icon` 升级至 0.25。
 
 ## [1.1.0] - 2026-09-05
@@ -165,7 +165,7 @@ Records Memory Cleaner releases. Format follows [Keep a Changelog](https://keepa
 ### Changed
 
 - **Release build** — Changed `opt-level` from `s` to `z` to reduce the release binary size.
-- **Cleanup results** — Cleanup results now show available-memory and physical-memory-pressure changes.
+- **Cleanup effects** — Cleanup notifications and history records now show available-memory and physical-memory-pressure changes.
 - **Dependency updates** — Direct and transitive Rust dependencies updated to the latest stable compatible releases, including `tray-icon` 0.25.
 
 ## [1.1.0] - 2026-09-05

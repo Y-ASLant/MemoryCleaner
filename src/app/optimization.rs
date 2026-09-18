@@ -348,6 +348,8 @@ impl MemoryCleanerApp {
                     let errors_refs: Vec<&str> = errors.iter().map(|s| s.as_str()).collect();
                     app.optimize_has_errors = !errors.is_empty();
                     app.optimize_status =
+                        build_cleanup_result_message(&completed_refs, &errors_refs, "");
+                    let notification_status =
                         build_cleanup_result_message(&completed_refs, &errors_refs, &effect_detail);
                     app.settings
                         .record_cleanup(crate::settings::CleanupHistoryEntry::new(
@@ -362,13 +364,13 @@ impl MemoryCleanerApp {
                             avail_after,
                         ));
                     app.queue_settings_save(cx);
-                    crate::log::write(&format!("[optimize] result: {}", app.optimize_status));
+                    crate::log::write(&format!("[optimize] result: {notification_status}"));
                     app.sync_tray();
                     cx.notify();
                     if app.settings.show_optimization_notifications {
                         Some((
                             t!("notification.optimize_title").to_string(),
-                            app.optimize_status.clone(),
+                            notification_status,
                         ))
                     } else {
                         None
