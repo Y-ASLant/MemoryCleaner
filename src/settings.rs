@@ -12,7 +12,7 @@ use windows::Win32::Storage::FileSystem::{MOVEFILE_REPLACE_EXISTING, MoveFileExW
 use windows::core::PCWSTR;
 
 const REMOVED_REGISTRY_CACHE_BIT: u32 = 1 << 7;
-pub const MAX_CLEANUP_HISTORY_ENTRIES: usize = 5;
+pub const MAX_CLEANUP_HISTORY_ENTRIES: usize = 7;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
