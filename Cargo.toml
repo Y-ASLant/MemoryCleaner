@@ -22,20 +22,20 @@ name = "memory_cleaner"
 path = "src/lib.rs"
 
 [dev-dependencies]
-tempfile = "3"
+tempfile = "3.27.0"
 
 [dependencies]
-anyhow = "1"
-bitflags = "2"
-gpui-kit = "0.6.1"
-serde = { version = "1", features = ["derive"] }
-smol = "2"
-raw-window-handle = "0.6"
+anyhow = "1.0.104"
+bitflags = "2.13.2"
+gpui-kit = "0.6.6"
+serde = { version = "1.0.229", features = ["derive"] }
+smol = "2.0.2"
+raw-window-handle = "0.6.2"
 tray-icon = { version = "0.25.1", default-features = false }
-image = { version = "0.25", default-features = false, features = ["png"] }
-toml = { version = "1", default-features = false, features = ["parse", "display", "serde"] }
-rust-i18n = "4"
-windows = { version = "0.62", features = [
+image = { version = "0.25.10", default-features = false, features = ["png"] }
+toml = { version = "1.1.6", default-features = false, features = ["parse", "display", "serde"] }
+rust-i18n = "4.2.2"
+windows = { version = "0.62.2", features = [
     "Data_Xml_Dom",
     "UI_Notifications",
     "Win32_Foundation",
@@ -72,4 +72,4 @@ codegen-units = 1
 panic = "abort"
 
 [build-dependencies]
-winres = "0.1"
+winres = "0.1.12"
