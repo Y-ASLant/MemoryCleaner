@@ -40,28 +40,31 @@ pub fn open_main_window(
     launch_hidden: bool,
 ) -> Result<()> {
     let options = cx.update(|app| window_options(false, app));
-    cx.open_window(options, |window, cx| {
-        window.set_window_title(crate::version::APP_NAME);
+    let (handle, app_entity) = cx.update(|cx| {
+        gpui_kit::open_window(options, cx, |window, cx| {
+            window.set_window_title(crate::version::APP_NAME);
 
-        let app_entity = cx.new(|cx| {
-            MemoryCleanerApp::new(window, cx, settings, command_tx, tray_rx, launch_hidden)
-        });
-        let _ = win32::window::remove_maximize_button(window);
-        crate::ui::theme::init_light_theme(window, cx);
-
-        let root = cx.new(|cx| Root::new(app_entity.clone(), window, cx));
-
-        if launch_hidden {
-            app_entity.update(cx, |app, _| {
-                app.destroy_window_to_tray(window, "startup");
-                app.sync_tray();
+            let app_entity = cx.new(|cx| {
+                MemoryCleanerApp::new(window, cx, settings, command_tx, tray_rx, launch_hidden)
             });
-        } else {
-            window.activate_window();
-        }
-
-        root
+            let _ = win32::window::remove_maximize_button(window);
+            crate::ui::theme::init_light_theme(window, cx);
+            if !launch_hidden {
+                window.activate_window();
+            }
+            app_entity
+        })
     })?;
+    if launch_hidden {
+        cx.update(|cx| {
+            handle.update(cx, |_, window, cx| {
+                app_entity.update(cx, |app, _| {
+                    app.destroy_window_to_tray(window, "startup");
+                    app.sync_tray();
+                });
+            })
+        })?;
+    }
     Ok(())
 }
 
@@ -150,16 +153,18 @@ impl MemoryCleanerApp {
             // This prevents a stale height if settings change during the async gap.
             let expanded = entity.update(cx, |app, _| app.settings_expanded);
             let options = cx.update(|app| window_options(expanded, app));
-            let opened = cx.open_window(options, |window, cx| {
-                entity.update(cx, |app, cx| {
-                    app.attach_window(window, cx, false);
-                    app.window_opening = false;
-                });
-                window.set_window_title(crate::version::APP_NAME);
-                let _ = win32::window::remove_maximize_button(window);
-                crate::ui::theme::init_light_theme(window, cx);
-                window.activate_window();
-                cx.new(|cx| Root::new(entity.clone(), window, cx))
+            let opened = cx.update(|cx| {
+                gpui_kit::open_window(options, cx, |window, cx| {
+                    entity.update(cx, |app, cx| {
+                        app.attach_window(window, cx, false);
+                        app.window_opening = false;
+                    });
+                    window.set_window_title(crate::version::APP_NAME);
+                    let _ = win32::window::remove_maximize_button(window);
+                    crate::ui::theme::init_light_theme(window, cx);
+                    window.activate_window();
+                    entity.clone()
+                })
             });
 
             if opened.is_err() {

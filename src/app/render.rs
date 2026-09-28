@@ -75,59 +75,52 @@ impl Render for MemoryCleanerApp {
             .child(div().flex_1().min_w_0().child(virtual_card))
             .into_any_element();
 
-        div()
-            .relative()
-            .w_full()
-            .h_full()
-            .child(
-                div().w_full().h_full().overflow_hidden().child(
+        div().w_full().h_full().overflow_hidden().child(
+            v_flex()
+                .w_full()
+                .h_full()
+                .overflow_hidden()
+                .bg(bg)
+                .child(render_title_bar(self, window, cx))
+                .child({
+                    let body = v_flex()
+                        .w_full()
+                        .flex_shrink_0()
+                        .px(px(CONTENT_PADDING))
+                        .pt(px(CONTENT_PADDING))
+                        .child(memory_row)
+                        .when(self.settings_panel_visible(), |body| {
+                            body.child(
+                                div()
+                                    .w_full()
+                                    .h(px(settings_reveal_h))
+                                    .overflow_hidden()
+                                    .child(
+                                        div()
+                                            .w_full()
+                                            .pt(px(SECTION_GAP))
+                                            .opacity(settings_visual_progress)
+                                            .child(render_settings_content(self, cx)),
+                                    ),
+                            )
+                        });
+
                     v_flex()
                         .w_full()
-                        .h_full()
+                        .flex_shrink_0()
+                        .min_h_0()
                         .overflow_hidden()
-                        .bg(bg)
-                        .child(render_title_bar(self, window, cx))
-                        .child({
-                            let body = v_flex()
+                        .gap(px(SECTION_GAP))
+                        .child(body)
+                        .child(
+                            div()
                                 .w_full()
                                 .flex_shrink_0()
                                 .px(px(CONTENT_PADDING))
-                                .pt(px(CONTENT_PADDING))
-                                .child(memory_row)
-                                .when(self.settings_panel_visible(), |body| {
-                                    body.child(
-                                        div()
-                                            .w_full()
-                                            .h(px(settings_reveal_h))
-                                            .overflow_hidden()
-                                            .child(
-                                                div()
-                                                    .w_full()
-                                                    .pt(px(SECTION_GAP))
-                                                    .opacity(settings_visual_progress)
-                                                    .child(render_settings_content(self, cx)),
-                                            ),
-                                    )
-                                });
-
-                            v_flex()
-                                .w_full()
-                                .flex_shrink_0()
-                                .min_h_0()
-                                .overflow_hidden()
-                                .gap(px(SECTION_GAP))
-                                .child(body)
-                                .child(
-                                    div()
-                                        .w_full()
-                                        .flex_shrink_0()
-                                        .px(px(CONTENT_PADDING))
-                                        .pb(px(CONTENT_PADDING))
-                                        .child(render_cleanup_footer(self, cx)),
-                                )
-                        }),
-                ),
-            )
-            .children(gpui_kit::component::Root::render_dialog_layer(window, cx))
+                                .pb(px(CONTENT_PADDING))
+                                .child(render_cleanup_footer(self, cx)),
+                        )
+                }),
+        )
     }
 }

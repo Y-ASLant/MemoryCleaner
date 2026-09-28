@@ -5,6 +5,12 @@
 **编写约定**（详见 `AGENTS.md` → Documentation & Changelog）：每个版本只记录相对上一 tag 的**最终差异**，不记录开发过程中的中间修改或逐步修复。
 
 
+## [Unreleased]
+
+### 变更
+
+- **UI 依赖**：升级 `gpui-kit` 至 0.7.0；窗口改用新版 Root 托管内容与弹窗，保留 Windows 10 方角主题。
+
 ## [1.1.1] - 2026-09-17
 
 ### 新增
@@ -155,6 +161,12 @@ Records Memory Cleaner releases. Format follows [Keep a Changelog](https://keepa
 **Writing rules** (see `AGENTS.md` → Documentation & Changelog): each release entry covers **only the final diff** vs the previous tag — not intermediate commits or step-by-step fixes during development.
 
 
+
+## [Unreleased]
+
+### Changed
+
+- **UI dependency** — Upgraded `gpui-kit` to 0.7.0; windows use the new Root to host content and dialogs while retaining square-corner styling on Windows 10.
 
 ## [1.1.1] - 2026-09-17
 

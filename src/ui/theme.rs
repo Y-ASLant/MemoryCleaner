@@ -5,10 +5,11 @@ use gpui_kit::{App, Window, px};
 pub fn init_light_theme(window: &mut Window, cx: &mut App) {
     Theme::change(ThemeMode::Light, None, cx);
     if !crate::win32::os::is_windows_11_or_later() {
-        let theme = Theme::global_mut(cx);
-        theme.radius = px(0.);
-        theme.radius_lg = px(0.);
-        theme.shadow = false;
+        Theme::update(cx, |theme| {
+            theme.radius = px(0.);
+            theme.radius_lg = px(0.);
+            theme.shadow = false;
+        });
     }
     window.refresh();
 }

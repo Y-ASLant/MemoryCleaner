@@ -27,7 +27,7 @@ tempfile = "3.27.0"
 [dependencies]
 anyhow = "1.0.104"
 bitflags = "2.13.2"
-gpui-kit = "0.6.6"
+gpui-kit = "0.7.0"
 serde = { version = "1.0.229", features = ["derive"] }
 smol = "2.0.2"
 raw-window-handle = "0.6.2"

@@ -140,7 +140,7 @@ cargo run --release
 | 依赖 | 用途 |
 |------|------|
 | [Rust](https://www.rust-lang.org/) 1.97.1+ | 语言与运行时 |
-| [gpui-kit](https://github.com/longbridge/gpui-kit) 0.6 | GPU 加速 UI 框架与组件库（内置 GPUI 与 gpui-component） |
+| [gpui-kit](https://github.com/longbridge/gpui-kit) 0.7 | GPU 加速 UI 框架与组件库（内置 GPUI 与 gpui-component） |
 | [windows-rs](https://github.com/microsoft/windows-rs) 0.62 | Win32 API（内存管理、权限、窗口控制、Toast、RegisterHotKey） |
 | [tray-icon](https://crates.io/crates/tray-icon) | 系统托盘图标与菜单 |
 | [smol](https://crates.io/crates/smol) | 异步定时与阻塞任务卸载 |

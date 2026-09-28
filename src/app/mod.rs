@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::Result;
 use gpui_kit::component::ActiveTheme;
-use gpui_kit::component::{Root, TitleBar, WindowExt};
+use gpui_kit::component::{TitleBar, WindowExt};
 use gpui_kit::*;
 use smol::Timer;
 

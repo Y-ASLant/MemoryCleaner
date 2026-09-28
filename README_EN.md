@@ -140,7 +140,7 @@ Config file: `%APPDATA%\MemoryCleaner\settings.toml`
 | Dependency | Purpose |
 |------------|---------|
 | [Rust](https://www.rust-lang.org/) 1.97.1+ | Language and runtime |
-| [gpui-kit](https://github.com/longbridge/gpui-kit) 0.6 | GPU-accelerated UI framework and component library (built-in GPUI & gpui-component) |
+| [gpui-kit](https://github.com/longbridge/gpui-kit) 0.7 | GPU-accelerated UI framework and component library (built-in GPUI & gpui-component) |
 | [windows-rs](https://github.com/microsoft/windows-rs) 0.62 | Win32 API (memory management, privileges, window control, Toast, RegisterHotKey) |
 | [tray-icon](https://crates.io/crates/tray-icon) | System tray icon and menu |
 | [smol](https://crates.io/crates/smol) | Async scheduling and blocking task offload |
