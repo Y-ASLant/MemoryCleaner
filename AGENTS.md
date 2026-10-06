@@ -54,16 +54,16 @@ main.rs → wake-signal check → ensure_elevated() → wake-signal retry → si
 
 ```bash
 # Format
-make format # cargo fmt --all
+just format # cargo fmt --all
 
 # Lint (clippy with -D warnings — warnings are errors)
-make check # cargo clippy --release -- -D warnings
+just check # cargo clippy --release -- -D warnings
 
 # Test
-make test # cargo test
+just test # cargo test
 
 # Build (release, runs clippy first)
-make build # cargo build --release
+just build # cargo build --release
 
 # Run (debug)
 cargo run
@@ -72,12 +72,12 @@ cargo run
 cargo run --release
 
 # Clean
-make clean # cargo clean
+just clean # cargo clean + remove dist/
 ```
 
 **CI:** `.github/workflows/build.yml` runs only when a `v*` tag is pushed. The tag must match `Cargo.toml`'s version; the workflow checks formatting, runs Clippy and tests, builds the Windows release binary, extracts that version's Chinese and English sections from `docs/CHANGELOG.md`, then creates a GitHub Release with those notes and `MemoryCleaner.exe`.
 
-**Tests:** `make test` / `cargo test` — 89 unit tests in `src/` plus 2 integration tests in `tests/settings_persistence.rs`.
+**Tests:** `just test` / `cargo test` — 89 unit tests in `src/` plus 2 integration tests in `tests/settings_persistence.rs`.
 
 ## Code Conventions & Common Patterns
 
@@ -119,7 +119,7 @@ make clean # cargo clean
 | `docs/CHANGELOG.md` | Version changelog (final diff vs previous release only) |
 | `Cargo.toml` | Dependencies, features, release profile (LTO, strip, abort-on-panic) |
 | `build.rs` | Icon embedding via `winres` |
-| `Makefile` | fmt / check / build / clean targets |
+| `justfile` | fmt / check / build / clean tasks (just task runner) |
 
 ## UI Layout Notes
 

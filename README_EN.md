@@ -43,7 +43,7 @@ A Windows memory optimization tool built with Rust + GPUI. Real-time memory moni
 ### Build
 
 ```bash
-make build
+just build
 # or
 cargo build --release
 ```

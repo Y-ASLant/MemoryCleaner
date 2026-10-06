@@ -43,7 +43,7 @@ Windows 内存清理工具，基于 Rust + GPUI 构建。提供实时内存监�
 ### 构建
 
 ```bash
-make build
+just build
 # 或
 cargo build --release
 ```
