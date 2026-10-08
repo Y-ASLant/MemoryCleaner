@@ -47,12 +47,13 @@ pub(super) fn render_cleanup_areas(
         .w_full()
         .gap(px(ROW_GAP))
         .child(
-            div()
+            h_flex()
                 .w_full()
                 .h(px(CLEANUP_AREAS_HINT_H))
+                .flex_shrink_0()
+                .items_center()
                 .rounded(cx.theme().radius)
                 .px_2()
-                .py_1()
                 .bg(muted.opacity(0.12))
                 .child(
                     Label::new(t!("settings.cleanup_areas_hint").to_string())
