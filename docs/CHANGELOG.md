@@ -7,14 +7,19 @@
 
 ## [Unreleased]
 
+## [1.1.2] - 2026-10-08
+
 ### 变更
 
-- **UI 依赖**：升级 `gpui-kit` 至 0.7.1；窗口改用新版 Root 托管内容与弹窗，保留 Windows 10 方角主题。
-- **清理结果**：修正 x64 NT 内存结构布局；清理前后即时采样，采样失败时不显示误导性释放量；卷刷写存在失败时反馈到结果和历史详情。
-- **内存监控**：提交内存使用系统级提交总量与上限，进程排除仅影响工作集清理。
-- **图标缓存刷新**：清理当前用户的托盘缓存注册表项，并确认 Explorer 桌面恢复。
-- **配置保存**：防抖保存移至后台串行执行，过期快照不会覆盖新设置；保存失败在设置对话框中提示。
-- **开发检查**：主分支推送与拉取请求也执行构建检查；文档同步默认清理位掩码 43 和任务文件名 `.justfile`。
+- **清理接口**：修正 64 位 NT 内存结构的字段宽度与布局，并为接口输出提供可变缓冲区，改善系统文件缓存与合并页面操作的正确性。
+- **清理效果**：手动与自动清理均在执行前后即时采样；采样失败时显示不可用，不再使用过期的界面数据计算内存变化。内存清理与图标缓存刷新不再同时执行。
+- **已修改文件缓存**：只有所有目标卷刷写成功才将该区域计为成功；失败区域反馈到清理结果，具体错误保留在历史详情中。卷名称解析支持未对齐的 UTF-16 数据。
+- **清理历史**：保留数量由最近 5 条增加至 7 条，支持滚动查看错误详情，并兼容已有配置记录。
+- **内存监控**：将“虚拟内存”更名为“提交内存”，通过 `GetPerformanceInfo` 显示系统级提交量与提交上限。
+- **图标缓存刷新**：使用当前用户的正确托盘缓存注册表路径，记录访问失败；Explorer 未退出时跳过缓存删除，重启后等待桌面恢复再报告成功。
+- **配置保存**：保留 300 毫秒防抖，将写入移至后台串行执行；关闭或退出时作废待保存的旧快照并同步保存最新设置，保存失败在设置对话框中提示。
+- **依赖更新**：升级 `gpui-kit` 至 0.7.1、`tray-icon` 至 0.26.0、`rust-i18n` 至 4.2.4，并更新其他直接与传递依赖；适配新版窗口与组件接口，保留 Windows 10 方角主题。清理步骤使用区域标识分派，不再依赖翻译后的名称。
+- **构建与文档**：开发任务由 Makefile 迁移至 `.justfile`；主分支推送与拉取请求执行格式、Clippy、测试及构建检查，发布仍仅由版本标签触发。中英文文档同步默认清理位掩码 43、进程排除范围和清理效果说明。
 
 ## [1.1.1] - 2026-09-17
 
@@ -169,14 +174,19 @@ Records Memory Cleaner releases. Format follows [Keep a Changelog](https://keepa
 
 ## [Unreleased]
 
+## [1.1.2] - 2026-10-08
+
 ### Changed
 
-- **UI dependency** — Upgraded `gpui-kit` to 0.7.1; windows use the new Root to host content and dialogs while retaining square-corner styling on Windows 10.
-- **Cleanup results** — Corrected x64 NT memory structure layouts; sample memory immediately before and after cleanup and suppress misleading effects when sampling fails; volume flush failures appear in results and history details.
-- **Memory monitoring** — Committed memory uses system-wide commit usage and limits; process exclusions apply only to Working Set cleanup.
-- **Icon cache refresh** — Clean the current user's tray registry cache and confirm Explorer desktop recovery.
-- **Configuration saving** — Debounced writes run serially in the background; obsolete snapshots cannot overwrite newer settings, and save failures appear in the settings dialog.
-- **Development checks** — Main-branch pushes and pull requests also run build checks; documentation reflects the default cleanup bitmask of 43 and the `.justfile` task file.
+- **Cleanup interfaces** — Corrected field widths and layouts of 64-bit NT memory structures and provided mutable output buffers, improving correctness of System File Cache and Combined Page List operations.
+- **Cleanup effects** — Both manual and automatic cleanup sample memory immediately before and after execution; failed samples appear as unavailable instead of using stale UI data to calculate changes. Memory cleanup and icon cache refresh no longer run concurrently.
+- **Modified File Cache** — A region is counted as successful only when every target volume flushes successfully; failed regions appear in cleanup results, with specific errors retained in history details. Volume-name parsing supports unaligned UTF-16 data.
+- **Cleanup History** — Increased retention from the latest 5 records to 7, added scrolling for error details, and preserved compatibility with existing configuration records.
+- **Memory monitoring** — Renamed “Virtual Memory” to “Committed Memory” and use `GetPerformanceInfo` to display system-wide commit usage and limit.
+- **Icon cache refresh** — Use the correct current-user tray registry cache path and report access failures; skip cache deletion if Explorer has not exited, and wait for desktop recovery before reporting a successful restart.
+- **Configuration saving** — Retained the 300 ms debounce and moved writes to serialized background work; closing or exiting invalidates pending old snapshots and synchronously saves the latest settings. Save failures appear in the settings dialog.
+- **Dependency updates** — Upgraded `gpui-kit` to 0.7.1, `tray-icon` to 0.26.0, and `rust-i18n` to 4.2.4, alongside other direct and transitive dependencies; adapted to updated window and component APIs while retaining Windows 10 square-corner styling. Cleanup dispatch uses region identifiers rather than translated names.
+- **Build and documentation** — Migrated development tasks from Makefile to `.justfile`; main-branch pushes and pull requests run formatting, Clippy, tests, and build checks, while publishing remains restricted to version tags. Chinese and English documentation reflects the default cleanup bitmask of 43, the scope of process exclusions, and cleanup-effect semantics.
 
 ## [1.1.1] - 2026-09-17
 
@@ -317,7 +327,8 @@ Since [1.0.0]: process exclusion, global cleanup hotkey (default Ctrl+Alt+C) wit
 
 Initial public release: 8 memory cleanup regions, GPUI UI, system tray, administrator elevation, settings persistence.
 
-[Unreleased]: https://github.com/Y-ASLant/MemoryCleaner/compare/v1.1.1...HEAD
+[Unreleased]: https://github.com/Y-ASLant/MemoryCleaner/compare/v1.1.2...HEAD
+[1.1.2]: https://github.com/Y-ASLant/MemoryCleaner/compare/v1.1.1...v1.1.2
 [1.1.1]: https://github.com/Y-ASLant/MemoryCleaner/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/Y-ASLant/MemoryCleaner/compare/v1.0.7...v1.1.0
 [1.0.7]: https://github.com/Y-ASLant/MemoryCleaner/compare/v1.0.6...v1.0.7
