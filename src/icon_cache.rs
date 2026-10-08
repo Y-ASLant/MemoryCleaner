@@ -1,10 +1,9 @@
 use rust_i18n::t;
 
-use std::ffi::OsStr;
-use std::os::windows::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 
 use crate::win32::handle::OwnedRegistryKey;
+use crate::win32::wide_null;
 use windows::Win32::Foundation::{ERROR_FILE_NOT_FOUND, ERROR_PATH_NOT_FOUND};
 use windows::Win32::Storage::FileSystem::{
     FILE_ATTRIBUTE_HIDDEN, FILE_ATTRIBUTE_READONLY, FILE_ATTRIBUTE_SYSTEM,
@@ -161,7 +160,7 @@ fn delete_file(path: &Path, failures: &mut Vec<String>) {
 }
 
 fn clear_attrs(path: &Path) {
-    let wide = to_wide(&path.to_string_lossy());
+    let wide = wide_null(&path.to_string_lossy());
     unsafe {
         let attrs = GetFileAttributesW(PCWSTR(wide.as_ptr()));
         if attrs == INVALID_FILE_ATTRIBUTES {
@@ -177,7 +176,7 @@ fn clear_attrs(path: &Path) {
 
 fn delete_reg_value(subkey: &str, value: &str, failures: &mut Vec<String>) {
     unsafe {
-        let subkey_wide = to_wide(subkey);
+        let subkey_wide = wide_null(subkey);
         let mut key = HKEY::default();
         let status = RegOpenKeyExW(
             HKEY_CURRENT_USER,
@@ -193,7 +192,7 @@ fn delete_reg_value(subkey: &str, value: &str, failures: &mut Vec<String>) {
             return;
         }
         let key = OwnedRegistryKey::from_raw(key);
-        let value_wide = to_wide(value);
+        let value_wide = wide_null(value);
         let status = RegDeleteValueW(key.raw(), PCWSTR(value_wide.as_ptr()));
         if status.is_err() && status != ERROR_FILE_NOT_FOUND {
             failures.push(
@@ -211,10 +210,6 @@ fn notify_shell() {
     unsafe {
         SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_IDLIST, None, None);
     }
-}
-
-fn to_wide(value: &str) -> Vec<u16> {
-    OsStr::new(value).encode_wide().chain(Some(0)).collect()
 }
 
 #[cfg(test)]

@@ -8,15 +8,14 @@ use windows::Win32::UI::WindowsAndMessaging::{
     SetWindowLongPtrW, SetWindowPos, ShowWindow, WS_EX_APPWINDOW, WS_EX_TOOLWINDOW, WS_MAXIMIZEBOX,
 };
 
-fn show_window(hwnd: HWND, cmd: SHOW_WINDOW_CMD) -> Result<()> {
+fn show_window(hwnd: HWND, cmd: SHOW_WINDOW_CMD) {
     unsafe {
         // ShowWindow returns the previous visibility state, not success/failure.
         let _ = ShowWindow(hwnd, cmd);
     }
-    Ok(())
 }
 
-fn apply_extended_style(hwnd: HWND, update: impl FnOnce(u32) -> u32) -> Result<()> {
+fn apply_extended_style(hwnd: HWND, update: impl FnOnce(u32) -> u32) {
     unsafe {
         let style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32;
         SetWindowLongPtrW(hwnd, GWL_EXSTYLE, update(style) as _);
@@ -30,7 +29,6 @@ fn apply_extended_style(hwnd: HWND, update: impl FnOnce(u32) -> u32) -> Result<(
             SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_FRAMECHANGED,
         );
     }
-    Ok(())
 }
 
 pub(crate) fn hwnd_from_window(window: &Window) -> Result<HWND> {
@@ -48,7 +46,7 @@ pub fn show_from_tray(window: &Window) -> Result<()> {
     let hwnd = hwnd_from_window(window)?;
     apply_extended_style(hwnd, |style| {
         (style & !WS_EX_TOOLWINDOW.0) | WS_EX_APPWINDOW.0
-    })?;
+    });
     let cmd = unsafe {
         if IsIconic(hwnd).as_bool() {
             SW_RESTORE
@@ -56,7 +54,7 @@ pub fn show_from_tray(window: &Window) -> Result<()> {
             SW_SHOW
         }
     };
-    show_window(hwnd, cmd)?;
+    show_window(hwnd, cmd);
     Ok(())
 }
 

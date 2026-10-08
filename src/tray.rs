@@ -20,7 +20,6 @@ const SPIN_STEP_MS: u64 = 96;
 const TRAY_ICON_SIZE: u32 = 32;
 
 static TRAY: AtomicPtr<Tray> = AtomicPtr::new(std::ptr::null_mut());
-static ICON_FRAMES: OnceLock<[RgbaImage; 4]> = OnceLock::new();
 static CMD_TX: OnceLock<Sender<TrayCommand>> = OnceLock::new();
 static SPIN_GENERATION: AtomicU32 = AtomicU32::new(0);
 static SPIN_ACTIVE: AtomicBool = AtomicBool::new(false);
@@ -52,6 +51,7 @@ impl TrayMenuState {
 
 pub struct Tray {
     icon: TrayIcon,
+    icon_frames: [Icon; 4],
     optimize: MenuItem,
     toggle_window: MenuItem,
     quit: MenuItem,
@@ -89,18 +89,21 @@ impl Tray {
         menu.append(&quit)?;
 
         let source = load_icon_source();
-        let (width, height) = source.dimensions();
-        let _ = ICON_FRAMES.set(build_icon_frames(&source));
+        let icon_frames = build_icon_frames(&source).map(|frame| {
+            let (width, height) = frame.dimensions();
+            icon_from_rgba(frame.into_raw(), width, height)
+        });
 
         let tray_icon = TrayIconBuilder::new()
             .with_menu(Box::new(menu))
             .with_menu_on_left_click(false)
             .with_tooltip(t!("tray.tooltip", percent = "—"))
-            .with_icon(icon_from_rgba(source.into_raw(), width, height))
+            .with_icon(icon_frames[0].clone())
             .build()?;
 
         let tray = Box::new(Self {
             icon: tray_icon,
+            icon_frames,
             optimize,
             toggle_window,
             quit,
@@ -152,20 +155,12 @@ fn build_icon_frames(source: &RgbaImage) -> [RgbaImage; 4] {
     ]
 }
 
-fn icon_at_rotation(quarters: u32) -> Icon {
-    let Some(frames) = ICON_FRAMES.get() else {
-        return create_fallback_icon();
-    };
-    let frame = &frames[(quarters % 4) as usize];
-    let (width, height) = frame.dimensions();
-    icon_from_rgba(frame.clone().into_raw(), width, height)
-}
-
 fn set_tray_icon_rotation(quarters: u32) {
     let Some(tray) = tray() else {
         return;
     };
-    let _ = tray.icon.set_icon(Some(icon_at_rotation(quarters)));
+    let frame = &tray.icon_frames[(quarters % 4) as usize];
+    let _ = tray.icon.set_icon(Some(frame.clone()));
 }
 
 pub fn stop_spin() {
@@ -315,12 +310,6 @@ fn fallback_icon_rgba() -> (Vec<u8>, u32, u32) {
     }
 
     (rgba, width, height)
-}
-
-fn create_fallback_icon() -> Icon {
-    let source = load_icon_source();
-    let (width, height) = source.dimensions();
-    icon_from_rgba(source.into_raw(), width, height)
 }
 
 pub fn dispatch_command(

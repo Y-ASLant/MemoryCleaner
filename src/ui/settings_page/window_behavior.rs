@@ -174,65 +174,43 @@ pub(crate) fn auto_cleanup_description(enabled: bool, threshold: u32) -> String 
     }
 }
 
-/// One auto-cleanup trigger row: label + description on the left, a preset
-/// dropdown on the right.
-struct AutoCleanupOptionRow {
-    id: &'static str,
-    icon: IconName,
-    title: String,
-    description: String,
-    options: &'static [u32],
-    current: u32,
-    format_value: fn(u32) -> String,
-    setter: fn(&mut MemoryCleanerApp, u32, &mut Context<MemoryCleanerApp>),
-}
-
-fn render_auto_cleanup_option_row(
+fn render_auto_cleanup_threshold_row(
     weak: &WeakEntity<MemoryCleanerApp>,
-    row: AutoCleanupOptionRow,
+    current: u32,
     dim: bool,
     muted: Hsla,
     foreground: Hsla,
 ) -> impl IntoElement {
-    let AutoCleanupOptionRow {
-        id,
-        icon,
-        title,
-        description,
-        options,
-        current,
-        format_value,
-        setter,
-    } = row;
-    let current_label = format_value(current);
     let weak_row = weak.clone();
 
     settings_row(
-        icon,
-        title,
-        description,
-        {
-            Button::new(id)
-                .ghost()
-                .small()
-                .min_w(px(SELECTOR_WIDTH))
-                .label(current_label)
-                .dropdown_caret(true)
-                .dropdown_menu_with_anchor(Anchor::TopRight, move |menu, _, _| {
-                    options.iter().fold(menu, |menu, value| {
+        IconName::ChartPie,
+        t!("settings.auto_cleanup_threshold").to_string(),
+        t!("settings.auto_cleanup_threshold_desc").to_string(),
+        Button::new("dialog-select-auto-cleanup-threshold")
+            .ghost()
+            .small()
+            .min_w(px(SELECTOR_WIDTH))
+            .label(format_threshold_value(current))
+            .dropdown_caret(true)
+            .dropdown_menu_with_anchor(Anchor::TopRight, move |menu, _, _| {
+                AUTO_CLEANUP_THRESHOLD_OPTIONS
+                    .iter()
+                    .fold(menu, |menu, value| {
                         let value = *value;
                         let checked = current == value;
                         let weak = weak_row.clone();
                         menu.item(
-                            PopupMenuItem::new(format_value(value))
+                            PopupMenuItem::new(format_threshold_value(value))
                                 .checked(checked)
                                 .on_click(move |_, _, cx| {
-                                    let _ = weak.update(cx, |app, cx| setter(app, value, cx));
+                                    let _ = weak.update(cx, |app, cx| {
+                                        app.set_auto_cleanup_threshold(value, cx);
+                                    });
                                 }),
                         )
                     })
-                })
-        },
+            }),
         SettingsRowStyle {
             muted,
             description_color: muted,
@@ -358,7 +336,7 @@ pub fn render_window_behavior_dialog(
     };
 
     let state = app.read(cx);
-    let settings = state.settings.clone();
+    let settings = &state.settings;
     let startup_pending = state.startup_setting_pending;
     let startup_failed = state.startup_setting_failed;
     let save_failed = state.settings_save_failed;
@@ -398,18 +376,9 @@ pub fn render_window_behavior_dialog(
                 }
             },
         ))
-        .child(render_auto_cleanup_option_row(
+        .child(render_auto_cleanup_threshold_row(
             &weak,
-            AutoCleanupOptionRow {
-                id: "dialog-select-auto-cleanup-threshold",
-                icon: IconName::ChartPie,
-                title: t!("settings.auto_cleanup_threshold").to_string(),
-                description: t!("settings.auto_cleanup_threshold_desc").to_string(),
-                options: AUTO_CLEANUP_THRESHOLD_OPTIONS,
-                current: settings.auto_cleanup_threshold,
-                format_value: format_threshold_value,
-                setter: MemoryCleanerApp::set_auto_cleanup_threshold,
-            },
+            settings.auto_cleanup_threshold,
             !settings.auto_cleanup_enabled,
             muted,
             foreground,

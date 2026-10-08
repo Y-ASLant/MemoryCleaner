@@ -181,13 +181,17 @@ impl Settings {
                 Self::default()
             }
         };
-        settings.normalize_memory_areas();
-        settings.normalize_language();
-        settings.normalize_cleanup_hotkey();
-        settings.normalize_excluded_processes();
-        settings.normalize_auto_cleanup();
-        settings.normalize_cleanup_history();
+        settings.normalize();
         settings
+    }
+
+    fn normalize(&mut self) {
+        self.normalize_memory_areas();
+        self.normalize_language();
+        self.normalize_cleanup_hotkey();
+        self.normalize_excluded_processes();
+        self.normalize_auto_cleanup();
+        self.normalize_cleanup_history();
     }
 
     fn normalize_language(&mut self) {
@@ -242,12 +246,7 @@ impl Settings {
     #[cfg(test)]
     pub(crate) fn from_toml(content: &str) -> Self {
         let mut settings: Settings = toml::from_str(content).expect("valid settings toml");
-        settings.normalize_memory_areas();
-        settings.normalize_language();
-        settings.normalize_cleanup_hotkey();
-        settings.normalize_excluded_processes();
-        settings.normalize_auto_cleanup();
-        settings.normalize_cleanup_history();
+        settings.normalize();
         settings
     }
 

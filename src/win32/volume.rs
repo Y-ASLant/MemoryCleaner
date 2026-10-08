@@ -217,10 +217,7 @@ fn query_mount_points() -> Result<Vec<Vec<u16>>> {
 }
 
 fn open_mount_manager() -> Result<OwnedWin32Handle> {
-    let wide: Vec<u16> = MOUNTMGR_DOS_DEVICE_NAME
-        .encode_utf16()
-        .chain(std::iter::once(0))
-        .collect();
+    let wide = super::wide_null(MOUNTMGR_DOS_DEVICE_NAME);
 
     unsafe {
         CreateFileW(

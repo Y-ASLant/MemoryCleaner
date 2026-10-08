@@ -14,6 +14,7 @@ use windows::Win32::System::Threading::{
 };
 use windows::core::{HRESULT, PCWSTR};
 
+use super::wide_null;
 use crate::tray::TrayCommand;
 use crate::win32::handle::OwnedWin32Handle;
 
@@ -114,10 +115,6 @@ fn signal_from_open_event_error(code: HRESULT) -> InstanceSignal {
     } else {
         InstanceSignal::NotRunning
     }
-}
-
-fn wide_null(s: &str) -> Vec<u16> {
-    s.encode_utf16().chain(std::iter::once(0)).collect()
 }
 
 #[cfg(test)]

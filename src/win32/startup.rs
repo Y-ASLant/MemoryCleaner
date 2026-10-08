@@ -22,6 +22,7 @@ use windows::Win32::System::Threading::{
 use windows::Win32::System::Variant::VARIANT;
 use windows::core::{BSTR, Error, HRESULT, PCWSTR, PWSTR};
 
+use super::wide_null;
 use crate::version::PROCESS_BASE_NAME;
 use crate::win32::com::ComApartment;
 use crate::win32::elevation::ELEVATED_ARG;
@@ -48,10 +49,6 @@ const TASK_NAME: &str = "MemoryCleaner_Autostart";
 
 /// Legacy autostart location (`HKCU\...\Run`), deleted on sync for migration.
 const RUN_KEY_PATH: &str = "Software\\Microsoft\\Windows\\CurrentVersion\\Run";
-
-fn wide_null(s: &str) -> Vec<u16> {
-    s.encode_utf16().chain(std::iter::once(0)).collect()
-}
 
 /// Task action command line: quoted exe path plus the startup flag.
 fn task_trigger_value() -> Result<String> {

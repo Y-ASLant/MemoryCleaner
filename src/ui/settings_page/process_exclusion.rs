@@ -102,7 +102,7 @@ pub(super) fn render_process_exclusion(
     cx: &mut Context<MemoryCleanerApp>,
 ) -> impl IntoElement {
     let weak = cx.weak_entity();
-    let excluded = app.settings.excluded_processes.clone();
+    let excluded = &app.settings.excluded_processes;
     let selector_h = px(EXCLUSION_SELECTOR_H);
     let selector_w = px(process_exclusion_selector_width(
         MAIN_WINDOW_WIDTH,
@@ -165,5 +165,5 @@ pub(super) fn render_process_exclusion(
                         .max_w(selector_w)
                 })
         }))
-        .child(render_process_exclusion_list(app, &excluded, cx))
+        .child(render_process_exclusion_list(app, excluded, cx))
 }

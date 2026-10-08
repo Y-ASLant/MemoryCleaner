@@ -136,9 +136,10 @@ pub fn render_cleanup_history_dialog(
     weak: WeakEntity<MemoryCleanerApp>,
     cx: &App,
 ) -> impl IntoElement {
-    let history = weak
-        .upgrade()
-        .map(|app| app.read(cx).settings.cleanup_history.clone())
+    let app = weak.upgrade();
+    let history = app
+        .as_ref()
+        .map(|app| app.read(cx).settings.cleanup_history.as_slice())
         .unwrap_or_default();
     let theme = cx.theme();
 

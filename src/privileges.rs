@@ -23,7 +23,7 @@ fn with_process_token<T>(
 }
 
 pub fn enable_privilege(name: &str) -> Result<()> {
-    let wide: Vec<u16> = name.encode_utf16().chain(std::iter::once(0)).collect();
+    let wide = crate::win32::wide_null(name);
 
     with_process_token(TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, |token| unsafe {
         let mut luid = LUID::default();

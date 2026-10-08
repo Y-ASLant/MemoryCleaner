@@ -104,7 +104,7 @@ impl HotkeyBinding {
         if win {
             parts.push("Win".into());
         }
-        parts.push(key);
+        parts.push(key.to_string());
         let chord = parts.join("+");
         Self::parse(&chord).map(|_| chord)
     }
@@ -165,34 +165,19 @@ fn is_modifier_key(key: &str) -> bool {
     )
 }
 
-fn normalize_key_token(key: &str) -> Option<String> {
+fn normalize_key_token(key: &str) -> Option<char> {
     let key = key.trim();
     if key.len() == 1 {
         let ch = key.chars().next()?;
-        if ch.is_ascii_alphabetic() {
-            return Some(ch.to_ascii_uppercase().to_string());
-        }
-        if ch.is_ascii_digit() {
-            return Some(ch.to_string());
+        if ch.is_ascii_alphanumeric() {
+            return Some(ch.to_ascii_uppercase());
         }
     }
     None
 }
 
 fn parse_virtual_key(key: &str) -> Option<VIRTUAL_KEY> {
-    let key = key.trim();
-    if key.len() == 1 {
-        let ch = key.chars().next()?;
-        if ch.is_ascii_alphabetic() {
-            let vk = ch.to_ascii_uppercase() as u32;
-            return Some(VIRTUAL_KEY(vk as u16));
-        }
-        if ch.is_ascii_digit() {
-            let vk = ch as u32;
-            return Some(VIRTUAL_KEY(vk as u16));
-        }
-    }
-    None
+    Some(VIRTUAL_KEY(normalize_key_token(key)? as u16))
 }
 
 struct HotkeyWorker {

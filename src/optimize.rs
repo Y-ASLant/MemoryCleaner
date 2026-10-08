@@ -58,32 +58,14 @@ impl MemoryAreas {
     }
 }
 
-struct OptimizeStep {
-    area: MemoryAreas,
-}
-
-const OPTIMIZE_STEPS: &[OptimizeStep] = &[
-    OptimizeStep {
-        area: MemoryAreas::WORKING_SET,
-    },
-    OptimizeStep {
-        area: MemoryAreas::SYSTEM_FILE_CACHE,
-    },
-    OptimizeStep {
-        area: MemoryAreas::MODIFIED_PAGE_LIST,
-    },
-    OptimizeStep {
-        area: MemoryAreas::STANDBY_LIST,
-    },
-    OptimizeStep {
-        area: MemoryAreas::STANDBY_LIST_LOW_PRIORITY,
-    },
-    OptimizeStep {
-        area: MemoryAreas::COMBINED_PAGE_LIST,
-    },
-    OptimizeStep {
-        area: MemoryAreas::MODIFIED_FILE_CACHE,
-    },
+const OPTIMIZE_STEPS: &[MemoryAreas] = &[
+    MemoryAreas::WORKING_SET,
+    MemoryAreas::SYSTEM_FILE_CACHE,
+    MemoryAreas::MODIFIED_PAGE_LIST,
+    MemoryAreas::STANDBY_LIST,
+    MemoryAreas::STANDBY_LIST_LOW_PRIORITY,
+    MemoryAreas::COMBINED_PAGE_LIST,
+    MemoryAreas::MODIFIED_FILE_CACHE,
 ];
 
 pub fn step_plan(areas: MemoryAreas, excluded_processes: &[String]) -> Result<StepPlan> {
@@ -91,15 +73,15 @@ pub fn step_plan(areas: MemoryAreas, excluded_processes: &[String]) -> Result<St
         bail!("no memory areas selected");
     }
 
-    let excluded = excluded_processes.to_vec();
     Ok(OPTIMIZE_STEPS
         .iter()
-        .filter(|step| areas.contains(step.area))
-        .map(|step| {
-            let label = step.area.label();
-            let run: OptimizeStepFn = match step.area {
+        .copied()
+        .filter(|area| areas.contains(*area))
+        .map(|area| {
+            let label = area.label();
+            let run: OptimizeStepFn = match area {
                 MemoryAreas::WORKING_SET => {
-                    let excluded = excluded.clone();
+                    let excluded = excluded_processes.to_vec();
                     Box::new(move || optimize_working_set(&excluded))
                 }
                 MemoryAreas::SYSTEM_FILE_CACHE => Box::new(optimize_system_file_cache),
@@ -110,11 +92,7 @@ pub fn step_plan(areas: MemoryAreas, excluded_processes: &[String]) -> Result<St
                 MemoryAreas::MODIFIED_FILE_CACHE => Box::new(optimize_modified_file_cache),
                 _ => unreachable!("all defined MemoryAreas variants in OPTIMIZE_STEPS are covered"),
             };
-            PlannedStep {
-                area: step.area,
-                label,
-                run,
-            }
+            PlannedStep { area, label, run }
         })
         .collect())
 }

@@ -37,8 +37,8 @@ fn is_elevated() -> bool {
 fn shell_execute_process(exe: &Path, parameters: &str, verb: &str) -> Result<OwnedWin32Handle> {
     ComApartment::run(|| {
         let path: Vec<u16> = exe.as_os_str().encode_wide().chain(Some(0)).collect();
-        let verb: Vec<u16> = verb.encode_utf16().chain(Some(0)).collect();
-        let params: Vec<u16> = parameters.encode_utf16().chain(Some(0)).collect();
+        let verb = super::wide_null(verb);
+        let params = super::wide_null(parameters);
         let mut info = SHELLEXECUTEINFOW {
             cbSize: size_of::<SHELLEXECUTEINFOW>() as u32,
             fMask: SEE_MASK_NOCLOSEPROCESS,

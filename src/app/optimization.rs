@@ -277,8 +277,7 @@ impl MemoryCleanerApp {
         }
 
         let areas = self.settings.memory_areas();
-        let excluded = self.settings.excluded_processes.clone();
-        let steps = match optimize::step_plan(areas, &excluded) {
+        let steps = match optimize::step_plan(areas, &self.settings.excluded_processes) {
             Ok(s) if !s.is_empty() => s,
             _ => {
                 self.optimize_status = t!("tooltip.select_areas").to_string();
