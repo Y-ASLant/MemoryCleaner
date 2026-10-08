@@ -10,7 +10,7 @@ A Windows memory optimization tool built with Rust + GPUI. Real-time memory moni
 
 ## Features
 
-- **Real-time Memory Monitoring** — Physical and virtual memory usage with ring progress charts; auto-refreshes every **1 second** when the main window is visible, pauses polling when minimized to tray to save CPU; tray icon tooltip updates instantly on hover
+- **Real-time Memory Monitoring** — Physical and system committed memory usage with ring progress charts; auto-refreshes every **1 second** when the main window is visible, pauses polling when minimized to tray to save CPU; tray icon tooltip updates instantly on hover
 - **One-Click Cleanup** — Executes cleanup steps sequentially based on selected regions; progress and result summary shown in the bottom button (retained for ~5 seconds after completion)
 - **Cleanup Results & History** — The result reports available-memory and physical-memory-pressure changes; the latest 7 cleanup records retain their trigger, selected/completed/failed count, duration, and before/after memory values. Use the title-bar Cleanup History button to view all records
 - **Configurable Cleanup Regions** — 7 memory regions selectable via checkboxes (Standby List and Standby List Low Priority are mutually exclusive)
@@ -65,7 +65,7 @@ cargo run --release
 Main window has a fixed width of **520px**, height varies with expand state (collapsed ~**294px**, expanded ~**630px**), top to bottom:
 
 1. **Title Bar** — App name, Window Behavior (gear), icon cache refresh, expand/collapse, minimize, close
-2. **Memory Cards** — Physical and virtual memory ring charts (always visible by default)
+2. **Memory Cards** — Physical and system committed memory ring charts (always visible by default)
 3. **Expand Panel** — Click the arrow to reveal the "Cleanup Regions" checkbox panel
 4. **One-Click Cleanup** — Bottom action button; cleanup progress and results displayed directly in the button
 
@@ -113,18 +113,20 @@ Buttons, GroupBox cards, switches, checkboxes, dialogs, settings panels, etc. al
 >
 > **Disk impact:** Of the 7 cleanup regions, only "Modified Files" and "Modified Pages" involve disk writes; the remaining 5 (Working Set, System File Cache, Standby List, Standby List Low Priority, Merged Pages) are pure RAM operations. See FAQ below.
 
-Default enabled regions: Working Set, System File Cache, Standby List, Merged Pages (bitmask `42`). Modified Pages and Modified Files are disabled by default as they involve disk writes.
+Process exclusions apply only to Working Set cleanup; file-cache and page-list operations affect the whole system. If any volume flush fails, Modified Files is counted as a failed region and details are retained in cleanup history.
+
+Default enabled regions: Working Set, System File Cache, Standby List, Merged Pages (bitmask `43`). Modified Pages and Modified Files are disabled by default as they involve disk writes.
 
 ## Configuration
 
-Config file: `%APPDATA%\MemoryCleaner\settings.toml`
+Config file: `%APPDATA%\MemoryCleaner\settings.toml`. Changes are saved in the background after a 300 ms debounce; failures appear in the settings dialog. Closing or exiting synchronously saves the latest settings.
 
 | Setting | Type | Default | Description |
 |---------|------|---------|-------------|
 | `always_on_top` | bool | `false` | Window always on top |
 | `run_at_startup` | bool | `false` | Launch silently into the tray after Windows sign-in via a highest-privilege scheduled task |
 | `close_to_notification_area` | bool | `true` | Hide to tray on close instead of exiting |
-| `memory_areas` | u32 | `42` | Cleanup region bitmask (sum of `MemoryAreas` flag bits) |
+| `memory_areas` | u32 | `43` | Cleanup region bitmask (sum of `MemoryAreas` flag bits) |
 | `language` | string | `"auto"` | Interface language: `auto` (follow system), `zh-CN`, `en` |
 | `debug_logging` | bool | `false` | Write detailed runtime info to `App.log` in the application directory |
 | `show_optimization_notifications` | bool | `true` | Show Windows Toast on cleanup start/completion |
@@ -134,6 +136,8 @@ Config file: `%APPDATA%\MemoryCleaner\settings.toml`
 | `auto_cleanup_enabled` | bool | `false` | Enable automatic cleanup |
 | `auto_cleanup_threshold` | u32 | `0` | Physical-memory usage threshold percent; `0` disables threshold trigger, so automatic cleanup only reacts to low-memory notifications when enabled |
 | `cleanup_history` | array | `[]` | Latest 7 cleanup outcome records, automatically maintained by the app |
+
+Committed memory uses `GetPerformanceInfo` to show system-wide commit usage and limit, rather than paging-file size or a process's virtual address space. Memory is sampled immediately before and after cleanup; failed samples are shown as unavailable rather than replaced with cached values. Standby pages already count as available physical memory, so purging them does not guarantee more available memory or better performance.
 
 ## Tech Stack
 
@@ -167,7 +171,7 @@ src/
 ├── icon_cache.rs        # Explorer icon cache cleanup
 ├── locale.rs            # Locale apply, list separator, system language mapping
 ├── log.rs               # Debug log writing, throttled retention, and file-error reporting
-├── memory.rs            # Memory query (GlobalMemoryStatusEx)
+├── memory.rs            # Physical/commit query (GlobalMemoryStatusEx, GetPerformanceInfo)
 ├── messages.rs          # Cleanup result message assembly
 ├── optimize.rs          # 7 cleanup regions and NtSetSystemInformation calls
 ├── privileges.rs        # Windows privilege elevation

@@ -34,6 +34,14 @@ pub struct CleanupHistoryEntry {
     pub memory_load_after: u32,
     pub available_before: u64,
     pub available_after: u64,
+    #[serde(default)]
+    pub failure_details: Vec<String>,
+    #[serde(default = "default_memory_sample_available")]
+    pub memory_sample_available: bool,
+}
+
+fn default_memory_sample_available() -> bool {
+    true
 }
 
 impl CleanupHistoryEntry {
@@ -63,6 +71,8 @@ impl CleanupHistoryEntry {
             memory_load_after,
             available_before,
             available_after,
+            failure_details: Vec::new(),
+            memory_sample_available: true,
         }
     }
 }
@@ -155,10 +165,6 @@ impl Settings {
         Self::config_dir().join("settings.toml")
     }
 
-    fn ensure_config_dir() {
-        let _ = std::fs::create_dir_all(Self::config_dir());
-    }
-
     pub fn load() -> Self {
         let path = Self::config_path();
         let mut settings = match std::fs::read_to_string(&path) {
@@ -246,28 +252,38 @@ impl Settings {
     }
 
     pub fn save(&self) {
-        Self::ensure_config_dir();
-        let Ok(content) = toml::to_string_pretty(self) else {
-            crate::log_msg("[settings] failed to serialize config");
-            return;
-        };
+        if let Err(error) = self.try_save() {
+            crate::log_msg(&format!("[settings] save failed: {error}"));
+        }
+    }
+
+    pub fn try_save(&self) -> std::io::Result<()> {
+        self.try_save_if_current(None)
+    }
+
+    pub(crate) fn try_save_if_current(
+        &self,
+        generation: Option<(&std::sync::atomic::AtomicU32, u32)>,
+    ) -> std::io::Result<()> {
+        static SAVE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+        let _guard = SAVE_LOCK
+            .lock()
+            .map_err(|error| std::io::Error::other(error.to_string()))?;
+        if generation.is_some_and(|(current, expected)| {
+            current.load(std::sync::atomic::Ordering::Relaxed) != expected
+        }) {
+            return Ok(());
+        }
+        std::fs::create_dir_all(Self::config_dir())?;
+        let content = toml::to_string_pretty(self).map_err(std::io::Error::other)?;
         let final_path = Self::config_path();
         let tmp_path = final_path.with_extension("toml.tmp");
-        if let Err(e) = std::fs::write(&tmp_path, &content) {
-            crate::log_msg(&format!(
-                "[settings] failed to write {}: {e}",
-                tmp_path.display()
-            ));
-            return;
-        }
-        if let Err(e) = Self::replace_config_file(&tmp_path, &final_path) {
-            crate::log_msg(&format!(
-                "[settings] failed to rename {} -> {}: {e}",
-                tmp_path.display(),
-                final_path.display()
-            ));
+        std::fs::write(&tmp_path, content)?;
+        if let Err(error) = Self::replace_config_file(&tmp_path, &final_path) {
             let _ = std::fs::remove_file(&tmp_path);
+            return Err(error);
         }
+        Ok(())
     }
 
     pub fn memory_areas(&self) -> MemoryAreas {
@@ -301,12 +317,55 @@ mod tests {
     use crate::optimize::MemoryAreas;
 
     #[test]
+    fn obsolete_save_is_skipped_before_touching_disk() {
+        let current = std::sync::atomic::AtomicU32::new(2);
+        Settings::default()
+            .try_save_if_current(Some((&current, 1)))
+            .expect("skip obsolete save");
+    }
+
+    #[test]
+    fn legacy_history_loads_without_new_fields() {
+        let settings = Settings::from_toml(
+            r#"
+[[cleanup_history]]
+completed_at_unix_secs = 1
+source = "manual"
+selected_areas = 43
+completed_count = 4
+failed_count = 0
+duration_millis = 1
+memory_load_before = 50
+memory_load_after = 49
+available_before = 1
+available_after = 2
+"#,
+        );
+        assert!(settings.cleanup_history[0].failure_details.is_empty());
+        assert!(settings.cleanup_history[0].memory_sample_available);
+    }
+
+    #[test]
+    fn history_preserves_failure_details_and_missing_samples() {
+        let mut entry =
+            CleanupHistoryEntry::new(CleanupHistorySource::Manual, 64, 0, 1, 1, 0, 0, 0, 0);
+        entry
+            .failure_details
+            .push("Volume{x}: access denied".into());
+        entry.memory_sample_available = false;
+        let restored: CleanupHistoryEntry =
+            toml::from_str(&toml::to_string(&entry).unwrap()).unwrap();
+        assert_eq!(entry, restored);
+    }
+
+    #[test]
     fn default_settings_match_documented_values() {
         let settings = Settings::default();
         assert!(settings.close_to_notification_area);
         assert!(!settings.run_at_startup);
         assert!(settings.show_optimization_notifications);
         assert_eq!(settings.memory_areas, MemoryAreas::DEFAULT.bits());
+        assert_eq!(settings.memory_areas, 43);
         assert_eq!(settings.language, "auto");
         assert!(settings.cleanup_hotkey_enabled);
         assert_eq!(
@@ -386,6 +445,8 @@ mod tests {
                 memory_load_after: 49,
                 available_before: 1,
                 available_after: 2,
+                failure_details: Vec::new(),
+                memory_sample_available: true,
             });
         }
 

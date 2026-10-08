@@ -187,14 +187,30 @@ impl MemoryCleanerApp {
     }
 
     pub(crate) fn queue_settings_save(&mut self, cx: &mut Context<Self>) {
-        self.settings_save_gen = self.settings_save_gen.wrapping_add(1);
-        let generation = self.settings_save_gen;
+        use std::sync::atomic::Ordering;
+        let generation = self
+            .settings_save_gen
+            .fetch_add(1, Ordering::Relaxed)
+            .wrapping_add(1);
 
         cx.spawn(async move |this, cx| {
             Timer::after(SETTINGS_SAVE_DEBOUNCE).await;
-            let _ = this.update(cx, |app, _| {
-                if app.settings_save_gen == generation {
-                    app.settings.save();
+            let Ok(Some((settings, current))) = this.update(cx, |app, _| {
+                (app.settings_save_gen.load(Ordering::Relaxed) == generation)
+                    .then(|| (app.settings.clone(), app.settings_save_gen.clone()))
+            }) else {
+                return;
+            };
+            let result =
+                smol::unblock(move || settings.try_save_if_current(Some((&current, generation))))
+                    .await;
+            let _ = this.update(cx, |app, cx| {
+                if app.settings_save_gen.load(Ordering::Relaxed) == generation {
+                    app.settings_save_failed = result.is_err();
+                    if let Err(error) = result {
+                        crate::log_msg(&format!("[settings] save failed: {error}"));
+                    }
+                    cx.notify();
                 }
             });
         })
@@ -322,13 +338,19 @@ impl MemoryCleanerApp {
         crate::log_msg(&format!("[close] hide_to_tray destroy ok source={source}"));
     }
 
-    /// Handle a close request. Returns `true` when the app should quit entirely.
+    /// Invalidate pending snapshots before synchronously saving the latest settings.
+    pub fn save_settings_on_close(&self) {
+        self.settings_save_gen
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.settings.save();
+    }
+
     pub fn request_close(&mut self, source: &str, window: &mut Window) -> bool {
         crate::log_msg(&format!(
             "[close] request_close source={source} close_to_tray={}",
             self.settings.close_to_notification_area
         ));
-        self.settings.save();
+        self.save_settings_on_close();
         if self.settings.close_to_notification_area {
             self.destroy_window_to_tray(window, source);
             self.sync_tray();

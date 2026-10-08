@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Memory Cleaner is a **Windows-only** GUI memory-optimization tool written in Rust with the **GPUI** framework (from the Zed editor). It frees physical and virtual memory by calling Windows NT memory-management APIs (`NtSetSystemInformation`, `SetSystemFileCacheSize`, etc.), runs as a system-tray resident app, and requires administrator privileges for most operations. Licensed MIT.
+Memory Cleaner is a **Windows-only** GUI memory-optimization tool written in Rust with the **GPUI** framework (from the Zed editor). It monitors physical and system committed memory and requests memory reclamation through Windows NT memory-management APIs (`NtSetSystemInformation`, `SetSystemFileCacheSize`, etc.), runs as a system-tray resident app, and requires administrator privileges for most operations. Licensed MIT.
 
 ## Architecture & Data Flow
 
@@ -15,7 +15,7 @@ main.rs → wake-signal check → ensure_elevated() → wake-signal retry → si
  ├─ auto_cleanup.rs (auto-cleanup trigger policy: low-memory notifications, threshold decisions, cooldown)
  ├─ log.rs (optional App.log output, hourly retention, malformed-content bounds, I/O diagnostics)
  ├─ locale.rs (rust-i18n locale apply, list separator, lang-id mapping)
- ├─ memory.rs (GlobalMemoryStatusEx → MemoryStatus)
+ ├─ memory.rs (GlobalMemoryStatusEx + GetPerformanceInfo → physical and system commit status)
  ├─ optimize.rs (MemoryAreas bitflags → NT cache-purge steps)
  ├─ settings.rs (TOML persistence at %APPDATA%\MemoryCleaner\settings.toml)
  ├─ privileges.rs (SeProfileSingleProcessPrivilege, SeIncreaseQuotaPrivilege)
@@ -75,9 +75,9 @@ cargo run --release
 just clean # cargo clean + remove dist/
 ```
 
-**CI:** `.github/workflows/build.yml` runs only when a `v*` tag is pushed. The tag must match `Cargo.toml`'s version; the workflow checks formatting, runs Clippy and tests, builds the Windows release binary, extracts that version's Chinese and English sections from `docs/CHANGELOG.md`, then creates a GitHub Release with those notes and `MemoryCleaner.exe`.
+**CI:** `.github/workflows/build.yml` checks pull requests to `main`, pushes to `main`, and `v*` tags. Only tags publish a release. The tag must match `Cargo.toml`'s version; the workflow checks formatting, runs Clippy and tests, builds the Windows release binary, extracts that version's Chinese and English sections from `docs/CHANGELOG.md`, then creates a GitHub Release with those notes and `MemoryCleaner.exe`.
 
-**Tests:** `just test` / `cargo test` — 89 unit tests in `src/` plus 2 integration tests in `tests/settings_persistence.rs`.
+**Tests:** `just test` / `cargo test` — unit tests in `src/` plus integration tests in `tests/settings_persistence.rs`; use the test output for current counts.
 
 ## Code Conventions & Common Patterns
 
@@ -87,7 +87,7 @@ just clean # cargo clean + remove dist/
 - **Unsafe / FFI:** `unsafe` is concentrated in `src/win32/` (NT API calls, privilege token manipulation, hotkey message loop) and `src/optimize.rs` (NtSetSystemInformation). Each unsafe block is narrowly scoped.
 - **Naming:** Standard Rust conventions — `snake_case` functions/variables, `PascalCase` types, `SCREAMING_SNAKE_CASE` constants. Win32 wrappers match the original API names.
 - **State management:** `MemoryCleanerApp` in `app.rs` owns all application state (settings, memory stats, optimization progress, hotkey recording). UI reads from this state via GPUI's `Render` trait.
-- **Settings persistence:** TOML file at `%APPDATA%\MemoryCleaner\settings.toml`, written atomically (temp file + rename), debounced 300 ms.
+- **Settings persistence:** TOML file at `%APPDATA%\MemoryCleaner\settings.toml`, written atomically (temp file + rename), debounced 300 ms. Debounced writes run through `smol::unblock` with serialization and generation checks; shutdown invalidates pending snapshots and saves synchronously. Save failures appear in the settings dialog.
 - **Bitflags:** `MemoryAreas` in `optimize.rs` uses the `bitflags` crate to represent configurable cleaning regions.
 - **Embedded assets:** `App.ico` compiled into the binary via `winres` (`build.rs`); `App.png` embedded via `include_bytes!` in `tray.rs`.
 - **Debug logging:** `log_msg()` always writes to `OutputDebugString` (and stderr in debug builds). `log::write()` additionally appends to `App.log` beside the executable when `settings.debug_logging` is true. Retention runs on the first write after enabling and at most hourly thereafter: timestamped lines older than 7 days are removed, malformed content is capped at 256 lines / 64 KiB, and file I/O failures are reported through the debug stream.
@@ -119,7 +119,7 @@ just clean # cargo clean + remove dist/
 | `docs/CHANGELOG.md` | Version changelog (final diff vs previous release only) |
 | `Cargo.toml` | Dependencies, features, release profile (LTO, strip, abort-on-panic) |
 | `build.rs` | Icon embedding via `winres` |
-| `justfile` | fmt / check / build / clean tasks (just task runner) |
+| `.justfile` | fmt / check / build / clean tasks (just task runner) |
 
 ## UI Layout Notes
 

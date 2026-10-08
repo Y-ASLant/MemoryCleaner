@@ -382,9 +382,9 @@ mod tests {
     fn format_memory_tooltip_includes_virtual_memory_zh() {
         with_locale("zh-CN", || {
             let physical = section("物理内存", 46.0);
-            let virtual_mem = section("虚拟内存", 86.0);
+            let virtual_mem = section("提交内存", 86.0);
             let tooltip = format_memory_tooltip(&physical, &virtual_mem);
-            assert_eq!(tooltip, "物理内存: 46%\n虚拟内存: 86%");
+            assert_eq!(tooltip, "物理内存: 46%\n提交内存: 86%");
         });
     }
 
@@ -394,7 +394,7 @@ mod tests {
             let physical = section("Physical Memory", 46.0);
             let virtual_mem = section("Virtual Memory", 86.0);
             let tooltip = format_memory_tooltip(&physical, &virtual_mem);
-            assert_eq!(tooltip, "Physical: 46%\nVirtual: 86%");
+            assert_eq!(tooltip, "Physical: 46%\nCommitted: 86%");
         });
     }
 

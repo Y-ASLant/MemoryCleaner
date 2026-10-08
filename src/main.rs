@@ -66,7 +66,7 @@ fn main() {
                 .try_global::<AppEntityHolder>()
                 .map(|holder| holder.0.clone());
             if let Some(entity) = entity {
-                entity.update(cx, |app, _| app.settings.save());
+                entity.update(cx, |app, _| app.save_settings_on_close());
             }
             cx.quit();
         });

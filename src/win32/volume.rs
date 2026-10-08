@@ -97,7 +97,7 @@ pub struct VolumeFlushReport {
 
 impl VolumeFlushReport {
     pub fn is_success(&self) -> bool {
-        self.succeeded > 0 || self.failed.is_empty()
+        self.failed.is_empty()
     }
 
     pub fn record(&mut self, label: &str, result: Result<()>) {
@@ -142,7 +142,7 @@ pub fn flush_all_volume_caches() -> Result<VolumeFlushReport> {
     Ok(flush_volume_session(&session, |_, _, _| {}))
 }
 
-/// 将刷写报告转为步骤结果：至少 1 个卷成功，或无卷可刷时视为成功。
+/// 将刷写报告转为步骤结果：所有目标成功，或无卷可刷时视为成功。
 pub fn complete_volume_flush(report: VolumeFlushReport) -> Result<()> {
     log_volume_flush_summary(&report);
 
@@ -324,10 +324,13 @@ fn parse_volume_symbolic_links(buffer: &[u8]) -> Result<Vec<Vec<u16>>> {
             continue;
         }
 
-        let name_ptr = buffer[name_offset..name_end].as_ptr() as *const u16;
-        let char_count = name_bytes / 2;
-        let chars = unsafe { std::slice::from_raw_parts(name_ptr, char_count) };
-        links.push(chars.to_vec());
+        let chars = buffer[name_offset..name_end]
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|bytes| u16::from_le_bytes(*bytes))
+            .collect();
+        links.push(chars);
     }
 
     Ok(links)
@@ -447,6 +450,23 @@ mod tests {
     }
 
     #[test]
+    fn parse_mount_points_accepts_unaligned_utf16() {
+        let mut buffer = sample_mount_points_buffer();
+        let entry_offset = size_of::<MountMgrMountPointsHeader>();
+        let old_offset =
+            u32::from_le_bytes(buffer[entry_offset..entry_offset + 4].try_into().unwrap()) as usize;
+        buffer.insert(old_offset, 0);
+        let len = buffer.len() as u32;
+        buffer[..4].copy_from_slice(&len.to_le_bytes());
+        buffer[entry_offset..entry_offset + 4]
+            .copy_from_slice(&((old_offset + 1) as u32).to_le_bytes());
+        assert_eq!(
+            parse_volume_symbolic_links(&buffer).unwrap(),
+            vec![volume_guid_wide()]
+        );
+    }
+
+    #[test]
     fn parse_mount_points_rejects_inconsistent_size() {
         let mut buffer = sample_mount_points_buffer();
         let inflated_size = (buffer.len() as u32).saturating_add(8);
@@ -457,11 +477,18 @@ mod tests {
     #[test]
     fn volume_flush_report_success_rules() {
         assert!(
-            VolumeFlushReport {
+            !VolumeFlushReport {
                 succeeded: 1,
                 failed: vec!["Volume{x}".into()],
             }
             .is_success()
+        );
+        assert!(
+            complete_volume_flush(VolumeFlushReport {
+                succeeded: 1,
+                failed: vec!["Volume{x}".into()],
+            })
+            .is_err()
         );
         assert!(VolumeFlushReport::default().is_success());
         assert!(

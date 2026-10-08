@@ -361,10 +361,18 @@ pub fn render_window_behavior_dialog(
     let settings = state.settings.clone();
     let startup_pending = state.startup_setting_pending;
     let startup_failed = state.startup_setting_failed;
+    let save_failed = state.settings_save_failed;
 
     v_flex()
         .w_full()
         .gap(px(2.))
+        .when(save_failed, |view| {
+            view.child(
+                Label::new(t!("settings.save_failed").to_string())
+                    .text_sm()
+                    .text_color(cx.theme().danger),
+            )
+        })
         .child(render_language_selector(&weak, muted, foreground, cx))
         .child(render_cleanup_hotkey_row(&weak, muted, foreground, cx))
         .child(switch_row_app(

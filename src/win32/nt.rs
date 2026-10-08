@@ -32,19 +32,15 @@ pub struct SystemFileCacheInformation64 {
     pub maximum_working_set: usize,
     pub current_size_in_pages: usize,
     pub peak_size_in_pages: usize,
-    pub minimum_working_set_size: usize,
-    pub maximum_working_set_size: usize,
-    pub unused1: u32,
-    pub unused2: u32,
-    pub unused3: u32,
-    pub unused4: u32,
+    pub transition_repurpose_count: u32,
+    pub flags: u32,
 }
 
 #[repr(C)]
 #[derive(Clone, Copy, Default)]
 pub struct MemoryCombineInformationEx {
     pub handle: usize,
-    pub pages_combined: u32,
+    pub pages_combined: usize,
     pub flags: u32,
 }
 
@@ -110,6 +106,33 @@ unsafe extern "system" {
     ) -> i32;
 
     fn NtFlushBuffersFile(file_handle: HANDLE, io_status_block: *mut IoStatusBlock) -> i32;
+}
+
+#[cfg(all(test, target_pointer_width = "64"))]
+mod tests {
+    use super::*;
+    use std::mem::offset_of;
+
+    #[test]
+    fn file_cache_information_matches_x64_abi() {
+        assert_eq!(size_of::<SystemFileCacheInformation64>(), 64);
+        assert_eq!(
+            offset_of!(SystemFileCacheInformation64, minimum_working_set),
+            24
+        );
+        assert_eq!(
+            offset_of!(SystemFileCacheInformation64, transition_repurpose_count),
+            56
+        );
+        assert_eq!(offset_of!(SystemFileCacheInformation64, flags), 60);
+    }
+
+    #[test]
+    fn combine_information_matches_x64_abi() {
+        assert_eq!(size_of::<MemoryCombineInformationEx>(), 24);
+        assert_eq!(offset_of!(MemoryCombineInformationEx, pages_combined), 8);
+        assert_eq!(offset_of!(MemoryCombineInformationEx, flags), 16);
+    }
 }
 
 fn nt_status_to_result(status: i32, context: &str) -> Result<()> {

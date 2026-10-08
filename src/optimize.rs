@@ -9,7 +9,13 @@ use crate::win32::nt::{
     nt_set_system_information,
 };
 
-type StepPlan = Vec<(String, OptimizeStepFn)>;
+pub struct PlannedStep {
+    pub area: MemoryAreas,
+    pub label: String,
+    pub run: OptimizeStepFn,
+}
+
+type StepPlan = Vec<PlannedStep>;
 
 pub type OptimizeStepFn = Box<dyn Fn() -> Result<()> + Send>;
 
@@ -104,7 +110,11 @@ pub fn step_plan(areas: MemoryAreas, excluded_processes: &[String]) -> Result<St
                 MemoryAreas::MODIFIED_FILE_CACHE => Box::new(optimize_modified_file_cache),
                 _ => unreachable!("all defined MemoryAreas variants in OPTIMIZE_STEPS are covered"),
             };
-            (label, run)
+            PlannedStep {
+                area: step.area,
+                label,
+                run,
+            }
         })
         .collect())
 }
@@ -142,7 +152,7 @@ fn optimize_system_file_cache() -> Result<()> {
     enable_privilege("SeIncreaseQuotaPrivilege")
         .context("System File Cache requires SeIncreaseQuotaPrivilege")?;
 
-    let cache_info = SystemFileCacheInformation64 {
+    let mut cache_info = SystemFileCacheInformation64 {
         minimum_working_set: usize::MAX,
         maximum_working_set: usize::MAX,
         ..Default::default()
@@ -151,7 +161,7 @@ fn optimize_system_file_cache() -> Result<()> {
     unsafe {
         nt_set_system_information(
             InfoClass::FileCache,
-            &cache_info as *const _ as *mut _,
+            (&raw mut cache_info).cast(),
             std::mem::size_of::<SystemFileCacheInformation64>() as u32,
         )
     }
@@ -187,12 +197,12 @@ fn optimize_combined_page_list() -> Result<()> {
     enable_privilege("SeProfileSingleProcessPrivilege")
         .context("Combined Page List requires SeProfileSingleProcessPrivilege")?;
 
-    let combine_info = MemoryCombineInformationEx::default();
+    let mut combine_info = MemoryCombineInformationEx::default();
 
     unsafe {
         nt_set_system_information(
             InfoClass::CombinePhysicalMemory,
-            &combine_info as *const _ as *mut _,
+            (&raw mut combine_info).cast(),
             std::mem::size_of::<MemoryCombineInformationEx>() as u32,
         )
     }
@@ -222,7 +232,7 @@ mod tests {
         with_locale("zh-CN", || {
             let areas = MemoryAreas::MODIFIED_FILE_CACHE | MemoryAreas::WORKING_SET;
             let plan = step_plan(areas, &[]).expect("plan");
-            let labels: Vec<_> = plan.into_iter().map(|(label, _)| label).collect();
+            let labels: Vec<_> = plan.into_iter().map(|step| step.label).collect();
             assert_eq!(labels, vec!["工作集", "已修改文件"]);
         });
     }
@@ -232,7 +242,7 @@ mod tests {
         with_locale("en", || {
             let areas = MemoryAreas::MODIFIED_FILE_CACHE | MemoryAreas::WORKING_SET;
             let plan = step_plan(areas, &[]).expect("plan");
-            let labels: Vec<_> = plan.into_iter().map(|(label, _)| label).collect();
+            let labels: Vec<_> = plan.into_iter().map(|step| step.label).collect();
             assert_eq!(labels, vec!["Working Set", "Modified File Cache"]);
         });
     }

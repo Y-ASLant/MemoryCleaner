@@ -1,5 +1,6 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use gpui_kit::component::scroll::ScrollableElement;
 use gpui_kit::component::{ActiveTheme, Icon, Sizable, h_flex, label::Label, v_flex};
 use gpui_kit::*;
 use rust_i18n::t;
@@ -65,9 +66,21 @@ fn detail(entry: &CleanupHistoryEntry) -> String {
         selected = entry.selected_areas.count_ones().to_string(),
         completed = entry.completed_count.to_string(),
         failed = entry.failed_count.to_string(),
-        before = entry.memory_load_before.to_string(),
-        after = entry.memory_load_after.to_string(),
-        available = available_delta(entry.available_before, entry.available_after),
+        before = if entry.memory_sample_available {
+            entry.memory_load_before.to_string()
+        } else {
+            "—".into()
+        },
+        after = if entry.memory_sample_available {
+            entry.memory_load_after.to_string()
+        } else {
+            "—".into()
+        },
+        available = if entry.memory_sample_available {
+            available_delta(entry.available_before, entry.available_after)
+        } else {
+            "—".into()
+        },
         duration = format!("{:.1}s", entry.duration_millis as f64 / 1_000.0),
     )
     .to_string()
@@ -109,7 +122,12 @@ fn history_entry(index: usize, entry: &CleanupHistoryEntry, cx: &App) -> impl In
                             Label::new(detail(entry))
                                 .text_xs()
                                 .text_color(theme.muted_foreground),
-                        ),
+                        )
+                        .children(entry.failure_details.iter().map(|detail| {
+                            Label::new(detail.clone())
+                                .text_xs()
+                                .text_color(theme.muted_foreground)
+                        })),
                 ),
         )
 }
@@ -141,6 +159,8 @@ pub fn render_cleanup_history_dialog(
     div()
         .id("cleanup-history-list")
         .w_full()
+        .max_h(px(400.))
+        .overflow_y_scrollbar()
         .child(
             v_flex().w_full().gap_2().children(
                 history

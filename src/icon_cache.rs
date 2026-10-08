@@ -5,18 +5,20 @@ use std::os::windows::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 
 use crate::win32::handle::OwnedRegistryKey;
+use windows::Win32::Foundation::{ERROR_FILE_NOT_FOUND, ERROR_PATH_NOT_FOUND};
 use windows::Win32::Storage::FileSystem::{
     FILE_ATTRIBUTE_HIDDEN, FILE_ATTRIBUTE_READONLY, FILE_ATTRIBUTE_SYSTEM,
     FILE_FLAGS_AND_ATTRIBUTES, GetFileAttributesW, INVALID_FILE_ATTRIBUTES, SetFileAttributesW,
 };
 use windows::Win32::System::Registry::{
-    HKEY, HKEY_CLASSES_ROOT, KEY_SET_VALUE, RegDeleteValueW, RegOpenKeyExW,
+    HKEY, HKEY_CURRENT_USER, KEY_SET_VALUE, RegDeleteValueW, RegOpenKeyExW,
 };
 use windows::Win32::UI::Shell::{SHCNE_ASSOCCHANGED, SHCNF_IDLIST, SHChangeNotify};
+use windows::Win32::UI::WindowsAndMessaging::GetShellWindow;
 use windows::core::PCWSTR;
 
 const TRAY_SUBKEY: &str =
-    "Local Settings\\Software\\Microsoft\\Windows\\CurrentVersion\\TrayNotify";
+    "Software\\Classes\\Local Settings\\Software\\Microsoft\\Windows\\CurrentVersion\\TrayNotify";
 
 pub struct RefreshOutcome {
     pub explorer_restarted: bool,
@@ -44,7 +46,11 @@ pub fn refresh() -> RefreshOutcome {
         };
     };
 
-    clean_files(&mut failures);
+    if !crate::win32::process::is_process_running("explorer.exe") {
+        clean_files(&mut failures);
+    } else {
+        failures.push(t!("icon_cache.log.explorer_exit_timeout").to_string());
+    }
     let explorer_restarted = restart_explorer(&mut failures);
     RefreshOutcome {
         explorer_restarted,
@@ -93,8 +99,24 @@ fn clean_files(failures: &mut Vec<String>) {
 fn restart_explorer(failures: &mut Vec<String>) -> bool {
     match std::process::Command::new("explorer.exe").spawn() {
         Ok(_) => {
-            notify_shell();
-            true
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+            loop {
+                if !unsafe { GetShellWindow() }.is_invalid() {
+                    notify_shell();
+                    return true;
+                }
+                if std::time::Instant::now() >= deadline {
+                    failures.push(
+                        t!(
+                            "icon_cache.log.restart_explorer_failed",
+                            error = "desktop recovery timed out"
+                        )
+                        .to_string(),
+                    );
+                    return false;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(100));
+            }
         }
         Err(e) => {
             failures.push(
@@ -157,20 +179,23 @@ fn delete_reg_value(subkey: &str, value: &str, failures: &mut Vec<String>) {
     unsafe {
         let subkey_wide = to_wide(subkey);
         let mut key = HKEY::default();
-        if RegOpenKeyExW(
-            HKEY_CLASSES_ROOT,
+        let status = RegOpenKeyExW(
+            HKEY_CURRENT_USER,
             PCWSTR(subkey_wide.as_ptr()),
             Some(0),
             KEY_SET_VALUE,
             &mut key,
-        )
-        .is_err()
-        {
+        );
+        if status.is_err() {
+            if status != ERROR_FILE_NOT_FOUND && status != ERROR_PATH_NOT_FOUND {
+                failures.push(format!("{subkey}: {status:?}"));
+            }
             return;
         }
         let key = OwnedRegistryKey::from_raw(key);
         let value_wide = to_wide(value);
-        if RegDeleteValueW(key.raw(), PCWSTR(value_wide.as_ptr())).is_err() {
+        let status = RegDeleteValueW(key.raw(), PCWSTR(value_wide.as_ptr()));
+        if status.is_err() && status != ERROR_FILE_NOT_FOUND {
             failures.push(
                 t!(
                     "icon_cache.log.delete_reg_value_failed",

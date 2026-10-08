@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use rust_i18n::t;
+use windows::Win32::System::ProcessStatus::{GetPerformanceInfo, PERFORMANCE_INFORMATION};
 use windows::Win32::System::SystemInformation::{GlobalMemoryStatusEx, MEMORYSTATUSEX};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -75,12 +76,24 @@ impl MemoryStatus {
             GlobalMemoryStatusEx(&mut status).context("GlobalMemoryStatusEx failed")?;
         }
 
+        let mut performance = PERFORMANCE_INFORMATION::default();
+        unsafe {
+            GetPerformanceInfo(
+                &mut performance,
+                std::mem::size_of::<PERFORMANCE_INFORMATION>() as u32,
+            )
+            .context("GetPerformanceInfo failed")?;
+        }
+        let total_commit =
+            (performance.CommitLimit as u64).saturating_mul(performance.PageSize as u64);
+        let used_commit =
+            (performance.CommitTotal as u64).saturating_mul(performance.PageSize as u64);
         Ok(Self {
             memory_load: status.dwMemoryLoad,
             total_phys: status.ullTotalPhys,
             avail_phys: status.ullAvailPhys,
-            total_page_file: status.ullTotalPageFile,
-            avail_page_file: status.ullAvailPageFile,
+            total_page_file: total_commit,
+            avail_page_file: total_commit.saturating_sub(used_commit),
         })
     }
 
@@ -113,6 +126,15 @@ mod tests {
             avail: 4 * 1024 * 1024 * 1024,
             used_percent,
         }
+    }
+
+    #[test]
+    fn query_reads_physical_and_system_commit_memory() {
+        let status = MemoryStatus::query().expect("read memory status");
+        assert!(status.total_phys > 0);
+        assert!(status.avail_phys <= status.total_phys);
+        assert!(status.total_page_file > 0);
+        assert!(status.avail_page_file <= status.total_page_file);
     }
 
     #[test]

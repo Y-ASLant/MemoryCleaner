@@ -73,6 +73,14 @@ fn settings_save_uses_atomic_replace() {
 }
 
 #[test]
+fn settings_save_reports_directory_errors() {
+    with_temp_appdata(|app_data| {
+        fs::write(app_data.join("MemoryCleaner"), "blocks config directory").unwrap();
+        assert!(Settings::default().try_save().is_err());
+    });
+}
+
+#[test]
 fn settings_save_replaces_existing_file() {
     with_temp_appdata(|_| {
         Settings::default().save();

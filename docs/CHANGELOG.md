@@ -9,7 +9,12 @@
 
 ### 变更
 
-- **UI 依赖**：升级 `gpui-kit` 至 0.7.0；窗口改用新版 Root 托管内容与弹窗，保留 Windows 10 方角主题。
+- **UI 依赖**：升级 `gpui-kit` 至 0.7.1；窗口改用新版 Root 托管内容与弹窗，保留 Windows 10 方角主题。
+- **清理结果**：修正 x64 NT 内存结构布局；清理前后即时采样，采样失败时不显示误导性释放量；卷刷写存在失败时反馈到结果和历史详情。
+- **内存监控**：提交内存使用系统级提交总量与上限，进程排除仅影响工作集清理。
+- **图标缓存刷新**：清理当前用户的托盘缓存注册表项，并确认 Explorer 桌面恢复。
+- **配置保存**：防抖保存移至后台串行执行，过期快照不会覆盖新设置；保存失败在设置对话框中提示。
+- **开发检查**：主分支推送与拉取请求也执行构建检查；文档同步默认清理位掩码 43 和任务文件名 `.justfile`。
 
 ## [1.1.1] - 2026-09-17
 
@@ -166,7 +171,12 @@ Records Memory Cleaner releases. Format follows [Keep a Changelog](https://keepa
 
 ### Changed
 
-- **UI dependency** — Upgraded `gpui-kit` to 0.7.0; windows use the new Root to host content and dialogs while retaining square-corner styling on Windows 10.
+- **UI dependency** — Upgraded `gpui-kit` to 0.7.1; windows use the new Root to host content and dialogs while retaining square-corner styling on Windows 10.
+- **Cleanup results** — Corrected x64 NT memory structure layouts; sample memory immediately before and after cleanup and suppress misleading effects when sampling fails; volume flush failures appear in results and history details.
+- **Memory monitoring** — Committed memory uses system-wide commit usage and limits; process exclusions apply only to Working Set cleanup.
+- **Icon cache refresh** — Clean the current user's tray registry cache and confirm Explorer desktop recovery.
+- **Configuration saving** — Debounced writes run serially in the background; obsolete snapshots cannot overwrite newer settings, and save failures appear in the settings dialog.
+- **Development checks** — Main-branch pushes and pull requests also run build checks; documentation reflects the default cleanup bitmask of 43 and the `.justfile` task file.
 
 ## [1.1.1] - 2026-09-17
 

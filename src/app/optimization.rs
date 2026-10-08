@@ -18,7 +18,7 @@ impl MemoryCleanerApp {
                 }
             }
             "quit" => {
-                self.settings.save();
+                self.save_settings_on_close();
                 cx.quit();
             }
             _ => {}
@@ -70,7 +70,7 @@ impl MemoryCleanerApp {
         run: optimize::OptimizeStepFn,
         step_index: usize,
         total_steps: usize,
-    ) -> bool {
+    ) -> Result<()> {
         let step_base = step_index as f32 / total_steps as f32;
         let step_span = 1.0 / total_steps as f32;
 
@@ -94,7 +94,7 @@ impl MemoryCleanerApp {
         });
 
         Timer::after(Duration::from_millis(100)).await;
-        result.is_ok()
+        result
     }
 
     async fn run_modified_file_cache_step(
@@ -102,7 +102,7 @@ impl MemoryCleanerApp {
         cx: &mut AsyncApp,
         step_index: usize,
         total_steps: usize,
-    ) -> bool {
+    ) -> Result<()> {
         use std::sync::Arc;
 
         use crate::win32::volume::{VolumeFlushSession, complete_volume_flush};
@@ -118,7 +118,7 @@ impl MemoryCleanerApp {
                     app.set_optimize_percent((step_base + step_span) * 100.0);
                     cx.notify();
                 });
-                return true;
+                return Ok(());
             }
             Ok(session) => Arc::new(session),
             Err(error) => {
@@ -130,7 +130,7 @@ impl MemoryCleanerApp {
                     app.set_optimize_percent((step_base + step_span) * 100.0);
                     cx.notify();
                 });
-                return false;
+                return Err(error);
             }
         };
 
@@ -167,7 +167,7 @@ impl MemoryCleanerApp {
             });
         }
 
-        complete_volume_flush(report).is_ok()
+        complete_volume_flush(report)
     }
 
     pub fn run_auto_cleanup(&mut self, source: AutoCleanupSource, cx: &mut Context<Self>) {
@@ -272,7 +272,7 @@ impl MemoryCleanerApp {
         source: crate::settings::CleanupHistorySource,
         cx: &mut Context<Self>,
     ) {
-        if self.is_optimizing {
+        if self.is_busy() {
             return;
         }
 
@@ -287,8 +287,6 @@ impl MemoryCleanerApp {
             }
         };
 
-        let avail_before = self.physical.avail;
-        let memory_load_before = self.physical.used_percent.round() as u32;
         let selected_areas = areas.bits();
         let started_at = Instant::now();
         let total = steps.len();
@@ -310,35 +308,63 @@ impl MemoryCleanerApp {
                 .await;
             }
 
+            let memory_before = MemoryStatus::query()
+                .map_err(|error| {
+                    crate::log_msg(&format!("[optimize] before sample failed: {error:#}"));
+                    error
+                })
+                .ok();
             let mut completed: Vec<String> = Vec::new();
             let mut errors: Vec<String> = Vec::new();
+            let mut failure_details = Vec::new();
 
-            for (index, (name, run)) in steps.into_iter().enumerate() {
-                let ok = if name == MemoryAreas::MODIFIED_FILE_CACHE.label() {
+            for (index, step) in steps.into_iter().enumerate() {
+                let name = step.label;
+                let result = if step.area == MemoryAreas::MODIFIED_FILE_CACHE {
                     Self::run_modified_file_cache_step(this.clone(), cx, index, total).await
                 } else {
-                    Self::run_optimize_step(this.clone(), cx, name.clone(), run, index, total).await
+                    Self::run_optimize_step(this.clone(), cx, name.clone(), step.run, index, total)
+                        .await
                 };
-
-                if ok {
-                    completed.push(name.clone());
-                    crate::log::write(&format!("[optimize] {name} succeeded"));
-                } else {
-                    errors.push(name);
+                match result {
+                    Ok(()) => {
+                        completed.push(name.clone());
+                        crate::log::write(&format!("[optimize] {name} succeeded"));
+                    }
+                    Err(error) => {
+                        let detail = format!("{name}: {error:#}");
+                        failure_details.push(detail);
+                        errors.push(name);
+                    }
                 }
             }
+            let memory_after = MemoryStatus::query()
+                .map_err(|error| {
+                    crate::log_msg(&format!("[optimize] after sample failed: {error:#}"));
+                    error
+                })
+                .ok();
+            let memory_sample_available = memory_before.is_some() && memory_after.is_some();
+            let (avail_before, memory_load_before) = memory_before
+                .map(|sample| (sample.avail_phys, sample.memory_load))
+                .unwrap_or_default();
+            let (avail_after, memory_load_after) = memory_after
+                .map(|sample| (sample.avail_phys, sample.memory_load))
+                .unwrap_or_default();
 
             let notification = this
                 .update(cx, |app, cx| {
                     let _ = app.refresh_memory();
-                    let avail_after = app.physical.avail;
-                    let memory_load_after = app.physical.used_percent.round() as u32;
-                    let effect_detail = format_cleanup_effect(
-                        avail_before,
-                        avail_after,
-                        memory_load_before,
-                        memory_load_after,
-                    );
+                    let effect_detail = if memory_sample_available {
+                        format_cleanup_effect(
+                            avail_before,
+                            avail_after,
+                            memory_load_before,
+                            memory_load_after,
+                        )
+                    } else {
+                        t!("memory.unavailable").to_string()
+                    };
                     app.optimize_step.clear();
                     app.is_optimizing = false;
                     app.set_optimize_percent(0.0);
@@ -351,18 +377,20 @@ impl MemoryCleanerApp {
                         build_cleanup_result_message(&completed_refs, &errors_refs, "");
                     let notification_status =
                         build_cleanup_result_message(&completed_refs, &errors_refs, &effect_detail);
-                    app.settings
-                        .record_cleanup(crate::settings::CleanupHistoryEntry::new(
-                            source,
-                            selected_areas,
-                            completed.len() as u32,
-                            errors.len() as u32,
-                            started_at.elapsed().as_millis() as u64,
-                            memory_load_before,
-                            memory_load_after,
-                            avail_before,
-                            avail_after,
-                        ));
+                    let mut history_entry = crate::settings::CleanupHistoryEntry::new(
+                        source,
+                        selected_areas,
+                        completed.len() as u32,
+                        errors.len() as u32,
+                        started_at.elapsed().as_millis() as u64,
+                        memory_load_before,
+                        memory_load_after,
+                        avail_before,
+                        avail_after,
+                    );
+                    history_entry.failure_details = failure_details;
+                    history_entry.memory_sample_available = memory_sample_available;
+                    app.settings.record_cleanup(history_entry);
                     app.queue_settings_save(cx);
                     crate::log::write(&format!("[optimize] result: {notification_status}"));
                     app.sync_tray();
