@@ -12,6 +12,12 @@ use crate::app::MemoryCleanerApp;
 use crate::ui::layout::ICON_CONTROL_SIZE;
 use crate::version::APP_NAME;
 const TITLE_BAR_LEFT_PADDING: Pixels = px(12.);
+const DESKTOP_MONITOR_SVG: &[u8] = br#"
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <rect width="20" height="14" x="2" y="3" rx="2"/>
+  <path d="M8 21h8m-4-4v4"/>
+</svg>
+"#;
 
 struct TitleBarDragState {
     should_move: bool,
@@ -178,7 +184,7 @@ fn icon_cache_control(
         "titlebar-refresh-icon-cache",
         icon_cache_tooltip(app),
         app.is_busy(),
-        Icon::new(IconName::GalleryVerticalEnd).small(),
+        Icon::default().data(DESKTOP_MONITOR_SVG).small(),
         colors,
         app_cx,
         |app, window, cx| app.open_icon_cache_confirm_dialog(window, cx),
