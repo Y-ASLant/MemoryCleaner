@@ -7,9 +7,17 @@
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-10-09
+
 ### 新增
 
-- **系统工作集监控**：在内存圆环下方新增系统工作集卡片，标题标注历史峰值，下方显示当前大小，通过 gpui-kit Plot 显示最近 30 秒的大小折线图，时间刻度随连续采样滚动，悬停可查看对应采样时的大小与占峰值比例；托盘提示显示当前大小；统计口径参考 Mem Reduct，单项查询失败时不影响其他内存指标。
+- **系统工作集监控**：在内存圆环下方新增系统工作集卡片，标题标注历史峰值，下方显示当前大小；统计口径参考 Mem Reduct，查询失败时不影响物理内存与提交内存指标。
+- **30 秒趋势图**：通过 gpui-kit Plot 显示最近 30 秒的系统工作集大小，时间刻度随连续采样滚动；悬停显示对应采样时的大小与占峰值比例。记录仅保存在内存中，隐藏到托盘时暂停采样，采样中断后重新开始；占峰值比例不用于判断内存压力或触发自动清理。
+
+### 变更
+
+- **托盘展示与动画**：提示新增系统工作集当前大小，仅在提示文字变化时更新原生托盘；清理动画复用预生成的图标帧，减少重复图像分配。
+- **主窗口布局**：适配新增趋势卡片，统一卡片行高与高度计算，保留底部清理按钮 6px 留白；窗口折叠高度为 450px、展开高度为 826px。桌面图标缓存刷新按钮改用显示器图标。
 
 ## [1.1.2] - 2026-10-08
 
@@ -178,9 +186,17 @@ Records Memory Cleaner releases. Format follows [Keep a Changelog](https://keepa
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-10-09
+
 ### Added
 
-- **System working-set monitoring** — Added a compact card below the memory rings with the historical peak in its title, current size below it, and a gpui-kit Plot line chart for the last 30 seconds with elapsed-time labels that advance during continuous sampling. Hover values include each sample's size and percentage of its peak at the time of sampling. The tray tooltip shows the current working-set size. Uses the same metric as Mem Reduct; a failed query does not affect other memory indicators.
+- **System working-set monitoring** — Added a card below the memory rings with the historical peak in its title and current size below it. Uses the same metric as Mem Reduct; a failed query does not affect physical or committed memory readings.
+- **30-second trend chart** — A gpui-kit Plot line chart shows the last 30 seconds of system working-set size, with elapsed-time labels that advance during continuous sampling. Hover values include each sample's size and percentage of its peak at the time of sampling. Samples remain in memory only, pause while hidden to the tray, and restart after a sampling interruption. Percentage of peak does not indicate memory pressure or trigger automatic cleanup.
+
+### Changed
+
+- **Tray display and animation** — The tooltip now includes current system working-set size and updates the native tray only when its text changes. Cleanup animation reuses prebuilt icon frames to reduce repeated image allocations.
+- **Main window layout** — Accommodated the trend card, unified card line heights and height calculations, and retained 6px of padding below the cleanup button. Window heights are 450px when collapsed and 826px when expanded. The desktop icon-cache refresh button now uses a monitor icon.
 
 ## [1.1.2] - 2026-10-08
 
@@ -335,7 +351,8 @@ Since [1.0.0]: process exclusion, global cleanup hotkey (default Ctrl+Alt+C) wit
 
 Initial public release: 8 memory cleanup regions, GPUI UI, system tray, administrator elevation, settings persistence.
 
-[Unreleased]: https://github.com/Y-ASLant/MemoryCleaner/compare/v1.1.2...HEAD
+[Unreleased]: https://github.com/Y-ASLant/MemoryCleaner/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/Y-ASLant/MemoryCleaner/compare/v1.1.2...v1.2.0
 [1.1.2]: https://github.com/Y-ASLant/MemoryCleaner/compare/v1.1.1...v1.1.2
 [1.1.1]: https://github.com/Y-ASLant/MemoryCleaner/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/Y-ASLant/MemoryCleaner/compare/v1.0.7...v1.1.0
