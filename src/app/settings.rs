@@ -4,7 +4,6 @@ impl MemoryCleanerApp {
     pub fn apply_locale(&mut self, cx: &mut Context<Self>) {
         locale::apply(&self.settings);
         self.refresh_memory();
-        self.sync_anim_targets_from_sections();
         if !self.is_optimizing {
             self.optimize_status.clear();
             self.optimize_has_errors = false;

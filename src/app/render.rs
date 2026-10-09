@@ -35,36 +35,24 @@ impl Render for MemoryCleanerApp {
 
         let physical_card = memory_group_box(
             "physical-memory-card",
-            v_flex()
-                .w_full()
-                .items_center()
-                .py(px(crate::ui::memory_card::MEMORY_CARD_PY))
-                .child(render_memory_card(
-                    &self.physical,
-                    "physical-memory",
-                    true,
-                    self.anim_physical.current,
-                    self.animated_used_phys(),
-                    self.animated_avail_phys(),
-                    cx,
-                )),
+            render_memory_card(
+                &self.physical,
+                "physical-memory",
+                true,
+                self.anim_physical.current,
+                cx,
+            ),
         );
 
         let virtual_card = memory_group_box(
             "virtual-memory-card",
-            v_flex()
-                .w_full()
-                .items_center()
-                .py(px(crate::ui::memory_card::MEMORY_CARD_PY))
-                .child(render_memory_card(
-                    &self.virtual_mem,
-                    "virtual-memory",
-                    false,
-                    self.anim_virtual.current,
-                    self.animated_used_virt(),
-                    self.animated_avail_virt(),
-                    cx,
-                )),
+            render_memory_card(
+                &self.virtual_mem,
+                "virtual-memory",
+                false,
+                self.anim_virtual.current,
+                cx,
+            ),
         );
 
         let memory_row = h_flex()

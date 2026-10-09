@@ -36,7 +36,7 @@ pub use window::{
 const SETTINGS_SAVE_DEBOUNCE: Duration = Duration::from_millis(300);
 const OPTIMIZE_RESULT_DISPLAY: Duration = Duration::from_secs(5);
 const MEMORY_REFRESH_INTERVAL: Duration = Duration::from_secs(1);
-const MEMORY_INTERPOLATION_DURATION_SECS: f32 = MEMORY_REFRESH_INTERVAL.as_secs_f32();
+const MEMORY_RING_TRANSITION_SECS: f32 = 0.22;
 const fn memory_polling_enabled(window_visible: bool) -> bool {
     window_visible
 }
@@ -111,10 +111,6 @@ pub struct MemoryCleanerApp {
     anim_physical: SampledAnimatedValue,
     anim_virtual: SampledAnimatedValue,
     anim_optimize: AnimatedValue,
-    anim_used_phys: SampledAnimatedValue,
-    anim_avail_phys: SampledAnimatedValue,
-    anim_used_virt: SampledAnimatedValue,
-    anim_avail_virt: SampledAnimatedValue,
     anim_settings_expand: TimedAnimatedValue,
     anim_dirty: bool,
     /// Wall-clock of the previous interpolator tick (`None` when settled).
@@ -149,11 +145,7 @@ impl MemoryCleanerApp {
         });
 
         let phys_percent = physical.used_percent;
-        let phys_used = physical.used as f32;
-        let phys_avail = physical.avail as f32;
         let virt_percent = virtual_mem.used_percent;
-        let virt_used = virtual_mem.used as f32;
-        let virt_avail = virtual_mem.avail as f32;
 
         let system_working_set = SystemWorkingSet::query().ok();
         let mut working_set_history = WorkingSetHistory::default();
@@ -186,31 +178,9 @@ impl MemoryCleanerApp {
             startup_setting_pending: false,
             startup_setting_failed: false,
             hotkey_capture_focus: cx.focus_handle(),
-            anim_physical: SampledAnimatedValue::new(
-                phys_percent,
-                MEMORY_INTERPOLATION_DURATION_SECS,
-            ),
-            anim_virtual: SampledAnimatedValue::new(
-                virt_percent,
-                MEMORY_INTERPOLATION_DURATION_SECS,
-            ),
+            anim_physical: SampledAnimatedValue::new(phys_percent, MEMORY_RING_TRANSITION_SECS),
+            anim_virtual: SampledAnimatedValue::new(virt_percent, MEMORY_RING_TRANSITION_SECS),
             anim_optimize: AnimatedValue::new(0.0),
-            anim_used_phys: SampledAnimatedValue::new(
-                phys_used,
-                MEMORY_INTERPOLATION_DURATION_SECS,
-            ),
-            anim_avail_phys: SampledAnimatedValue::new(
-                phys_avail,
-                MEMORY_INTERPOLATION_DURATION_SECS,
-            ),
-            anim_used_virt: SampledAnimatedValue::new(
-                virt_used,
-                MEMORY_INTERPOLATION_DURATION_SECS,
-            ),
-            anim_avail_virt: SampledAnimatedValue::new(
-                virt_avail,
-                MEMORY_INTERPOLATION_DURATION_SECS,
-            ),
             anim_settings_expand: TimedAnimatedValue::new(0.0, SETTINGS_EXPAND_DURATION_SECS),
             anim_dirty: false,
             last_anim_tick: None,

@@ -7,6 +7,10 @@
 
 ## [Unreleased]
 
+### 变更
+
+- **内存监控动画**：物理内存与提交内存卡片的百分比、已用与可用容量直接显示最新采样值，圆环弧线仅在百分比变化时进行 220 毫秒的短过渡，完成后保持静止；从托盘恢复窗口时立即刷新并对齐当前数据，减少数字持续跳动与不必要的逐帧渲染。
+
 ## [1.2.0] - 2026-10-09
 
 ### 新增
@@ -185,6 +189,10 @@ Records Memory Cleaner releases. Format follows [Keep a Changelog](https://keepa
 
 
 ## [Unreleased]
+
+### Changed
+
+- **Memory-monitor animation** — Physical- and committed-memory cards show the latest sampled percentage and used/available capacity directly. Ring arcs use a short 220 ms transition only when the percentage changes, then remain still. Restoring the window from the tray immediately refreshes and aligns the display with current readings, reducing continuously changing numbers and unnecessary frame-by-frame rendering.
 
 ## [1.2.0] - 2026-10-09
 

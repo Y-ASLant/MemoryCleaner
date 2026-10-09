@@ -9,7 +9,7 @@ use windows::Win32::Security::{
 use windows::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
 use windows::core::PCWSTR;
 
-fn with_process_token<T>(
+pub(crate) fn with_process_token<T>(
     access: TOKEN_ACCESS_MASK,
     f: impl FnOnce(HANDLE) -> Result<T>,
 ) -> Result<T> {

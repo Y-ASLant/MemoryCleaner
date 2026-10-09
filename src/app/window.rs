@@ -156,6 +156,7 @@ impl MemoryCleanerApp {
             let opened = cx.update(|cx| {
                 gpui_kit::open_window(options, cx, |window, cx| {
                     entity.update(cx, |app, cx| {
+                        app.refresh_memory_with_animation(false);
                         app.attach_window(window, cx, false);
                         app.window_opening = false;
                     });
@@ -223,19 +224,21 @@ impl MemoryCleanerApp {
     }
 
     pub(super) fn sync_anim_targets_from_sections(&mut self) {
-        self.anim_physical.set_target(self.physical.used_percent);
-        self.anim_virtual.set_target(self.virtual_mem.used_percent);
-        self.anim_used_phys.set_target(self.physical.used as f32);
-        self.anim_avail_phys.set_target(self.physical.avail as f32);
-        self.anim_used_virt.set_target(self.virtual_mem.used as f32);
-        self.anim_avail_virt
-            .set_target(self.virtual_mem.avail as f32);
-        self.anim_dirty = true;
+        self.anim_dirty |= self.anim_physical.set_target(self.physical.used_percent)
+            | self.anim_virtual.set_target(self.virtual_mem.used_percent);
+    }
+
+    fn snap_memory_rings(&mut self) {
+        self.anim_physical.snap_to(self.physical.used_percent);
+        self.anim_virtual.snap_to(self.virtual_mem.used_percent);
     }
 
     pub fn refresh_memory(&mut self) -> bool {
+        self.refresh_memory_with_animation(true)
+    }
+
+    fn refresh_memory_with_animation(&mut self, animate: bool) -> bool {
         let system_working_set = SystemWorkingSet::query().ok();
-        let working_set_changed = self.working_set_history.current().copied() != system_working_set;
         let history_changed = self
             .working_set_history
             .record(Instant::now(), system_working_set);
@@ -246,28 +249,19 @@ impl MemoryCleanerApp {
             )
         });
 
-        let changed =
-            self.physical != physical || self.virtual_mem != virtual_mem || working_set_changed;
+        let changed = self.physical != physical || self.virtual_mem != virtual_mem;
         if changed {
             self.physical = physical;
             self.virtual_mem = virtual_mem;
+        }
+        if !animate {
+            self.snap_memory_rings();
+        } else if changed {
             self.sync_anim_targets_from_sections();
         }
         changed || history_changed
     }
 
-    pub fn animated_used_phys(&self) -> u64 {
-        self.anim_used_phys.current as u64
-    }
-    pub fn animated_avail_phys(&self) -> u64 {
-        self.anim_avail_phys.current as u64
-    }
-    pub fn animated_used_virt(&self) -> u64 {
-        self.anim_used_virt.current as u64
-    }
-    pub fn animated_avail_virt(&self) -> u64 {
-        self.anim_avail_virt.current as u64
-    }
     pub fn animated_optimize_percent(&self) -> f32 {
         self.anim_optimize.current
     }
@@ -304,8 +298,9 @@ impl MemoryCleanerApp {
             }) {
                 Ok(Ok(())) => {
                     self.window_shown = true;
-                    self.pause_memory_refresh();
+                    self.refresh_memory_with_animation(false);
                     self.start_memory_refresh(cx);
+                    cx.notify();
                     self.sync_tray();
                     return;
                 }
@@ -385,8 +380,8 @@ impl MemoryCleanerApp {
     /// Tick all active animations each frame (render-driven, vsync-paced).
     /// Returns `true` if any animation is still running (caller schedules next frame).
     pub(super) fn tick_animations(&mut self, window: &mut Window) -> bool {
-        // Sampled memory values move linearly until the next poll. Event and
-        // layout animations retain their own easing and completion behavior.
+        // Only ring geometry transitions between memory samples; numeric labels
+        // use the latest sample. Event and layout animations tick independently.
         if self.anim_dirty {
             let now = Instant::now();
             let dt = self
@@ -396,10 +391,6 @@ impl MemoryCleanerApp {
             let still = self.anim_physical.tick_dt(dt)
                 | self.anim_virtual.tick_dt(dt)
                 | self.anim_optimize.tick_dt(dt)
-                | self.anim_used_phys.tick_dt(dt)
-                | self.anim_avail_phys.tick_dt(dt)
-                | self.anim_used_virt.tick_dt(dt)
-                | self.anim_avail_virt.tick_dt(dt)
                 | self.anim_settings_expand.tick_dt(dt);
             self.anim_dirty = still;
             self.last_anim_tick = still.then_some(now);

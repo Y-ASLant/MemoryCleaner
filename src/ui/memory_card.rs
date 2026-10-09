@@ -4,11 +4,10 @@ use crate::memory::{
 use crate::ui::layout::{MEMORY_HEADER_H, MEMORY_LINE_GAP, MEMORY_SUMMARY_H};
 use rust_i18n::t;
 
+use gpui_kit::base::Progress;
 use gpui_kit::component::chart::LineChart;
-use gpui_kit::component::{
-    ActiveTheme, Icon, IconName, Sizable, Size, h_flex, label::Label, progress::ProgressCircle,
-    v_flex,
-};
+use gpui_kit::component::plot::shape::{Arc, ArcData};
+use gpui_kit::component::{ActiveTheme, Icon, IconName, Sizable, h_flex, label::Label, v_flex};
 use gpui_kit::*;
 
 pub const MEMORY_RING_SIZE: f32 = 108.;
@@ -16,10 +15,7 @@ pub const WORKING_SET_PLOT_HEIGHT: f32 = 96.;
 
 const SYSTEM_WORKING_SET_ICON: IconName = IconName::Inbox;
 
-/// ProgressCircle applies a 0.75 scale to custom sizes internally.
-const PROGRESS_CIRCLE_LAYOUT_SIZE: Pixels = px(MEMORY_RING_SIZE / 0.75);
-
-/// 卡片容器上下内边距（app 中 GroupBox 内 v_flex 使用）。
+/// 内存卡片内容的上下内边距。
 pub const MEMORY_CARD_PY: f32 = 2.;
 
 fn usage_color(percent: f32, cx: &App) -> Hsla {
@@ -50,16 +46,52 @@ fn render_usage_ring(
     } else {
         (
             animated_percent,
-            usage_color(animated_percent, cx),
+            usage_color(section.used_percent, cx),
             cx.theme().foreground,
-            format!("{}%", animated_percent.round() as u32),
+            section.percent_label(),
         )
     };
 
-    ProgressCircle::new(id)
-        .with_size(Size::Size(PROGRESS_CIRCLE_LAYOUT_SIZE))
-        .value(display_percent)
-        .color(color)
+    // Paint the controlled arc directly: ProgressCircle adds its own transition,
+    // which would lag behind the application's short ring animation.
+    let ring = canvas(
+        |bounds, _, _| bounds,
+        move |_, bounds: Bounds<Pixels>, window, _| {
+            let diameter = bounds.size.width.min(bounds.size.height).as_f32();
+            let stroke = 5.0;
+            let radius = (diameter - stroke) / 2.0;
+            let arc = Arc::new()
+                .inner_radius(radius - stroke / 2.0)
+                .outer_radius(radius + stroke / 2.0);
+            let tau = std::f32::consts::TAU;
+            arc.paint(
+                &ArcData::new(&(), 0, 100., 0., tau),
+                color.opacity(0.2),
+                &bounds,
+                window,
+            );
+            if display_percent > 0.0 {
+                arc.paint(
+                    &ArcData::new(&(), 1, display_percent, 0., display_percent / 100.0 * tau),
+                    color,
+                    &bounds,
+                    window,
+                );
+            }
+        },
+    )
+    .absolute()
+    .size_full();
+
+    Progress::new(id)
+        .value(section.used_percent)
+        .accessibility_label(section.title.clone())
+        .size(px(MEMORY_RING_SIZE))
+        .flex()
+        .items_center()
+        .justify_center()
+        .line_height(relative(1.))
+        .child(ring)
         .child(
             Label::new(label_text)
                 .text_lg()
@@ -165,8 +197,6 @@ pub fn render_memory_card(
     id: &'static str,
     is_physical: bool,
     animated_percent: f32,
-    animated_used: u64,
-    animated_avail: u64,
     cx: &App,
 ) -> impl IntoElement {
     let unavailable = section.is_unavailable();
@@ -181,18 +211,14 @@ pub fn render_memory_card(
     let summary = if unavailable {
         t!("memory.unavailable").to_string()
     } else {
-        t!(
-            "memory.used_avail",
-            used = MemoryStatus::format_bytes(animated_used),
-            avail = MemoryStatus::format_bytes(animated_avail),
-        )
-        .to_string()
+        section.usage_summary()
     };
     let muted = cx.theme().foreground.opacity(0.82);
 
     v_flex()
         .w_full()
         .items_center()
+        .py(px(MEMORY_CARD_PY))
         .gap(px(MEMORY_LINE_GAP))
         .child(
             h_flex()

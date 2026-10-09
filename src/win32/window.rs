@@ -5,7 +5,8 @@ use windows::Win32::Foundation::HWND;
 use windows::Win32::UI::WindowsAndMessaging::{
     GWL_EXSTYLE, GWL_STYLE, GetWindowLongPtrW, HWND_NOTOPMOST, HWND_TOPMOST, IsIconic,
     SHOW_WINDOW_CMD, SW_RESTORE, SW_SHOW, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
-    SetWindowLongPtrW, SetWindowPos, ShowWindow, WS_EX_APPWINDOW, WS_EX_TOOLWINDOW, WS_MAXIMIZEBOX,
+    SetWindowLongPtrW, SetWindowPos, ShowWindow, WINDOW_LONG_PTR_INDEX, WS_EX_APPWINDOW,
+    WS_EX_TOOLWINDOW, WS_MAXIMIZEBOX,
 };
 
 fn show_window(hwnd: HWND, cmd: SHOW_WINDOW_CMD) {
@@ -15,10 +16,10 @@ fn show_window(hwnd: HWND, cmd: SHOW_WINDOW_CMD) {
     }
 }
 
-fn apply_extended_style(hwnd: HWND, update: impl FnOnce(u32) -> u32) {
+fn apply_window_style(hwnd: HWND, index: WINDOW_LONG_PTR_INDEX, update: impl FnOnce(u32) -> u32) {
     unsafe {
-        let style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32;
-        SetWindowLongPtrW(hwnd, GWL_EXSTYLE, update(style) as _);
+        let style = GetWindowLongPtrW(hwnd, index) as u32;
+        SetWindowLongPtrW(hwnd, index, update(style) as _);
         let _ = SetWindowPos(
             hwnd,
             None,
@@ -44,7 +45,7 @@ pub(crate) fn hwnd_from_window(window: &Window) -> Result<HWND> {
 /// Restore the window from tray-only hidden state.
 pub fn show_from_tray(window: &Window) -> Result<()> {
     let hwnd = hwnd_from_window(window)?;
-    apply_extended_style(hwnd, |style| {
+    apply_window_style(hwnd, GWL_EXSTYLE, |style| {
         (style & !WS_EX_TOOLWINDOW.0) | WS_EX_APPWINDOW.0
     });
     let cmd = unsafe {
@@ -85,19 +86,6 @@ pub fn set_always_on_top(window: &Window, on_top: bool) -> Result<()> {
 /// Remove the maximize/restore button from the window title bar.
 pub fn remove_maximize_button(window: &Window) -> Result<()> {
     let hwnd = hwnd_from_window(window)?;
-    unsafe {
-        let style = GetWindowLongPtrW(hwnd, GWL_STYLE) as u32;
-        let new_style = style & !WS_MAXIMIZEBOX.0;
-        SetWindowLongPtrW(hwnd, GWL_STYLE, new_style as _);
-        let _ = SetWindowPos(
-            hwnd,
-            None,
-            0,
-            0,
-            0,
-            0,
-            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_FRAMECHANGED,
-        );
-    }
+    apply_window_style(hwnd, GWL_STYLE, |style| style & !WS_MAXIMIZEBOX.0);
     Ok(())
 }

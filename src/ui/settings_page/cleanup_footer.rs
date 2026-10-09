@@ -1,11 +1,26 @@
 use super::*;
 
 fn truncate_chars(text: &str, max_chars: usize) -> String {
-    if text.chars().count() <= max_chars {
-        return text.to_string();
+    let mut chars = text.chars();
+    let mut truncated: String = chars.by_ref().take(max_chars).collect();
+    if chars.next().is_some() {
+        truncated.push('…');
     }
-    let truncated: String = text.chars().take(max_chars).collect();
-    format!("{truncated}…")
+    truncated
+}
+
+#[cfg(test)]
+mod tests {
+    use super::truncate_chars;
+
+    #[test]
+    fn truncation_preserves_unicode_and_only_marks_omitted_characters() {
+        assert_eq!(truncate_chars("", 0), "");
+        assert_eq!(truncate_chars("系统缓存", 0), "…");
+        assert_eq!(truncate_chars("系统缓存", 4), "系统缓存");
+        assert_eq!(truncate_chars("系统缓存", 3), "系统缓…");
+        assert_eq!(truncate_chars("A🖥️B", 3), "A🖥️…");
+    }
 }
 
 fn cleanup_step_text(app: &MemoryCleanerApp) -> String {
@@ -42,7 +57,14 @@ fn render_cleanup_button_content(
     let color = cleanup_button_text_color(app, cx);
 
     if app.is_optimizing {
-        let line = truncate_chars(&cleanup_step_text(app), BUTTON_STATUS_TRUNCATE_CHARS);
+        let line = if app.optimize_step.is_empty() {
+            truncate_chars(
+                &t!("button.cleanup_preparing"),
+                BUTTON_STATUS_TRUNCATE_CHARS,
+            )
+        } else {
+            truncate_chars(&app.optimize_step, BUTTON_STATUS_TRUNCATE_CHARS)
+        };
         return h_flex()
             .w_full()
             .px_3()

@@ -34,10 +34,9 @@ impl AnimatedValue {
     }
 }
 
-/// Linear interpolation between periodically sampled values.
+/// Short linear transition between sampled ring values.
 ///
-/// A new sample retargets from the currently displayed value, so consecutive
-/// samples form one continuous motion instead of independent ease-out bursts.
+/// A new sample retargets from the currently displayed value without jumping.
 #[derive(Clone, Debug)]
 pub struct SampledAnimatedValue {
     pub current: f32,
@@ -60,20 +59,29 @@ impl SampledAnimatedValue {
         }
     }
 
-    pub fn set_target(&mut self, target: f32) {
+    pub fn snap_to(&mut self, value: f32) {
+        self.current = value;
+        self.target = value;
+        self.start = value;
+        self.elapsed = 0.0;
+        self.running = false;
+    }
+
+    pub fn set_target(&mut self, target: f32) -> bool {
         if self.target == target {
-            return;
+            return self.running;
+        }
+
+        if self.current == target {
+            self.snap_to(target);
+            return false;
         }
 
         self.target = target;
-        if self.current == target {
-            self.running = false;
-            return;
-        }
-
         self.start = self.current;
         self.elapsed = 0.0;
         self.running = true;
+        true
     }
 
     pub fn tick_dt(&mut self, dt: f32) -> bool {
@@ -169,13 +177,29 @@ mod tests {
     use super::*;
 
     #[test]
-    fn sampled_animation_spans_the_sampling_interval() {
-        let mut value = SampledAnimatedValue::new(0.0, 1.0);
-        value.set_target(100.0);
-        assert!(value.tick_dt(0.5));
-        assert_eq!(value.current, 50.0);
-        assert!(!value.tick_dt(0.5));
-        assert_eq!(value.current, 100.0);
+    fn sampled_animation_settles_before_the_next_sample() {
+        let mut value = SampledAnimatedValue::new(48.0, 0.22);
+        assert!(value.set_target(32.0));
+        assert!(value.tick_dt(0.11));
+        assert_eq!(value.current, 40.0);
+        assert!(!value.tick_dt(0.11));
+        assert_eq!(value.current, 32.0);
+        assert!(!value.tick_dt(0.78));
+        assert!(!value.set_target(32.0));
+    }
+
+    #[test]
+    fn sampled_animation_snap_cancels_an_in_progress_transition() {
+        let mut value = SampledAnimatedValue::new(48.0, 0.22);
+        value.set_target(32.0);
+        assert!(value.tick_dt(0.05));
+        value.snap_to(25.0);
+        assert_eq!(value.current, 25.0);
+        assert!(!value.tick_dt(0.1));
+        assert!(!value.set_target(25.0));
+        assert!(value.set_target(30.0));
+        assert!(!value.tick_dt(0.22));
+        assert_eq!(value.current, 30.0);
     }
 
     #[test]
