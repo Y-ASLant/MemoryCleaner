@@ -154,14 +154,14 @@ fn title_bar_icon_button(
     app_cx: &mut Context<MemoryCleanerApp>,
     on_click: impl Fn(&mut MemoryCleanerApp, &mut Window, &mut Context<MemoryCleanerApp>) + 'static,
 ) -> impl IntoElement {
-    Button::new(id)
+    let button = Button::new(id)
         .ghost()
         .rounded(ButtonRounded::None)
         .w(px(ICON_CONTROL_SIZE))
         .h(px(ICON_CONTROL_SIZE))
         .flex_shrink_0()
-        .disabled(disabled)
-        .tooltip(tooltip)
+        .disabled(disabled);
+    crate::ui::theme::button_tooltip(button, tooltip, app_cx)
         .on_click(app_cx.listener(move |app, _, window, cx| {
             on_click(app, window, cx);
         }))

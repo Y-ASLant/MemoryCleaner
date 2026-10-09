@@ -93,9 +93,9 @@ cargo run --release
 | 系统 | 条件 | 界面 |
 |------|------|------|
 | Windows 11 | build ≥ 22000 | 默认圆角（`radius` 6px / `radius_lg` 8px） |
-| Windows 10 | build &lt; 22000 | 直角（`radius` / `radius_lg` 为 0，关闭组件阴影） |
+| Windows 10 | build &lt; 22000 | 直角（`radius` / `radius_lg` 为 0，关闭遵循主题开关的组件阴影） |
 
-按钮、GroupBox 卡片、开关、复选框、对话框、设置面板等均跟随主题 `radius`；内存环形图保持圆形。实现见 `src/ui/theme.rs` 与 `src/win32/os.rs`。
+按钮、GroupBox 卡片、开关、复选框、对话框、设置面板等均跟随主题 `radius`；内存环形图保持圆形。普通按钮悬浮提示在 Windows 10 下关闭阴影并保留边框。当前 `gpui-component 0.7.1` 的对话框、下拉菜单与图表悬浮卡片仍自行绘制阴影，公开接口无法统一关闭；这些面板仍为直角。原生窗口阴影、托盘菜单和 Windows 通知由系统控制。实现见 `src/ui/theme.rs` 与 `src/win32/os.rs`。
 
 ## 清理区域
 

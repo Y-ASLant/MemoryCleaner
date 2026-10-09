@@ -9,6 +9,7 @@
 
 ### 变更
 
+- **Windows 10 悬浮提示**：标题栏、进程排除与清理按钮的普通悬浮提示遵循主题阴影开关，在 Windows 10 下保留直角与边框并关闭阴影；Windows 11 保留默认效果。文档明确当前组件库对话框、下拉菜单与图表悬浮卡片的阴影限制。
 - **内存监控动画**：物理内存与提交内存卡片的百分比、已用与可用容量直接显示最新采样值，圆环弧线仅在百分比变化时进行 220 毫秒的短过渡，完成后保持静止；从托盘恢复窗口时立即刷新并对齐当前数据，减少数字持续跳动与不必要的逐帧渲染。
 
 ## [1.2.0] - 2026-10-09
@@ -192,6 +193,7 @@ Records Memory Cleaner releases. Format follows [Keep a Changelog](https://keepa
 
 ### Changed
 
+- **Windows 10 tooltips** — Ordinary title-bar, process-exclusion, and cleanup-button tooltips honor the theme shadow flag, retaining square corners and borders without shadows on Windows 10. Windows 11 keeps the default appearance. Documentation clarifies the current component library's shadow limitations for dialogs, dropdown menus, and chart hover cards.
 - **Memory-monitor animation** — Physical- and committed-memory cards show the latest sampled percentage and used/available capacity directly. Ring arcs use a short 220 ms transition only when the percentage changes, then remain still. Restoring the window from the tray immediately refreshes and aligns the display with current readings, reducing continuously changing numbers and unnecessary frame-by-frame rendering.
 
 ## [1.2.0] - 2026-10-09

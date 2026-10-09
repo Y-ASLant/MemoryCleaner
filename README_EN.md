@@ -93,9 +93,9 @@ At startup, the system build number is detected via `RtlGetVersion`, and gpui-ki
 | System | Condition | UI |
 |--------|-----------|----|
 | Windows 11 | build ≥ 22000 | Default rounded corners (`radius` 6px / `radius_lg` 8px) |
-| Windows 10 | build < 22000 | Square corners (`radius` / `radius_lg` set to 0, component shadows disabled) |
+| Windows 10 | build < 22000 | Square corners (`radius` / `radius_lg` set to 0; component shadows that honor the theme flag are disabled) |
 
-Buttons, GroupBox cards, switches, checkboxes, dialogs, settings panels, etc. all follow the theme `radius`; memory ring charts remain circular. Implementation in `src/ui/theme.rs` and `src/win32/os.rs`.
+Buttons, GroupBox cards, switches, checkboxes, dialogs, settings panels, etc. all follow the theme `radius`; memory ring charts remain circular. Ordinary button tooltips disable shadows on Windows 10 while retaining their borders. In `gpui-component 0.7.1`, dialogs, dropdown menus, and chart hover cards still draw their own shadows without a public override; these surfaces remain square. Native window shadows, tray menus, and Windows notifications are controlled by the OS. Implementation in `src/ui/theme.rs` and `src/win32/os.rs`.
 
 ## Cleanup Regions
 

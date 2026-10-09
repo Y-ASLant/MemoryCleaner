@@ -36,7 +36,6 @@ fn render_process_exclusion_tag(
                 .ghost()
                 .xsmall()
                 .flex_shrink_0()
-                .tooltip(t!("settings.process_exclusion_remove").to_string())
                 .on_click(cx.listener(move |app, _, _, cx| {
                     app.remove_excluded_process(&name, cx);
                 }))
@@ -44,7 +43,11 @@ fn render_process_exclusion_tag(
             if app.is_optimizing {
                 button = button.disabled(true);
             }
-            button
+            crate::ui::theme::button_tooltip(
+                button,
+                t!("settings.process_exclusion_remove").to_string(),
+                cx,
+            )
         }))
 }
 

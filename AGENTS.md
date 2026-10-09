@@ -91,7 +91,7 @@ just clean # cargo clean + remove dist/
 - **Bitflags:** `MemoryAreas` in `optimize.rs` uses the `bitflags` crate to represent configurable cleaning regions.
 - **Embedded assets:** `App.ico` compiled into the binary via `winres` (`build.rs`); `App.png` embedded via `include_bytes!` in `tray.rs`.
 - **Debug logging:** `log_msg()` always writes to `OutputDebugString` (and stderr in debug builds). `log::write()` additionally appends to `App.log` beside the executable when `settings.debug_logging` is true. Retention runs on the first write after enabling and at most hourly thereafter: timestamped lines older than 7 days are removed, malformed content is capped at 256 lines / 64 KiB, and file I/O failures are reported through the debug stream.
-- **Platform UI chrome:** `win32::os::is_windows_11_or_later()` uses `RtlGetVersion` (build ≥ 22000 = Win11). `ui::theme::init_light_theme` sets gpui-kit `radius` / `radius_lg` to 0 and disables `shadow` on Win10 so buttons, cards, and dialogs render with square corners. Custom UI must use `cx.theme().radius`, not hardcoded `rounded(px(...))`.
+- **Platform UI chrome:** `win32::os::is_windows_11_or_later()` uses `RtlGetVersion` (build ≥ 22000 = Win11). `ui::theme::init_light_theme` sets gpui-kit `radius` / `radius_lg` to 0 and disables `shadow` on Win10 so buttons, cards, and dialogs render with square corners. Custom UI must use `cx.theme().radius`, not hardcoded `rounded(px(...))`. Button tooltips must use `ui::theme::button_tooltip` to honor the shadow flag. In gpui-component 0.7.1, Dialog, PopupMenu and chart tooltip shadows do not honor that flag and cannot be disabled through public outer-surface styling; do not claim all component shadows are disabled or edit Cargo registry sources.
 
 ## Important Files
 

@@ -124,13 +124,14 @@ pub fn render_cleanup_footer(
         button.primary()
     };
 
-    if areas_empty {
-        button.tooltip(t!("tooltip.select_areas").to_string())
+    let tooltip = if areas_empty {
+        t!("tooltip.select_areas").to_string()
     } else if app.is_optimizing {
-        button.tooltip(cleanup_step_text(app))
+        cleanup_step_text(app)
     } else if app.optimize_status.is_empty() {
-        button.tooltip(t!("tooltip.start_cleanup").to_string())
+        t!("tooltip.start_cleanup").to_string()
     } else {
-        button.tooltip(app.optimize_status.clone())
-    }
+        app.optimize_status.clone()
+    };
+    crate::ui::theme::button_tooltip(button, tooltip, cx)
 }
