@@ -123,8 +123,8 @@ just clean # cargo clean + remove dist/
 
 ## UI Layout Notes
 
-- **Window size:** fixed width 520px; collapsed height ~294px, expanded ~630px (`src/app/` + `src/ui/layout.rs`).
-- **Collapsed view:** memory cards + cleanup button.
+- **Window size:** fixed width 520px; collapsed height ~450px, expanded ~826px (`src/app/` + `src/ui/layout.rs`).
+- **Collapsed view:** physical/commit rings, a compact system working-set current/peak card, and cleanup button. System working-set sampling uses `NtQuerySystemInformation(FileCache)` independently; its peak ratio is not memory pressure.
 - **Expanded view:** adds cleanup-area checkboxes panel (`settings_page::render_settings_content`).
 - **Window behavior dialog** (always on top, close-to-tray, run at startup, debug logging, optimization notifications, cleanup hotkey + recording, language, auto-cleanup threshold): opened from title-bar gear icon; `overlay_closable(false)` — clicking the backdrop does not close it.
 - **Optimization feedback:** progress and result text render inside the cleanup button; result clears after 5 seconds (`OPTIMIZE_RESULT_DISPLAY`).

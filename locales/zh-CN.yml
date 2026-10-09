@@ -33,6 +33,24 @@ memory.physical:
 memory.virtual:
   zh-CN: "提交内存"
   en: "Committed Memory"
+memory.system_working_set:
+  zh-CN: "系统工作集"
+  en: "System Working Set"
+memory.trend_waiting:
+  zh-CN: "正在获取趋势数据…"
+  en: "Collecting trend data…"
+memory.trend_unavailable:
+  zh-CN: "系统工作集采样不可用"
+  en: "System working-set samples unavailable"
+memory.system_working_set_peak:
+  zh-CN: "系统工作集 (峰值 %{peak})"
+  en: "System Working Set (Peak %{peak})"
+memory.current:
+  zh-CN: "当前 %{current}"
+  en: "Current %{current}"
+memory.percent_of_peak:
+  zh-CN: "占峰值 %{percent}%"
+  en: "%{percent}% of peak"
 
 # Tray menu
 tray.hide_window:
@@ -53,6 +71,9 @@ tray.tooltip:
 tray.tooltip_virtual:
   zh-CN: "提交内存: %{percent}"
   en: "Committed: %{percent}"
+tray.tooltip_system_working_set:
+  zh-CN: "系统工作集: %{current}"
+  en: "System working set: %{current}"
 
 # Settings / Window behavior dialog
 dialog.window_behavior:

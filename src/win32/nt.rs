@@ -85,6 +85,13 @@ const FILE_SHARE_WRITE: u32 = 0x0000_0002;
 
 #[link(name = "ntdll")]
 unsafe extern "system" {
+    fn NtQuerySystemInformation(
+        system_information_class: u32,
+        system_information: *mut core::ffi::c_void,
+        system_information_length: u32,
+        return_length: *mut u32,
+    ) -> i32;
+
     fn NtSetSystemInformation(
         system_information_class: u32,
         system_information: *mut core::ffi::c_void,
@@ -141,6 +148,20 @@ fn nt_status_to_result(status: i32, context: &str) -> Result<()> {
     } else {
         bail!("{context}: NTSTATUS 0x{status:08X}");
     }
+}
+
+pub(crate) fn query_file_cache_information() -> Result<SystemFileCacheInformation64> {
+    let mut info = SystemFileCacheInformation64::default();
+    let status = unsafe {
+        NtQuerySystemInformation(
+            InfoClass::FileCache as u32,
+            (&raw mut info).cast(),
+            size_of::<SystemFileCacheInformation64>() as u32,
+            std::ptr::null_mut(),
+        )
+    };
+    nt_status_to_result(status, "NtQuerySystemInformation file cache")?;
+    Ok(info)
 }
 
 /// 使用 Mount Manager 返回的 `\??\Volume{GUID}` 符号链接打开卷（Mem Reduct 同款路径）。

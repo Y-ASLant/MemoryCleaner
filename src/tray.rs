@@ -12,7 +12,7 @@ use tray_icon::{Icon, MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, 
 
 use crate::app::MemoryCleanerApp;
 use crate::auto_cleanup::AutoCleanupSource;
-use crate::memory::MemorySection;
+use crate::memory::{MemorySection, SystemWorkingSet};
 
 /// Delay between 90° rotation steps while optimizing.
 const SPIN_STEP_MS: u64 = 96;
@@ -56,6 +56,7 @@ pub struct Tray {
     toggle_window: MenuItem,
     quit: MenuItem,
     menu_state: Mutex<TrayMenuState>,
+    tooltip: Mutex<Option<String>>,
 }
 
 #[derive(Debug, Clone)]
@@ -108,6 +109,7 @@ impl Tray {
             toggle_window,
             quit,
             menu_state: Mutex::new(TrayMenuState::new(rust_i18n::locale().as_ref(), true)),
+            tooltip: Mutex::new(None),
         });
         let leaked = Box::leak(tray);
         TRAY.store(leaked, Ordering::Release);
@@ -207,7 +209,11 @@ pub fn start_spin() {
     }
 }
 
-pub fn format_memory_tooltip(physical: &MemorySection, virtual_mem: &MemorySection) -> String {
+pub fn format_memory_tooltip(
+    physical: &MemorySection,
+    virtual_mem: &MemorySection,
+    system_working_set: Option<&SystemWorkingSet>,
+) -> String {
     let mut lines = vec![t!("tray.tooltip", percent = physical.percent_label()).to_string()];
     lines.push(
         t!(
@@ -216,17 +222,38 @@ pub fn format_memory_tooltip(physical: &MemorySection, virtual_mem: &MemorySecti
         )
         .to_string(),
     );
+    lines.push(
+        t!(
+            "tray.tooltip_system_working_set",
+            current = system_working_set
+                .map(|value| crate::memory::MemoryStatus::format_bytes(value.current))
+                .unwrap_or_else(|| "—".into()),
+        )
+        .to_string(),
+    );
     lines.join("\n")
 }
 
-pub fn sync_display(physical: &MemorySection, virtual_mem: &MemorySection, window_visible: bool) {
+pub fn sync_display(
+    physical: &MemorySection,
+    virtual_mem: &MemorySection,
+    system_working_set: Option<&SystemWorkingSet>,
+    window_visible: bool,
+) {
     let Some(tray) = tray() else {
         return;
     };
 
-    let _ = tray
-        .icon
-        .set_tooltip(Some(format_memory_tooltip(physical, virtual_mem)));
+    let tooltip = format_memory_tooltip(physical, virtual_mem, system_working_set);
+    {
+        let mut previous = tray
+            .tooltip
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if previous.as_ref() != Some(&tooltip) && tray.icon.set_tooltip(Some(&tooltip)).is_ok() {
+            *previous = Some(tooltip);
+        }
+    }
     let locale = rust_i18n::locale();
     let menu_changed = tray
         .menu_state
@@ -372,8 +399,15 @@ mod tests {
         with_locale("zh-CN", || {
             let physical = section("物理内存", 46.0);
             let virtual_mem = section("提交内存", 86.0);
-            let tooltip = format_memory_tooltip(&physical, &virtual_mem);
-            assert_eq!(tooltip, "物理内存: 46%\n提交内存: 86%");
+            let working_set = SystemWorkingSet {
+                current: 128 * 1024 * 1024,
+                peak: 256 * 1024 * 1024,
+            };
+            let tooltip = format_memory_tooltip(&physical, &virtual_mem, Some(&working_set));
+            assert_eq!(
+                tooltip,
+                "物理内存: 46%\n提交内存: 86%\n系统工作集: 128.00 MB"
+            );
         });
     }
 
@@ -382,8 +416,30 @@ mod tests {
         with_locale("en", || {
             let physical = section("Physical Memory", 46.0);
             let virtual_mem = section("Virtual Memory", 86.0);
-            let tooltip = format_memory_tooltip(&physical, &virtual_mem);
-            assert_eq!(tooltip, "Physical: 46%\nCommitted: 86%");
+            let working_set = SystemWorkingSet {
+                current: 128 * 1024 * 1024,
+                peak: 256 * 1024 * 1024,
+            };
+            let tooltip = format_memory_tooltip(&physical, &virtual_mem, Some(&working_set));
+            assert_eq!(
+                tooltip,
+                "Physical: 46%\nCommitted: 86%\nSystem working set: 128.00 MB"
+            );
+        });
+    }
+
+    #[test]
+    fn working_set_query_failure_preserves_other_tooltip_values() {
+        with_locale("en", || {
+            let tooltip = format_memory_tooltip(
+                &section("Physical", 46.0),
+                &section("Committed", 86.0),
+                None,
+            );
+            assert_eq!(
+                tooltip,
+                "Physical: 46%\nCommitted: 86%\nSystem working set: —"
+            );
         });
     }
 

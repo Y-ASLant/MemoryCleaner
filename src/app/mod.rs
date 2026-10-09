@@ -14,7 +14,7 @@ use crate::auto_cleanup::{
     threshold_trigger_due,
 };
 use crate::locale;
-use crate::memory::{MemorySection, MemoryStatus};
+use crate::memory::{MemorySection, MemoryStatus, SystemWorkingSet, WorkingSetHistory};
 use crate::messages::{build_cleanup_result_message, format_cleanup_effect};
 use crate::optimize::{self, MemoryAreas};
 use crate::settings::Settings;
@@ -85,6 +85,7 @@ pub struct MemoryCleanerApp {
     pub settings: Settings,
     pub physical: MemorySection,
     pub virtual_mem: MemorySection,
+    working_set_history: WorkingSetHistory,
     settings_save_gen: std::sync::Arc<std::sync::atomic::AtomicU32>,
     pub(crate) settings_save_failed: bool,
     memory_refresh_task: Option<Task<()>>,
@@ -154,11 +155,16 @@ impl MemoryCleanerApp {
         let virt_used = virtual_mem.used as f32;
         let virt_avail = virtual_mem.avail as f32;
 
+        let system_working_set = SystemWorkingSet::query().ok();
+        let mut working_set_history = WorkingSetHistory::default();
+        working_set_history.record(Instant::now(), system_working_set);
+
         let mut app = Self {
             window: None,
             settings,
             physical,
             virtual_mem,
+            working_set_history,
             settings_save_gen: std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0)),
             settings_save_failed: false,
             memory_refresh_task: None,

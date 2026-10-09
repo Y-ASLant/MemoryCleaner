@@ -3,13 +3,7 @@ use super::*;
 impl MemoryCleanerApp {
     pub fn apply_locale(&mut self, cx: &mut Context<Self>) {
         locale::apply(&self.settings);
-        if let Ok((physical, virtual_mem)) = query_sections() {
-            self.physical = physical;
-            self.virtual_mem = virtual_mem;
-        } else {
-            self.physical = MemorySection::unavailable(&t!("memory.physical"));
-            self.virtual_mem = MemorySection::unavailable(&t!("memory.virtual"));
-        }
+        self.refresh_memory();
         self.sync_anim_targets_from_sections();
         if !self.is_optimizing {
             self.optimize_status.clear();

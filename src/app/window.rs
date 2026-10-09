@@ -183,7 +183,12 @@ impl MemoryCleanerApp {
     }
 
     pub(crate) fn sync_tray(&self) {
-        crate::tray::sync_display(&self.physical, &self.virtual_mem, self.window_visible());
+        crate::tray::sync_display(
+            &self.physical,
+            &self.virtual_mem,
+            self.working_set_history.current(),
+            self.window_visible(),
+        );
     }
 
     pub(crate) fn queue_settings_save(&mut self, cx: &mut Context<Self>) {
@@ -229,23 +234,26 @@ impl MemoryCleanerApp {
     }
 
     pub fn refresh_memory(&mut self) -> bool {
-        let Ok((physical, virtual_mem)) = query_sections() else {
-            if self.physical.is_unavailable() && self.virtual_mem.is_unavailable() {
-                return false;
-            }
-            self.physical = MemorySection::unavailable(&t!("memory.physical"));
-            self.virtual_mem = MemorySection::unavailable(&t!("memory.virtual"));
-            self.sync_anim_targets_from_sections();
-            return true;
-        };
+        let system_working_set = SystemWorkingSet::query().ok();
+        let working_set_changed = self.working_set_history.current().copied() != system_working_set;
+        let history_changed = self
+            .working_set_history
+            .record(Instant::now(), system_working_set);
+        let (physical, virtual_mem) = query_sections().unwrap_or_else(|_| {
+            (
+                MemorySection::unavailable(&t!("memory.physical")),
+                MemorySection::unavailable(&t!("memory.virtual")),
+            )
+        });
 
-        let changed = self.physical != physical || self.virtual_mem != virtual_mem;
+        let changed =
+            self.physical != physical || self.virtual_mem != virtual_mem || working_set_changed;
         if changed {
             self.physical = physical;
             self.virtual_mem = virtual_mem;
             self.sync_anim_targets_from_sections();
         }
-        changed
+        changed || history_changed
     }
 
     pub fn animated_used_phys(&self) -> u64 {

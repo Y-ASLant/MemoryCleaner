@@ -18,7 +18,7 @@ fn memory_group_box(
 
 impl Render for MemoryCleanerApp {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        use crate::ui::memory_card::render_memory_card;
+        use crate::ui::memory_card::{render_memory_card, render_system_working_set_card};
         use crate::ui::settings_page::{render_cleanup_footer, render_settings_content};
         use crate::ui::title_bar::render_title_bar;
         use gpui_kit::component::{h_flex, v_flex};
@@ -88,7 +88,16 @@ impl Render for MemoryCleanerApp {
                         .flex_shrink_0()
                         .px(px(CONTENT_PADDING))
                         .pt(px(CONTENT_PADDING))
-                        .child(memory_row)
+                        .child(
+                            v_flex()
+                                .w_full()
+                                .gap(px(SECTION_GAP))
+                                .child(memory_row)
+                                .child(memory_group_box(
+                                    "system-working-set-card",
+                                    render_system_working_set_card(&self.working_set_history, cx),
+                                )),
+                        )
                         .when(self.settings_panel_visible(), |body| {
                             body.child(
                                 div()

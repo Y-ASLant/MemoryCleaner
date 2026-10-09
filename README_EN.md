@@ -10,7 +10,7 @@ A Windows memory optimization tool built with Rust + GPUI. Real-time memory moni
 
 ## Features
 
-- **Real-time Memory Monitoring** — Physical and system committed memory usage with ring progress charts; auto-refreshes every **1 second** when the main window is visible, pauses polling when minimized to tray to save CPU; tray icon tooltip updates instantly on hover
+- **Real-time Memory Monitoring** — Physical and system committed memory usage with ring progress charts, plus system working-set current size, historical peak, and percentage of peak; auto-refreshes every **1 second** when the main window is visible, pauses polling when minimized to tray to save CPU; tray icon tooltip updates instantly on hover
 - **One-Click Cleanup** — Executes cleanup steps sequentially based on selected regions; progress and result summary shown in the bottom button (retained for ~5 seconds after completion)
 - **Cleanup Results & History** — The result reports available-memory and physical-memory-pressure changes; the latest 7 cleanup records retain their trigger, selected/completed/failed count, duration, and before/after memory values. Use the title-bar Cleanup History button to view all records
 - **Configurable Cleanup Regions** — 7 memory regions selectable via checkboxes (Standby List and Standby List Low Priority are mutually exclusive)
@@ -62,10 +62,10 @@ cargo run --release
 
 ## Interface Overview
 
-Main window has a fixed width of **520px**, height varies with expand state (collapsed ~**294px**, expanded ~**630px**), top to bottom:
+Main window has a fixed width of **520px**, height varies with expand state (collapsed ~**450px**, expanded ~**826px**), top to bottom:
 
 1. **Title Bar** — App name, Window Behavior (gear), icon cache refresh, expand/collapse, minimize, close
-2. **Memory Cards** — Physical and system committed memory ring charts (always visible by default)
+2. **Memory Cards** — Physical and system committed memory ring charts, with a system working-set current/peak card below (always visible by default)
 3. **Expand Panel** — Click the arrow to reveal the "Cleanup Regions" checkbox panel
 4. **One-Click Cleanup** — Bottom action button; cleanup progress and results displayed directly in the button
 
@@ -137,6 +137,8 @@ Config file: `%APPDATA%\MemoryCleaner\settings.toml`. Changes are saved in the b
 | `auto_cleanup_threshold` | u32 | `0` | Physical-memory usage threshold percent; `0` disables threshold trigger, so automatic cleanup only reacts to low-memory notifications when enabled |
 | `cleanup_history` | array | `[]` | Latest 7 cleanup outcome records, automatically maintained by the app |
 
+The system working set follows [Mem Reduct](https://github.com/henrypp/memreduct), using `SystemFileCacheInformation.CurrentSize / PeakSize` to show the historical peak after the system working-set title and current size below it. The chart hover tooltip shows each sample's size and percentage of its peak at the time of sampling. The peak is an observed maximum, not a capacity limit. This ratio does not indicate memory pressure or trigger automatic cleanup, and the difference between peak and current size is not allocatable free memory. A failed query marks only this card as unavailable. A gpui-kit Plot line chart shows current size over the last 30 seconds, with an MB y-axis and seconds elapsed since the current continuous sampling session began on the x-axis. After 30 seconds, the labels advance with the window (for example, 1–31 seconds, then 2–32 seconds). Hover to inspect values. Samples are kept in memory only and restart after a sampling gap of more than 2 seconds or a failed query. The line appears after two valid samples; a full 30 seconds is not required.
+
 Committed memory uses `GetPerformanceInfo` to show system-wide commit usage and limit, rather than paging-file size or a process's virtual address space. Memory is sampled immediately before and after cleanup; failed samples are shown as unavailable rather than replaced with cached values. Standby pages already count as available physical memory, so purging them does not guarantee more available memory or better performance.
 
 ## Tech Stack
@@ -171,7 +173,7 @@ src/
 ├── icon_cache.rs        # Explorer icon cache cleanup
 ├── locale.rs            # Locale apply, list separator, system language mapping
 ├── log.rs               # Debug log writing, throttled retention, and file-error reporting
-├── memory.rs            # Physical/commit query (GlobalMemoryStatusEx, GetPerformanceInfo)
+├── memory.rs            # Physical/commit and system working-set queries
 ├── messages.rs          # Cleanup result message assembly
 ├── optimize.rs          # 7 cleanup regions and NtSetSystemInformation calls
 ├── privileges.rs        # Windows privilege elevation

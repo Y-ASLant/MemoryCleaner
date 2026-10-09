@@ -7,6 +7,10 @@
 
 ## [Unreleased]
 
+### 新增
+
+- **系统工作集监控**：在内存圆环下方新增系统工作集卡片，标题标注历史峰值，下方显示当前大小，通过 gpui-kit Plot 显示最近 30 秒的大小折线图，时间刻度随连续采样滚动，悬停可查看对应采样时的大小与占峰值比例；托盘提示显示当前大小；统计口径参考 Mem Reduct，单项查询失败时不影响其他内存指标。
+
 ## [1.1.2] - 2026-10-08
 
 ### 变更
@@ -173,6 +177,10 @@ Records Memory Cleaner releases. Format follows [Keep a Changelog](https://keepa
 
 
 ## [Unreleased]
+
+### Added
+
+- **System working-set monitoring** — Added a compact card below the memory rings with the historical peak in its title, current size below it, and a gpui-kit Plot line chart for the last 30 seconds with elapsed-time labels that advance during continuous sampling. Hover values include each sample's size and percentage of its peak at the time of sampling. The tray tooltip shows the current working-set size. Uses the same metric as Mem Reduct; a failed query does not affect other memory indicators.
 
 ## [1.1.2] - 2026-10-08
 

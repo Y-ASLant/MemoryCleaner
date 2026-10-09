@@ -18,9 +18,9 @@ pub const CLEANUP_BUTTON_H: f32 = 48.;
 const CARD_BORDER: f32 = 2.;
 /// GroupBox outline 内容区 `p_2()`（上下各 8px）。
 const GROUP_BOX_OUTLINE_PADDING_V: f32 = 16.;
-const MEMORY_HEADER_H: f32 = 20.;
-const MEMORY_LINE_GAP: f32 = 4.;
-const MEMORY_SUMMARY_H: f32 = 16.;
+pub const MEMORY_HEADER_H: f32 = 20.;
+pub const MEMORY_LINE_GAP: f32 = 4.;
+pub const MEMORY_SUMMARY_H: f32 = 20.;
 pub const SETTINGS_CARD_TITLE_H: f32 = 20.;
 pub const CLEANUP_AREAS_HINT_H: f32 = 24.;
 pub const CLEANUP_AREA_ROW_H: f32 = 22.;
@@ -35,20 +35,27 @@ pub const EXCLUSION_FOOTER_GAP: f32 = 6.;
 pub const EXCLUSION_SELECTOR_H: f32 = 32.;
 /// 提示条 + 4 行 checkbox 共 5 项，`v_flex().gap(6)` 产生 4 个间距。
 const CLEANUP_ROW_GAPS: f32 = SECTION_GAP * CLEANUP_AREA_ROWS;
-/// 折叠窗口高度略偏低时会裁切 footer 底边距，补回至 6px。
-const COLLAPSED_FOOTER_PADDING_GUARD: f32 = 4.;
 
-pub fn memory_section_height() -> f32 {
-    use crate::ui::memory_card::{MEMORY_CARD_PY, MEMORY_RING_SIZE};
-
+fn memory_card_height(body_height: f32) -> f32 {
     CARD_BORDER
         + GROUP_BOX_OUTLINE_PADDING_V
-        + MEMORY_CARD_PY * 2.
+        + crate::ui::memory_card::MEMORY_CARD_PY * 2.
         + MEMORY_HEADER_H
-        + MEMORY_LINE_GAP
-        + MEMORY_RING_SIZE
-        + MEMORY_LINE_GAP
+        + MEMORY_LINE_GAP * 2.
         + MEMORY_SUMMARY_H
+        + body_height
+}
+
+pub fn memory_section_height() -> f32 {
+    memory_card_height(crate::ui::memory_card::MEMORY_RING_SIZE)
+}
+
+pub fn system_working_set_card_height() -> f32 {
+    memory_card_height(crate::ui::memory_card::WORKING_SET_PLOT_HEIGHT)
+}
+
+pub fn memory_panel_height() -> f32 {
+    memory_section_height() + SECTION_GAP + system_working_set_card_height()
 }
 
 pub fn cleanup_section_height() -> f32 {
@@ -98,11 +105,10 @@ pub fn process_exclusion_selector_width(window_width: f32, content_padding: f32)
 pub fn collapsed_window_height(content_padding: f32) -> f32 {
     TITLE_BAR_H
         + content_padding
-        + memory_section_height()
+        + memory_panel_height()
         + SECTION_GAP
         + CLEANUP_BUTTON_H
         + content_padding
-        + COLLAPSED_FOOTER_PADDING_GUARD
 }
 
 pub fn settings_reveal_height() -> f32 {
@@ -116,6 +122,27 @@ pub fn expanded_window_height(content_padding: f32) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn window_height_includes_system_working_set_card() {
+        assert_eq!(memory_section_height(), 178.);
+        assert_eq!(system_working_set_card_height(), 166.);
+        assert_eq!(
+            memory_panel_height(),
+            memory_section_height() + SECTION_GAP + 166.
+        );
+        assert_eq!(collapsed_window_height(MAIN_CONTENT_PADDING), 450.);
+        assert_eq!(expanded_window_height(MAIN_CONTENT_PADDING), 826.);
+        let footer_bottom = TITLE_BAR_H
+            + MAIN_CONTENT_PADDING
+            + memory_panel_height()
+            + SECTION_GAP
+            + CLEANUP_BUTTON_H;
+        assert_eq!(
+            collapsed_window_height(MAIN_CONTENT_PADDING) - footer_bottom,
+            MAIN_CONTENT_PADDING
+        );
+    }
 
     #[test]
     fn expanded_window_is_taller_than_collapsed() {
