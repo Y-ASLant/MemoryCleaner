@@ -3,7 +3,7 @@ use std::sync::{Mutex, OnceLock};
 use std::thread::JoinHandle;
 
 use anyhow::{Context, Result, bail};
-use gpui_kit::Keystroke;
+use gpui_kit::{Keystroke, OperatingSystem};
 use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::System::Threading::GetCurrentThreadId;
@@ -143,7 +143,7 @@ impl HotkeyBinding {
             return None;
         }
         tokens.push(key);
-        Keystroke::parse(&tokens.join("-")).ok()
+        Keystroke::parse_with_os(&tokens.join("-"), OperatingSystem::Windows).ok()
     }
 }
 
