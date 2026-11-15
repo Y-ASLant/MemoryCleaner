@@ -42,7 +42,6 @@ fn switch_row_app(
 }
 
 fn render_version_row(cx: &App) -> impl IntoElement {
-    let link_color = cx.theme().primary;
     let version = format!("v{}", crate::version::VERSION);
 
     h_flex().w_full().justify_center().items_center().child(
@@ -51,10 +50,11 @@ fn render_version_row(cx: &App) -> impl IntoElement {
             .cursor_pointer()
             .on_click(|_, _, cx| cx.open_url(crate::version::REPO_URL))
             .child(
-                Label::new(version)
-                    .text_xs()
-                    .font_weight(FontWeight::MEDIUM)
-                    .text_color(link_color),
+                Tag::secondary()
+                    .outline()
+                    .small()
+                    .rounded(cx.theme().radius)
+                    .child(version),
             ),
     )
 }

@@ -5,13 +5,23 @@
 **编写约定**（详见 `AGENTS.md` → Documentation & Changelog）：每个版本只记录相对上一 tag 的**最终差异**，不记录开发过程中的中间修改或逐步修复。
 
 
-## [Unreleased]
+## [1.2.1] - 2026-11-16
+
+### 新增
+
+- **系统工作集占比**：单行卡片当前大小后追加显示占峰值比例（如 `占峰值 42.8%`），替代原悬停查看方式。
 
 ### 变更
 
-- **UI 依赖升级**：升级 `gpui-kit` 至 0.7.3，使用默认 GPUI 后端、组件与资源。
+- **UI 依赖升级**：升级 `gpui-kit` 至 0.9.1，使用默认 GPUI 后端、组件与资源。
 - **Windows 10 悬浮提示**：标题栏、进程排除与清理按钮的普通悬浮提示遵循主题阴影开关，在 Windows 10 下保留直角与边框并关闭阴影；Windows 11 保留默认效果。文档明确当前组件库对话框、下拉菜单与图表悬浮卡片的阴影限制。
 - **内存监控动画**：物理内存与提交内存卡片的百分比、已用与可用容量直接显示最新采样值，圆环弧线仅在百分比变化时进行 220 毫秒的短过渡，完成后保持静止；从托盘恢复窗口时立即刷新并对齐当前数据，减少数字持续跳动与不必要的逐帧渲染。
+- **窗口底部边距**：清理按钮下方内边距调整为 2px，与四边视觉一致；窗口折叠高度为 322px、展开高度为 698px。
+- **应用设置细节**：版本号改用组件库 Tag 展示；刷新桌面图标缓存的确认弹窗说明其修复图标显示异常的用途。
+
+### 移除
+
+- **系统工作集趋势图**：移除 30 秒折线图与采样历史队列，卡片改为单行纯文本显示；查询失败仍显示不可用。
 
 ## [1.2.0] - 2026-10-09
 
@@ -190,13 +200,23 @@ Records Memory Cleaner releases. Format follows [Keep a Changelog](https://keepa
 
 
 
-## [Unreleased]
+## [1.2.1] - 2026-11-16
+
+### Added
+
+- **System working-set percentage** — The single-line card now appends the percentage of peak after the current size (e.g. `42.8% of peak`), replacing the previous hover-tooltip readout.
 
 ### Changed
 
-- **UI dependency upgrade** — Upgraded `gpui-kit` to 0.7.3, using the default GPUI backend, components, and assets.
+- **UI dependency upgrade** — Upgraded `gpui-kit` to 0.9.1, using the default GPUI backend, components, and assets.
 - **Windows 10 tooltips** — Ordinary title-bar, process-exclusion, and cleanup-button tooltips honor the theme shadow flag, retaining square corners and borders without shadows on Windows 10. Windows 11 keeps the default appearance. Documentation clarifies the current component library's shadow limitations for dialogs, dropdown menus, and chart hover cards.
 - **Memory-monitor animation** — Physical- and committed-memory cards show the latest sampled percentage and used/available capacity directly. Ring arcs use a short 220 ms transition only when the percentage changes, then remain still. Restoring the window from the tray immediately refreshes and aligns the display with current readings, reducing continuously changing numbers and unnecessary frame-by-frame rendering.
+- **Window bottom padding** — The cleanup button's bottom padding is now 2px to visually match the other edges; window heights are 322px collapsed and 698px expanded.
+- **Settings details** — The version number now uses a component-library Tag; the refresh icon-cache confirmation dialog explains that it fixes abnormal icon display.
+
+### Removed
+
+- **System working-set trend chart** — Removed the 30-second line chart and its sampling-history queue; the card now shows a single line of text and still reports unavailable on query failure.
 
 ## [1.2.0] - 2026-10-09
 
@@ -363,7 +383,8 @@ Since [1.0.0]: process exclusion, global cleanup hotkey (default Ctrl+Alt+C) wit
 
 Initial public release: 8 memory cleanup regions, GPUI UI, system tray, administrator elevation, settings persistence.
 
-[Unreleased]: https://github.com/Y-ASLant/MemoryCleaner/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/Y-ASLant/MemoryCleaner/compare/v1.2.1...HEAD
+[1.2.1]: https://github.com/Y-ASLant/MemoryCleaner/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/Y-ASLant/MemoryCleaner/compare/v1.1.2...v1.2.0
 [1.1.2]: https://github.com/Y-ASLant/MemoryCleaner/compare/v1.1.1...v1.1.2
 [1.1.1]: https://github.com/Y-ASLant/MemoryCleaner/compare/v1.1.0...v1.1.1

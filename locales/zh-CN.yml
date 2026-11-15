@@ -278,8 +278,8 @@ icon_cache.confirm_title:
   zh-CN: "刷新桌面图标缓存"
   en: "Refresh Desktop Icon Cache"
 icon_cache.confirm_desc:
-  zh-CN: "将短暂结束并重启资源管理器，桌面与任务栏会闪断。是否继续？"
-  en: "Explorer will be briefly restarted. The desktop and taskbar will flash. Continue?"
+  zh-CN: "修复桌面图标显示异常（如空白、错误图标）。将短暂结束并重启资源管理器，桌面与任务栏会闪断。是否继续？"
+  en: "Fixes abnormal desktop icons (e.g., blank or incorrect icons). Explorer will be briefly terminated and restarted; the desktop and taskbar will flicker. Continue?"
 icon_cache.refreshing:
   zh-CN: "正在刷新桌面图标缓存…"
   en: "Refreshing desktop icon cache…"
