@@ -49,7 +49,11 @@ fn main() {
 
     win32::hotkey::bind_command_sender(command_tx.clone());
 
-    if let Err(e) = Tray::install(command_tx.clone()) {
+    if let Err(e) = Tray::install(
+        command_tx.clone(),
+        settings.run_at_startup,
+        settings.auto_cleanup_enabled,
+    ) {
         log_msg(&format!("[tray] install failed: {e:#}"));
     }
 

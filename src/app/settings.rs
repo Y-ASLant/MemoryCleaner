@@ -171,6 +171,7 @@ impl MemoryCleanerApp {
                             app.settings.run_at_startup = enabled;
                             app.queue_settings_save(cx);
                         }
+                        app.sync_tray();
                     }
                     Err(error) => crate::log_msg(&format!(
                         "[startup] set_enabled({enabled}) failed: {error:#}"

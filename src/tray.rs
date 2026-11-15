@@ -7,7 +7,7 @@ use std::thread;
 use std::time::Duration;
 
 use image::{RgbaImage, imageops};
-use tray_icon::menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem};
+use tray_icon::menu::{CheckMenuItem, Menu, MenuEvent, MenuItem, PredefinedMenuItem};
 use tray_icon::{Icon, MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
 
 use crate::app::MemoryCleanerApp;
@@ -27,24 +27,45 @@ static SPIN_ACTIVE: AtomicBool = AtomicBool::new(false);
 struct TrayMenuState {
     locale: String,
     window_visible: bool,
+    run_at_startup: bool,
+    auto_cleanup_enabled: bool,
 }
 
 impl TrayMenuState {
-    fn new(locale: &str, window_visible: bool) -> Self {
+    fn new(
+        locale: &str,
+        window_visible: bool,
+        run_at_startup: bool,
+        auto_cleanup_enabled: bool,
+    ) -> Self {
         Self {
             locale: locale.to_string(),
             window_visible,
+            run_at_startup,
+            auto_cleanup_enabled,
         }
     }
 
     /// Records the requested state and reports whether native menu text must change.
-    fn changed(&mut self, locale: &str, window_visible: bool) -> bool {
-        if self.locale == locale && self.window_visible == window_visible {
+    fn changed(
+        &mut self,
+        locale: &str,
+        window_visible: bool,
+        run_at_startup: bool,
+        auto_cleanup_enabled: bool,
+    ) -> bool {
+        if self.locale == locale
+            && self.window_visible == window_visible
+            && self.run_at_startup == run_at_startup
+            && self.auto_cleanup_enabled == auto_cleanup_enabled
+        {
             return false;
         }
         self.locale.clear();
         self.locale.push_str(locale);
         self.window_visible = window_visible;
+        self.run_at_startup = run_at_startup;
+        self.auto_cleanup_enabled = auto_cleanup_enabled;
         true
     }
 }
@@ -53,6 +74,8 @@ pub struct Tray {
     icon: TrayIcon,
     icon_frames: [Icon; 4],
     optimize: MenuItem,
+    run_at_startup: CheckMenuItem,
+    auto_cleanup: CheckMenuItem,
     toggle_window: MenuItem,
     quit: MenuItem,
     menu_state: Mutex<TrayMenuState>,
@@ -76,15 +99,36 @@ pub enum TrayCommand {
 }
 
 impl Tray {
-    pub fn install(tx: Sender<TrayCommand>) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn install(
+        tx: Sender<TrayCommand>,
+        run_at_startup: bool,
+        auto_cleanup_enabled: bool,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let _ = CMD_TX.set(tx.clone());
         install_event_handlers(tx);
 
         let optimize = MenuItem::with_id("optimize", t!("tray.optimize"), true, None);
+        let run_at_startup_item = CheckMenuItem::with_id(
+            "run_at_startup",
+            t!("settings.run_at_startup"),
+            true,
+            run_at_startup,
+            None,
+        );
+        let auto_cleanup_item = CheckMenuItem::with_id(
+            "auto_cleanup",
+            t!("settings.auto_cleanup"),
+            true,
+            auto_cleanup_enabled,
+            None,
+        );
         let toggle_window = MenuItem::with_id("toggle_window", t!("tray.hide_window"), true, None);
         let quit = MenuItem::with_id("quit", t!("tray.quit"), true, None);
         let menu = Menu::new();
         menu.append(&optimize)?;
+        menu.append(&run_at_startup_item)?;
+        menu.append(&auto_cleanup_item)?;
+        menu.append(&PredefinedMenuItem::separator())?;
         menu.append(&toggle_window)?;
         menu.append(&PredefinedMenuItem::separator())?;
         menu.append(&quit)?;
@@ -106,9 +150,16 @@ impl Tray {
             icon: tray_icon,
             icon_frames,
             optimize,
+            run_at_startup: run_at_startup_item,
+            auto_cleanup: auto_cleanup_item,
             toggle_window,
             quit,
-            menu_state: Mutex::new(TrayMenuState::new(rust_i18n::locale().as_ref(), true)),
+            menu_state: Mutex::new(TrayMenuState::new(
+                rust_i18n::locale().as_ref(),
+                true,
+                run_at_startup,
+                auto_cleanup_enabled,
+            )),
             tooltip: Mutex::new(None),
         });
         let leaked = Box::leak(tray);
@@ -239,6 +290,8 @@ pub fn sync_display(
     virtual_mem: &MemorySection,
     system_working_set: Option<&SystemWorkingSet>,
     window_visible: bool,
+    run_at_startup: bool,
+    auto_cleanup_enabled: bool,
 ) {
     let Some(tray) = tray() else {
         return;
@@ -259,12 +312,21 @@ pub fn sync_display(
         .menu_state
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .changed(locale.as_ref(), window_visible);
+        .changed(
+            locale.as_ref(),
+            window_visible,
+            run_at_startup,
+            auto_cleanup_enabled,
+        );
     if !menu_changed {
         return;
     }
     tray.optimize.set_text(t!("tray.optimize"));
     tray.quit.set_text(t!("tray.quit"));
+    tray.run_at_startup.set_text(t!("settings.run_at_startup"));
+    tray.run_at_startup.set_checked(run_at_startup);
+    tray.auto_cleanup.set_text(t!("settings.auto_cleanup"));
+    tray.auto_cleanup.set_checked(auto_cleanup_enabled);
     tray.toggle_window.set_text(if window_visible {
         t!("tray.hide_window")
     } else {
@@ -454,12 +516,14 @@ mod tests {
     }
 
     #[test]
-    fn tray_menu_state_changes_only_for_locale_or_visibility() {
-        let mut state = TrayMenuState::new("en", true);
-        assert!(!state.changed("en", true));
-        assert!(state.changed("en", false));
-        assert!(!state.changed("en", false));
-        assert!(state.changed("zh-CN", false));
+    fn tray_menu_state_changes_for_locale_visibility_or_checks() {
+        let mut state = TrayMenuState::new("en", true, false, false);
+        assert!(!state.changed("en", true, false, false));
+        assert!(state.changed("en", false, false, false));
+        assert!(state.changed("en", false, true, false));
+        assert!(state.changed("en", false, true, true));
+        assert!(state.changed("zh-CN", false, true, true));
+        assert!(!state.changed("zh-CN", false, true, true));
     }
 
     #[test]

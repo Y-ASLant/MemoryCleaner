@@ -21,8 +21,15 @@ impl MemoryCleanerApp {
                 self.save_settings_on_close();
                 cx.quit();
             }
+            "run_at_startup" => {
+                self.set_run_at_startup(!self.settings.run_at_startup, cx);
+            }
+            "auto_cleanup" => {
+                self.set_auto_cleanup_enabled(!self.settings.auto_cleanup_enabled, cx);
+            }
             _ => {}
         }
+        self.sync_tray();
     }
 
     pub fn start_background_tasks(

@@ -189,6 +189,8 @@ impl MemoryCleanerApp {
             &self.virtual_mem,
             self.system_working_set.as_ref(),
             self.window_visible(),
+            self.settings.run_at_startup,
+            self.settings.auto_cleanup_enabled,
         );
     }
 
