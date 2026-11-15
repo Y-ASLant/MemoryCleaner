@@ -1,6 +1,8 @@
 //! Shared layout metrics for window sizing and spacing.
 
 pub const SECTION_GAP: f32 = 6.;
+/// 卡片标题与摘要文本之间的分隔间距。
+pub const SUMMARY_LEAD_GAP: f32 = 6.;
 /// 底部按钮距窗口底边的内边距：OS 无边框窗口底部 frame 更厚，2px 与四边视觉一致。
 pub const FOOTER_BOTTOM_PADDING: f32 = 2.;
 pub const SPACE_SM: f32 = 6.;

@@ -1,5 +1,5 @@
 use crate::memory::{MemorySection, SystemWorkingSet};
-use crate::ui::layout::{MEMORY_HEADER_H, MEMORY_LINE_GAP, MEMORY_SUMMARY_H};
+use crate::ui::layout::{MEMORY_HEADER_H, MEMORY_LINE_GAP, MEMORY_SUMMARY_H, SUMMARY_LEAD_GAP};
 use rust_i18n::t;
 
 use gpui_kit::base::Progress;
@@ -123,7 +123,7 @@ pub fn render_system_working_set_card(
         )
         .child(
             Label::new(summary)
-                .ml(px(6.))
+                .ml(px(SUMMARY_LEAD_GAP))
                 .text_xs()
                 .text_color(cx.theme().foreground.opacity(0.82)),
         )

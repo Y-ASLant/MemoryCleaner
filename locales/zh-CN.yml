@@ -40,8 +40,8 @@ memory.system_working_set_peak:
   zh-CN: "系统工作集 (峰值 %{peak})"
   en: "System Working Set (Peak %{peak})"
 memory.current:
-  zh-CN: "当前 %{current}（占峰值 %{percent}%）"
-  en: "Current %{current} (%{percent}% of peak)"
+  zh-CN: "当前 %{current} · %{percent}%"
+  en: "%{current} · %{percent}% of peak"
 
 # Tray menu
 tray.hide_window:
@@ -51,8 +51,8 @@ tray.show_window:
   zh-CN: "显示窗口"
   en: "Show Window"
 tray.optimize:
-  zh-CN: "优化内存"
-  en: "Optimize Memory"
+  zh-CN: "一键清理"
+  en: "Clean Up"
 tray.quit:
   zh-CN: "退出程序"
   en: "Quit"
@@ -280,6 +280,9 @@ icon_cache.confirm_title:
 icon_cache.confirm_desc:
   zh-CN: "修复桌面图标显示异常（如空白、错误图标）。将短暂结束并重启资源管理器，桌面与任务栏会闪断。是否继续？"
   en: "Fixes abnormal desktop icons (e.g., blank or incorrect icons). Explorer will be briefly terminated and restarted; the desktop and taskbar will flicker. Continue?"
+icon_cache.confirm_action:
+  zh-CN: "刷新"
+  en: "Refresh"
 icon_cache.refreshing:
   zh-CN: "正在刷新桌面图标缓存…"
   en: "Refreshing desktop icon cache…"
@@ -315,9 +318,6 @@ icon_cache.log.delete_reg_value_failed:
   en: "Failed to delete registry value %{value}"
 
 # Common dialog buttons
-dialog.confirm:
-  zh-CN: "确认"
-  en: "OK"
 dialog.cancel:
   zh-CN: "取消"
   en: "Cancel"

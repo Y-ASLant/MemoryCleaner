@@ -443,7 +443,7 @@ impl MemoryCleanerApp {
                 .description(t!("icon_cache.confirm_desc"))
                 .button_props(
                     DialogButtonProps::default()
-                        .ok_text(t!("dialog.confirm"))
+                        .ok_text(t!("icon_cache.confirm_action"))
                         .cancel_text(t!("dialog.cancel"))
                         .show_cancel(true),
                 )
