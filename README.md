@@ -95,7 +95,7 @@ cargo run --release
 | Windows 11 | build ≥ 22000 | 默认圆角（`radius` 6px / `radius_lg` 8px） |
 | Windows 10 | build &lt; 22000 | 直角（`radius` / `radius_lg` 为 0，关闭遵循主题开关的组件阴影） |
 
-按钮、GroupBox 卡片、开关、复选框、对话框、设置面板等均跟随主题 `radius`；内存环形图保持圆形。普通按钮悬浮提示在 Windows 10 下关闭阴影并保留边框。当前 `gpui-component 0.7.1` 的对话框、下拉菜单与图表悬浮卡片仍自行绘制阴影，公开接口无法统一关闭；这些面板仍为直角。原生窗口阴影、托盘菜单和 Windows 通知由系统控制。实现见 `src/ui/theme.rs` 与 `src/win32/os.rs`。
+按钮、GroupBox 卡片、开关、复选框、对话框、设置面板等均跟随主题 `radius`；内存环形图保持圆形。普通按钮悬浮提示在 Windows 10 下关闭阴影并保留边框。当前 `gpui-component 0.9.1` 的对话框与悬浮提示（含图表悬浮卡片）仍自行绘制阴影，公开接口无法统一关闭；这些面板仍为直角。原生窗口阴影、托盘菜单和 Windows 通知由系统控制。实现见 `src/ui/theme.rs` 与 `src/win32/os.rs`。
 
 ## 清理区域
 
@@ -137,7 +137,7 @@ cargo run --release
 | `auto_cleanup_threshold` | u32 | `0` | 物理内存占用阈值百分比；`0` 表示关闭阈值触发，启用自动清理时仅由低内存通知触发 |
 | `cleanup_history` | array | `[]` | 最近 7 条清理结果记录，由程序自动维护 |
 
-系统工作集参考 [Mem Reduct](https://github.com/henrypp/memreduct) 的统计口径，读取 `SystemFileCacheInformation.CurrentSize / PeakSize`，标题在系统工作集名称后标注历史峰值，下方显示当前大小，折线图悬停卡片显示对应采样时的大小及占峰值比例。峰值是观测到的历史最大值，并非容量上限；该比例不用于判断内存压力或触发自动清理，峰值与当前值之差不代表可分配空闲内存。查询失败时该卡片独立显示不可用。卡片使用 gpui-kit Plot 折线图显示最近 30 秒的当前大小，纵轴以 MB 标注，横轴表示本次连续采样开始后经过的秒数，超过 30 秒后刻度随窗口滚动（例如 1–31 秒、2–32 秒）；可悬停查看数值。记录仅保存在内存中，采样间隔超过 2 秒或查询失败时重新开始；取得两个有效采样点后即可显示折线，无须等满 30 秒。
+系统工作集参考 [Mem Reduct](https://github.com/henrypp/memreduct) 的统计口径，读取 `SystemFileCacheInformation.CurrentSize / PeakSize`，标题在系统工作集名称后标注历史峰值，下方以纯文本显示当前大小及其占峰值比例。峰值是观测到的历史最大值，并非容量上限；该比例不用于判断内存压力或触发自动清理，峰值与当前值之差不代表可分配空闲内存。查询失败时该卡片独立显示不可用。
 
 提交内存通过 `GetPerformanceInfo` 显示系统级提交量与提交上限，不代表分页文件大小或进程虚拟地址空间。清理前后均即时采样；采样失败时显示不可用，不使用缓存值计算释放量。待机页面已经包含在可用物理内存中，清空待机列表不保证可用内存增加，也不保证性能提升。
 
@@ -146,7 +146,7 @@ cargo run --release
 | 依赖 | 用途 |
 |------|------|
 | [Rust](https://www.rust-lang.org/) 1.97.1+ | 语言与运行时 |
-| [gpui-kit](https://github.com/longbridge/gpui-kit) 0.7.3 | GPU 加速 UI 框架与组件库（启用 `gpui-fast` 后端，保留默认组件与资源） |
+| [gpui-kit](https://github.com/longbridge/gpui-kit) 0.9.1 | GPU 加速 UI 框架与组件库（启用 `gpui-fast` 后端，保留默认组件与资源） |
 | [windows-rs](https://github.com/microsoft/windows-rs) 0.62 | Win32 API（内存管理、权限、窗口控制、Toast、RegisterHotKey） |
 | [tray-icon](https://crates.io/crates/tray-icon) | 系统托盘图标与菜单 |
 | [smol](https://crates.io/crates/smol) | 异步定时与阻塞任务卸载 |

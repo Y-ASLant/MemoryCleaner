@@ -1,7 +1,8 @@
 //! Shared layout metrics for window sizing and spacing.
 
 pub const SECTION_GAP: f32 = 6.;
-pub const SPACE_XS: f32 = 4.;
+/// 底部按钮距窗口底边的内边距：OS 无边框窗口底部 frame 更厚，2px 与四边视觉一致。
+pub const FOOTER_BOTTOM_PADDING: f32 = 2.;
 pub const SPACE_SM: f32 = 6.;
 pub const SPACE_MD: f32 = 8.;
 pub const ROW_PADDING_Y: f32 = 3.;
@@ -51,7 +52,11 @@ pub fn memory_section_height() -> f32 {
 }
 
 pub fn system_working_set_card_height() -> f32 {
-    memory_card_height(crate::ui::memory_card::WORKING_SET_PLOT_HEIGHT)
+    // 单行纯文本卡片：边框 + GroupBox 内边距 + 内容上下边距 + 单行标题。
+    CARD_BORDER
+        + GROUP_BOX_OUTLINE_PADDING_V
+        + crate::ui::memory_card::MEMORY_CARD_PY * 2.
+        + MEMORY_HEADER_H
 }
 
 pub fn memory_panel_height() -> f32 {
@@ -108,7 +113,7 @@ pub fn collapsed_window_height(content_padding: f32) -> f32 {
         + memory_panel_height()
         + SECTION_GAP
         + CLEANUP_BUTTON_H
-        + content_padding
+        + FOOTER_BOTTOM_PADDING
 }
 
 pub fn settings_reveal_height() -> f32 {
@@ -126,13 +131,13 @@ mod tests {
     #[test]
     fn window_height_includes_system_working_set_card() {
         assert_eq!(memory_section_height(), 178.);
-        assert_eq!(system_working_set_card_height(), 166.);
+        assert_eq!(system_working_set_card_height(), 42.);
         assert_eq!(
             memory_panel_height(),
-            memory_section_height() + SECTION_GAP + 166.
+            memory_section_height() + SECTION_GAP + 42.
         );
-        assert_eq!(collapsed_window_height(MAIN_CONTENT_PADDING), 450.);
-        assert_eq!(expanded_window_height(MAIN_CONTENT_PADDING), 826.);
+        assert_eq!(collapsed_window_height(MAIN_CONTENT_PADDING), 322.);
+        assert_eq!(expanded_window_height(MAIN_CONTENT_PADDING), 698.);
         let footer_bottom = TITLE_BAR_H
             + MAIN_CONTENT_PADDING
             + memory_panel_height()
@@ -140,7 +145,7 @@ mod tests {
             + CLEANUP_BUTTON_H;
         assert_eq!(
             collapsed_window_height(MAIN_CONTENT_PADDING) - footer_bottom,
-            MAIN_CONTENT_PADDING
+            FOOTER_BOTTOM_PADDING
         );
     }
 

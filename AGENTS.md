@@ -123,7 +123,7 @@ just clean # cargo clean + remove dist/
 
 ## UI Layout Notes
 
-- **Window size:** fixed width 520px; collapsed height ~450px, expanded ~826px (`src/app/` + `src/ui/layout.rs`).
+- **Window size:** fixed width 520px; collapsed height ~322px, expanded ~698px (`src/app/` + `src/ui/layout.rs`). Footer bottom padding is `FOOTER_BOTTOM_PADDING` (2px), not `CONTENT_PADDING` — borderless-window frame is thicker at the bottom edge.
 - **Collapsed view:** physical/commit rings, a compact system working-set current/peak card, and cleanup button. System working-set sampling uses `NtQuerySystemInformation(FileCache)` independently; its peak ratio is not memory pressure.
 - **Expanded view:** adds cleanup-area checkboxes panel (`settings_page::render_settings_content`).
 - **Window behavior dialog** (always on top, close-to-tray, run at startup, debug logging, optimization notifications, cleanup hotkey + recording, language, auto-cleanup threshold): opened from title-bar gear icon; `overlay_closable(false)` — clicking the backdrop does not close it.

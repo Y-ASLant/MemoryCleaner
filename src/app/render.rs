@@ -83,7 +83,10 @@ impl Render for MemoryCleanerApp {
                                 .child(memory_row)
                                 .child(memory_group_box(
                                     "system-working-set-card",
-                                    render_system_working_set_card(&self.working_set_history, cx),
+                                    render_system_working_set_card(
+                                        self.system_working_set.as_ref(),
+                                        cx,
+                                    ),
                                 )),
                         )
                         .when(self.settings_panel_visible(), |body| {
@@ -114,7 +117,7 @@ impl Render for MemoryCleanerApp {
                                 .w_full()
                                 .flex_shrink_0()
                                 .px(px(CONTENT_PADDING))
-                                .pb(px(CONTENT_PADDING))
+                                .pb(px(FOOTER_BOTTOM_PADDING))
                                 .child(render_cleanup_footer(self, cx)),
                         )
                 }),

@@ -86,81 +86,17 @@ impl SystemWorkingSet {
     pub fn summary(&self) -> String {
         t!(
             "memory.current",
-            current = MemoryStatus::format_bytes(self.current)
+            current = MemoryStatus::format_bytes(self.current),
+            percent = self.percent_value_label(),
         )
         .to_string()
     }
 
-    pub fn percent_label(&self) -> String {
+    /// 占峰值比例的数值部分（如 "42.8"），用于嵌入其他文案。
+    fn percent_value_label(&self) -> String {
         self.percent_of_peak()
-            .map(|percent| {
-                t!("memory.percent_of_peak", percent = format!("{percent:.1}")).to_string()
-            })
+            .map(|percent| format!("{percent:.1}"))
             .unwrap_or_else(|| "—".into())
-    }
-}
-
-pub const WORKING_SET_HISTORY_SECS: u64 = 30;
-
-#[derive(Debug, Clone, Copy)]
-pub struct WorkingSetSample {
-    pub at: std::time::Instant,
-    pub working_set: SystemWorkingSet,
-}
-
-#[derive(Default)]
-pub struct WorkingSetHistory {
-    samples: std::collections::VecDeque<WorkingSetSample>,
-    started_at: Option<std::time::Instant>,
-}
-
-impl WorkingSetHistory {
-    pub fn samples(&self) -> &std::collections::VecDeque<WorkingSetSample> {
-        &self.samples
-    }
-
-    pub fn current(&self) -> Option<&SystemWorkingSet> {
-        self.samples.back().map(|sample| &sample.working_set)
-    }
-
-    pub fn elapsed_seconds(&self, at: std::time::Instant) -> u64 {
-        self.started_at
-            .map(|start| at.saturating_duration_since(start).as_secs())
-            .unwrap_or(0)
-    }
-
-    pub fn record(&mut self, at: std::time::Instant, value: Option<SystemWorkingSet>) -> bool {
-        let Some(value) = value else {
-            let changed = !self.samples.is_empty();
-            self.samples.clear();
-            self.started_at = None;
-            return changed;
-        };
-        if let Some(last) = self.samples.back_mut() {
-            let elapsed = at.saturating_duration_since(last.at);
-            if elapsed < std::time::Duration::from_secs(1) {
-                let changed = last.working_set != value;
-                last.working_set = value;
-                return changed;
-            }
-            // A paused or failed poll must not appear as a continuous trend.
-            if elapsed > std::time::Duration::from_secs(2) {
-                self.samples.clear();
-                self.started_at = None;
-            }
-        }
-        self.started_at.get_or_insert(at);
-        self.samples.push_back(WorkingSetSample {
-            at,
-            working_set: value,
-        });
-        while self.samples.front().is_some_and(|sample| {
-            at.saturating_duration_since(sample.at).as_secs() > WORKING_SET_HISTORY_SECS
-        }) || self.samples.len() > WORKING_SET_HISTORY_SECS as usize + 1
-        {
-            self.samples.pop_front();
-        }
-        true
     }
 }
 
@@ -268,95 +204,6 @@ mod tests {
             .percent_of_peak(),
             Some(0.0)
         );
-    }
-
-    #[test]
-    fn working_set_history_is_bounded_and_records_unchanged_values() {
-        let start = std::time::Instant::now();
-        let value = Some(SystemWorkingSet {
-            current: 1024,
-            peak: 2048,
-        });
-        let mut history = WorkingSetHistory::default();
-        for second in 0..120 {
-            assert!(history.record(start + std::time::Duration::from_secs(second), value));
-            let first = history.samples().front().unwrap();
-            let last = history.samples().back().unwrap();
-            assert_eq!(history.elapsed_seconds(first.at), second.saturating_sub(30));
-            assert_eq!(history.elapsed_seconds(last.at), second);
-        }
-        assert_eq!(history.samples().len(), 31);
-        assert_eq!(
-            history.samples().front().unwrap().at,
-            start + std::time::Duration::from_secs(89)
-        );
-        assert!(!history.record(start + std::time::Duration::from_millis(119_500), value));
-        assert_eq!(history.samples().len(), 31);
-    }
-
-    #[test]
-    fn working_set_history_preserves_peak_for_each_sample() {
-        let start = std::time::Instant::now();
-        let mut history = WorkingSetHistory::default();
-        history.record(
-            start,
-            Some(SystemWorkingSet {
-                current: 256,
-                peak: 1024,
-            }),
-        );
-        history.record(
-            start + std::time::Duration::from_secs(1),
-            Some(SystemWorkingSet {
-                current: 256,
-                peak: 2048,
-            }),
-        );
-        assert_eq!(
-            history.samples()[0].working_set.percent_of_peak(),
-            Some(25.0)
-        );
-        assert_eq!(
-            history.samples()[1].working_set.percent_of_peak(),
-            Some(12.5)
-        );
-        assert!(history.record(
-            start + std::time::Duration::from_millis(1500),
-            Some(SystemWorkingSet {
-                current: 256,
-                peak: 4096
-            }),
-        ));
-        assert_eq!(history.samples().len(), 2);
-        assert_eq!(
-            history.samples()[1].working_set.percent_of_peak(),
-            Some(6.25)
-        );
-        assert_eq!(history.current().unwrap().percent_of_peak(), Some(6.25));
-    }
-
-    #[test]
-    fn working_set_history_restarts_after_missing_or_paused_samples() {
-        let start = std::time::Instant::now();
-        let value = Some(SystemWorkingSet {
-            current: 1024,
-            peak: 2048,
-        });
-        let mut history = WorkingSetHistory::default();
-        assert_eq!(history.current(), None);
-        history.record(start, value);
-        assert_eq!(history.current().copied(), value);
-        history.record(start + std::time::Duration::from_secs(1), value);
-        assert!(history.record(start + std::time::Duration::from_secs(2), None));
-        assert!(history.samples().is_empty());
-        assert_eq!(history.current(), None);
-        history.record(start + std::time::Duration::from_secs(3), value);
-        assert_eq!(history.elapsed_seconds(history.samples()[0].at), 0);
-        history.record(start + std::time::Duration::from_secs(4), value);
-        assert_eq!(history.elapsed_seconds(history.samples()[1].at), 1);
-        history.record(start + std::time::Duration::from_secs(10), value);
-        assert_eq!(history.samples().len(), 1);
-        assert_eq!(history.elapsed_seconds(history.samples()[0].at), 0);
     }
 
     #[test]

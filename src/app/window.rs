@@ -187,7 +187,7 @@ impl MemoryCleanerApp {
         crate::tray::sync_display(
             &self.physical,
             &self.virtual_mem,
-            self.working_set_history.current(),
+            self.system_working_set.as_ref(),
             self.window_visible(),
         );
     }
@@ -239,9 +239,8 @@ impl MemoryCleanerApp {
 
     fn refresh_memory_with_animation(&mut self, animate: bool) -> bool {
         let system_working_set = SystemWorkingSet::query().ok();
-        let history_changed = self
-            .working_set_history
-            .record(Instant::now(), system_working_set);
+        let working_set_changed = self.system_working_set != system_working_set;
+        self.system_working_set = system_working_set;
         let (physical, virtual_mem) = query_sections().unwrap_or_else(|_| {
             (
                 MemorySection::unavailable(&t!("memory.physical")),
@@ -259,7 +258,7 @@ impl MemoryCleanerApp {
         } else if changed {
             self.sync_anim_targets_from_sections();
         }
-        changed || history_changed
+        changed || working_set_changed
     }
 
     pub fn animated_optimize_percent(&self) -> f32 {

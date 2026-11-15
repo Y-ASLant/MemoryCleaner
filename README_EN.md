@@ -95,7 +95,7 @@ At startup, the system build number is detected via `RtlGetVersion`, and gpui-ki
 | Windows 11 | build ≥ 22000 | Default rounded corners (`radius` 6px / `radius_lg` 8px) |
 | Windows 10 | build < 22000 | Square corners (`radius` / `radius_lg` set to 0; component shadows that honor the theme flag are disabled) |
 
-Buttons, GroupBox cards, switches, checkboxes, dialogs, settings panels, etc. all follow the theme `radius`; memory ring charts remain circular. Ordinary button tooltips disable shadows on Windows 10 while retaining their borders. In `gpui-component 0.7.1`, dialogs, dropdown menus, and chart hover cards still draw their own shadows without a public override; these surfaces remain square. Native window shadows, tray menus, and Windows notifications are controlled by the OS. Implementation in `src/ui/theme.rs` and `src/win32/os.rs`.
+Buttons, GroupBox cards, switches, checkboxes, dialogs, settings panels, etc. all follow the theme `radius`; memory ring charts remain circular. Ordinary button tooltips disable shadows on Windows 10 while retaining their borders. In `gpui-component 0.9.1`, dialogs and tooltips (including chart hover cards) still draw their own shadows without a public override; these surfaces remain square. Native window shadows, tray menus, and Windows notifications are controlled by the OS. Implementation in `src/ui/theme.rs` and `src/win32/os.rs`.
 
 ## Cleanup Regions
 
@@ -137,7 +137,7 @@ Config file: `%APPDATA%\MemoryCleaner\settings.toml`. Changes are saved in the b
 | `auto_cleanup_threshold` | u32 | `0` | Physical-memory usage threshold percent; `0` disables threshold trigger, so automatic cleanup only reacts to low-memory notifications when enabled |
 | `cleanup_history` | array | `[]` | Latest 7 cleanup outcome records, automatically maintained by the app |
 
-The system working set follows [Mem Reduct](https://github.com/henrypp/memreduct), using `SystemFileCacheInformation.CurrentSize / PeakSize` to show the historical peak after the system working-set title and current size below it. The chart hover tooltip shows each sample's size and percentage of its peak at the time of sampling. The peak is an observed maximum, not a capacity limit. This ratio does not indicate memory pressure or trigger automatic cleanup, and the difference between peak and current size is not allocatable free memory. A failed query marks only this card as unavailable. A gpui-kit Plot line chart shows current size over the last 30 seconds, with an MB y-axis and seconds elapsed since the current continuous sampling session began on the x-axis. After 30 seconds, the labels advance with the window (for example, 1–31 seconds, then 2–32 seconds). Hover to inspect values. Samples are kept in memory only and restart after a sampling gap of more than 2 seconds or a failed query. The line appears after two valid samples; a full 30 seconds is not required.
+The system working set follows [Mem Reduct](https://github.com/henrypp/memreduct), using `SystemFileCacheInformation.CurrentSize / PeakSize` to show the historical peak after the system working-set title and the current size plus its percentage of the peak as plain text below it. The peak is an observed maximum, not a capacity limit. This ratio does not indicate memory pressure or trigger automatic cleanup, and the difference between peak and current size is not allocatable free memory. A failed query marks only this card as unavailable.
 
 Committed memory uses `GetPerformanceInfo` to show system-wide commit usage and limit, rather than paging-file size or a process's virtual address space. Memory is sampled immediately before and after cleanup; failed samples are shown as unavailable rather than replaced with cached values. Standby pages already count as available physical memory, so purging them does not guarantee more available memory or better performance.
 
@@ -146,7 +146,7 @@ Committed memory uses `GetPerformanceInfo` to show system-wide commit usage and 
 | Dependency | Purpose |
 |------------|---------|
 | [Rust](https://www.rust-lang.org/) 1.97.1+ | Language and runtime |
-| [gpui-kit](https://github.com/longbridge/gpui-kit) 0.7.3 | GPU-accelerated UI framework and component library (`gpui-fast` backend enabled, with default components and assets) |
+| [gpui-kit](https://github.com/longbridge/gpui-kit) 0.9.1 | GPU-accelerated UI framework and component library (`gpui-fast` backend enabled, with default components and assets) |
 | [windows-rs](https://github.com/microsoft/windows-rs) 0.62 | Win32 API (memory management, privileges, window control, Toast, RegisterHotKey) |
 | [tray-icon](https://crates.io/crates/tray-icon) | System tray icon and menu |
 | [smol](https://crates.io/crates/smol) | Async scheduling and blocking task offload |
