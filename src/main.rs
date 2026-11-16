@@ -13,6 +13,12 @@ use memory_cleaner::{
 actions!(wmc_gpui, [Quit]);
 
 fn main() {
+    // Bail out before any other work on systems older than Windows 8.
+    if !win32::os::is_supported() {
+        win32::os::reject_unsupported();
+        return;
+    }
+
     // Wake an already-running instance before touching UAC: a same-integrity
     // launch can activate the running window without an elevation round-trip.
     if win32::single_instance::signal_existing_instance()

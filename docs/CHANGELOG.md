@@ -11,6 +11,7 @@
 
 - **系统工作集占比**：单行卡片当前大小后追加显示占峰值比例（如 `当前 625 MB · 46%`），替代原悬停查看方式。
 - **托盘菜单开关**：托盘菜单新增「开机自启」「自动清理」勾选项，可直接切换无需打开设置窗口。
+- **最低系统要求**：启动时通过 `RtlGetVersion` 校验系统 build ≥ 9200（Windows 8），Windows 7 及更早版本弹出提示后直接退出；Windows 8/8.1 沿用 Windows 10 直角主题。
 
 ### 变更
 
@@ -206,6 +207,7 @@ Records Memory Cleaner releases. Format follows [Keep a Changelog](https://keepa
 ### Added
 - **System working-set percentage** — The single-line card now appends the percentage of peak after the current size (e.g. `625 MB · 46% of peak`), replacing the previous hover-tooltip readout.
 - **Tray menu toggles** — The tray menu adds "Run at Startup" and "Auto Cleanup" check items for direct toggling without opening the settings dialog.
+- **Minimum system requirement** — Startup now verifies a system build ≥ 9200 (Windows 8) via `RtlGetVersion`; Windows 7 and earlier show a message box and exit immediately. Windows 8/8.1 use the same square-corner theme as Windows 10.
 
 ### Changed
 

@@ -33,7 +33,7 @@ A Windows memory optimization tool built with Rust + GPUI. Real-time memory moni
 
 | Item | Requirement |
 |------|-------------|
-| OS | Windows 10 / 11 Desktop (64-bit); Windows 11 requires build ≥ 22000 |
+| OS | Windows 8 / 10 / 11 Desktop (64-bit); Windows 11 requires build ≥ 22000; versions below Windows 8 are rejected at startup |
 | Rust | 1.97.1 or later (Edition 2024) |
 | Build Tools | MSVC (Visual Studio Build Tools or Visual Studio) |
 | Other | Available GPU driver; most cleanup operations require administrator privileges |

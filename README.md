@@ -33,7 +33,7 @@ Windows 内存清理工具，基于 Rust + GPUI 构建。提供实时内存监�
 
 | 项目 | 要求 |
 |------|------|
-| 操作系统 | Windows 10 / 11 桌面版（64 位）；Windows 11 为 build ≥ 22000 |
+| 操作系统 | Windows 8 / 10 / 11 桌面版（64 位）；Windows 11 为 build ≥ 22000；低于 Windows 8 的版本启动时会被拒绝 |
 | Rust | 1.97.1 或更高（Edition 2024） |
 | 构建工具 | MSVC（Visual Studio Build Tools 或 Visual Studio） |
 | 其他 | 可用 GPU 驱动；大部分清理操作需管理员权限 |

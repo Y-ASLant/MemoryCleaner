@@ -26,7 +26,7 @@ main.rs → wake-signal check → ensure_elevated() → wake-signal retry → si
  └─ win32/ (owned handle RAII plus hotkey, memory, notification, process, startup, volume, window)
 ```
 
-- **Entry flow:** `main.rs` → wake any running instance via the named show-window event (before elevation, so a same-integrity launch needs no UAC) → `ensure_elevated()` → wake-signal retry → single-instance mutex + wake event watcher → `locale::apply` → `notification::init` → install tray + bind hotkey sender → GPUI app with `QuitMode::Explicit` → `open_main_window`. `MemoryCleanerApp::new` synchronizes the hotkey and schedules startup synchronization in the background.
+- **Entry flow:** `main.rs` → minimum-OS gate (`win32::os::is_supported`, build ≥ 9200 = Windows 8) → wake any running instance via the named show-window event (before elevation, so a same-integrity launch needs no UAC) → `ensure_elevated()` → wake-signal retry → single-instance mutex + wake event watcher → `locale::apply` → `notification::init` → install tray + bind hotkey sender → GPUI app with `QuitMode::Explicit` → `open_main_window`. `MemoryCleanerApp::new` synchronizes the hotkey and schedules startup synchronization in the background.
 - **i18n:** `rust-i18n` with `locales/zh-CN.yml` (single file, `_version: 2`, zh-CN + en). `rust_i18n::i18n!` is invoked once in `lib.rs`. `settings.language` is `auto` | `zh-CN` | `en`; `auto` uses `GetUserDefaultUILanguage` via `win32::os::system_ui_locale()`. Language changes call `MemoryCleanerApp::apply_locale()` to refresh memory labels and tray menu text immediately.
 - **Async runtime:** `smol` for async task execution (optimization progress updates, memory polling, toast display).
 - **UI stack:** `gpui-kit` (GPUI + Button, Checkbox, Switch, GroupBox, ProgressCircle, Kbd).
@@ -108,7 +108,7 @@ just clean # cargo clean + remove dist/
 | `src/ui/theme.rs` | Light theme init + Win10 square-corner chrome |
 | `src/ui/settings_page/` | Cleanup areas, process exclusions, cleanup footer, and window behavior dialog |
 | `src/locale.rs` | rust-i18n locale apply, list separator, lang-id mapping |
-| `src/win32/os.rs` | Windows build detection (Win10 vs Win11), system UI locale |
+| `src/win32/os.rs` | Minimum-OS check (Windows 8+), Windows 11 build detection, system UI locale |
 | `src/win32/elevation.rs` | UAC elevation check and relaunch |
 | `src/win32/handle.rs` | RAII ownership for Win32 `HANDLE` and registry `HKEY` |
 | `src/optimize.rs` | Memory cleanup orchestration (7 cleaning regions) |
