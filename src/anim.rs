@@ -1,10 +1,10 @@
-/// Exponential smoothing speed.  ~12.0 ⇒ ~300 ms to reach 95 % of target.
+/// 指数平滑速度。~12.0 约 300 ms 达到目标的 95%。
 const ANIM_SPEED: f32 = 12.0;
 
-/// Below this delta the value snaps to target (avoids endless micro-ticks).
+/// 小于此差值则直接贴到目标，避免无尽微抖动。
 const ANIM_SNAP_EPSILON: f32 = 0.05;
 
-/// Lightweight per-value interpolator — no allocations, no traits, no async.
+/// 轻量逐值插值器：无分配、无特征约束、无异步。
 #[derive(Clone, Debug)]
 pub struct AnimatedValue {
     pub current: f32,
@@ -19,8 +19,8 @@ impl AnimatedValue {
         }
     }
 
-    /// Advance by real elapsed time `dt` (seconds); frame-rate independent.
-    /// Returns `true` when `current` moved meaningfully.
+    /// 按真实经过时间 `dt`（秒）推进；与帧率无关。
+    /// `current` 有实质变化时返回 `true`。
     #[inline]
     pub fn tick_dt(&mut self, dt: f32) -> bool {
         let diff = self.target - self.current;
@@ -34,9 +34,9 @@ impl AnimatedValue {
     }
 }
 
-/// Short linear transition between sampled ring values.
+/// 采样环形数值之间的短线性过渡。
 ///
-/// A new sample retargets from the currently displayed value without jumping.
+/// 新样本从当前显示值改目标，不跳变。
 #[derive(Clone, Debug)]
 pub struct SampledAnimatedValue {
     pub current: f32,
@@ -100,13 +100,11 @@ impl SampledAnimatedValue {
     }
 }
 
-/// Fixed-duration scalar animation for layout transitions.
+/// 布局过渡用的定长标量动画。
 ///
-/// Unlike `AnimatedValue`'s exponential smoothing, this always completes in a
-/// bounded time and avoids the perceptual "slow tail" that makes window
-/// expand/collapse feel like it stalls near the end. The interpolation is
-/// intentionally linear because this value often drives pixel-rounded geometry;
-/// visual easing should be applied separately to opacity or transforms.
+/// 不同于 `AnimatedValue` 的指数平滑，此动画必在有限时间内结束，
+/// 避免窗口展开/收起末段“拖尾”感。插值刻意线性：该值常驱动像素对齐几何；
+/// 视觉缓动应另施于透明度或变换。
 #[derive(Clone, Debug)]
 pub struct TimedAnimatedValue {
     pub current: f32,
@@ -229,7 +227,7 @@ mod tests {
         value.set_target(1.0);
         assert!(value.tick_dt(0.1));
         assert_eq!(value.current, 0.5);
-        // `tick_dt` returns `false` exactly when the animation has settled.
+        // `tick_dt` 在动画完全停稳时恰好返回 `false`。
         assert!(!value.tick_dt(0.1));
         assert_eq!(value.current, 1.0);
         assert_eq!(value.current, value.target);

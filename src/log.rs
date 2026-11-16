@@ -9,7 +9,7 @@ static DEBUG_ENABLED: AtomicBool = AtomicBool::new(false);
 static LOG_FILE_ERROR_REPORTED: AtomicBool = AtomicBool::new(false);
 static LOG_STATE: Mutex<LogState> = Mutex::new(LogState { last_purge: 0 });
 
-/// Drop log lines whose `[unix_secs.millis]` timestamp is older than this.
+/// 丢弃时间戳 `[unix_secs.millis]` 早于此保留期的日志行。
 pub const LOG_RETENTION_SECS: u64 = 7 * 24 * 60 * 60;
 const LOG_PURGE_INTERVAL_SECS: u64 = 60 * 60;
 const MAX_UNTIMESTAMPED_LOG_LINES: usize = 256;
@@ -32,8 +32,8 @@ fn write_debug_output(msg: &str) {
     eprintln!("{msg}");
 }
 
-/// Write a diagnostic message to the Windows debug stream (viewable via DebugView)
-/// and, when stderr is attached, also to stderr.
+/// 向 Windows 调试流写诊断信息（可用 DebugView 查看）；
+/// 若已附着 stderr，同时写入 stderr。
 pub fn log_msg(msg: &str) {
     write_debug_output(msg);
     write(msg);
@@ -145,7 +145,7 @@ fn report_log_file_error(error: &io::Error) {
     }
 }
 
-/// Append a line to `App.log` when debug logging is enabled.
+/// 调试日志开启时，向 `App.log` 追加一行。
 pub fn write(msg: &str) {
     if !DEBUG_ENABLED.load(Ordering::Relaxed) {
         return;

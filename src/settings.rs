@@ -45,7 +45,7 @@ fn default_memory_sample_available() -> bool {
 }
 
 impl CleanupHistoryEntry {
-    // Entry fields are a flat snapshot of one cleanup outcome; a builder would only rename args.
+    // 字段是一次清理结果的扁平快照；构建器只会换个参数名。
     #[expect(clippy::too_many_arguments)]
     pub fn new(
         source: CleanupHistorySource,
@@ -82,28 +82,28 @@ impl CleanupHistoryEntry {
 #[serde(default)]
 pub struct Settings {
     pub always_on_top: bool,
-    /// Launch silently to the notification area through a highest-privilege logon task.
+    /// 经最高权限登录任务静默启动到通知区域。
     pub run_at_startup: bool,
     pub close_to_notification_area: bool,
     pub memory_areas: u32,
-    /// Show a Windows toast when memory cleanup completes.
+    /// 内存清理完成时弹出 Windows 通知。
     pub show_optimization_notifications: bool,
-    /// UI language: "auto", "zh-CN", or "en".
+    /// 界面语言："auto"、"zh-CN" 或 "en"。
     pub language: String,
-    /// Write debug output to `App.log` next to the executable.
+    /// 将调试输出写入可执行文件旁的 `App.log`。
     pub debug_logging: bool,
-    /// Enable global cleanup hotkey via `RegisterHotKey`.
+    /// 通过 `RegisterHotKey` 启用全局清理热键。
     pub cleanup_hotkey_enabled: bool,
-    /// Hotkey chord, e.g. `Ctrl+Alt+C`. Empty disables registration.
+    /// 热键组合，如 `Ctrl+Alt+C`。空字符串表示不注册。
     pub cleanup_hotkey: String,
-    /// Process base names excluded from Working Set cleanup (lowercase, no `.exe`).
+    /// 工作集清理排除的进程基名（小写、无 `.exe`）。
     pub excluded_processes: Vec<String>,
-    /// Enable cleanup when Windows reports low physical memory.
+    /// Windows 报告物理内存不足时启用清理。
     pub auto_cleanup_enabled: bool,
-    /// Physical memory usage percent (0–100) that triggers automatic cleanup.
-    /// `0` disables the threshold trigger.
+    /// 触发自动清理的物理内存占用百分比（0–100）。
+    /// `0` 关闭阈值触发。
     pub auto_cleanup_threshold: u32,
-    /// The most recent cleanup outcomes, newest entry last.
+    /// 最近清理结果，最新一条在末尾。
     pub cleanup_history: Vec<CleanupHistoryEntry>,
 }
 
@@ -201,7 +201,7 @@ impl Settings {
         }
     }
 
-    /// Clamp the auto-cleanup threshold to its valid usage-percent range.
+    /// 将自动清理阈值钳到合法占用百分比范围。
     fn normalize_auto_cleanup(&mut self) {
         self.auto_cleanup_threshold = self.auto_cleanup_threshold.min(100);
     }
@@ -301,7 +301,7 @@ impl Settings {
         self.normalize_cleanup_history();
     }
 
-    /// Returns the effective locale string for `rust_i18n::set_locale`.
+    /// 返回供 `rust_i18n::set_locale` 使用的有效语言字符串。
     pub fn effective_locale(&self) -> &'static str {
         match self.language.as_str() {
             "zh-CN" => "zh-CN",

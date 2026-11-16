@@ -48,8 +48,8 @@ fn render_usage_ring(
         )
     };
 
-    // Paint the controlled arc directly: ProgressCircle adds its own transition,
-    // which would lag behind the application's short ring animation.
+    // 直接绘制受控圆弧：`ProgressCircle` 自带过渡，
+    // 会落后于应用的短圆环动画。
     let ring = canvas(
         |bounds, _, _| bounds,
         move |_, bounds: Bounds<Pixels>, window, _| {

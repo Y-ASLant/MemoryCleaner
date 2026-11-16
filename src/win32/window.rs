@@ -11,7 +11,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 
 fn show_window(hwnd: HWND, cmd: SHOW_WINDOW_CMD) {
     unsafe {
-        // ShowWindow returns the previous visibility state, not success/failure.
+        // `ShowWindow` 返回先前可见状态，不表示成功/失败。
         let _ = ShowWindow(hwnd, cmd);
     }
 }
@@ -42,7 +42,7 @@ pub(crate) fn hwnd_from_window(window: &Window) -> Result<HWND> {
     Ok(HWND(win32.hwnd.get() as _))
 }
 
-/// Restore the window from tray-only hidden state.
+/// 从仅托盘隐藏状态恢复窗口。
 pub fn show_from_tray(window: &Window) -> Result<()> {
     let hwnd = hwnd_from_window(window)?;
     apply_window_style(hwnd, GWL_EXSTYLE, |style| {
@@ -83,7 +83,7 @@ pub fn set_always_on_top(window: &Window, on_top: bool) -> Result<()> {
     Ok(())
 }
 
-/// Remove the maximize/restore button from the window title bar.
+/// 从标题栏移除最大化/还原按钮。
 pub fn remove_maximize_button(window: &Window) -> Result<()> {
     let hwnd = hwnd_from_window(window)?;
     apply_window_style(hwnd, GWL_STYLE, |style| style & !WS_MAXIMIZEBOX.0);

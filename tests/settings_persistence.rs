@@ -13,7 +13,7 @@ where
     let _guard = APPDATA_TEST_LOCK.lock().expect("app_data test lock");
     let temp = tempfile::tempdir().expect("tempdir");
     let previous = std::env::var_os("APPDATA");
-    // SAFETY: tests run serially by default and restore APPDATA before returning.
+    // SAFETY: 测试默认串行，返回前恢复 APPDATA。
     unsafe {
         std::env::set_var("APPDATA", temp.path());
     }

@@ -11,7 +11,7 @@ use windows::Win32::System::Threading::{CreateEventW, INFINITE, SetEvent, WaitFo
 use crate::tray::TrayCommand;
 use crate::win32::handle::OwnedWin32Handle;
 
-/// Owns a Windows memory-resource notification handle.
+/// 持有 Windows 内存资源通知句柄。
 struct MemoryNotification(OwnedWin32Handle);
 
 impl MemoryNotification {
@@ -48,7 +48,7 @@ fn wait_or_stop(notification: &MemoryNotification, stop_event: HANDLE) -> Result
     }
 }
 
-/// Cancellable low-memory monitor. Dropping it wakes and joins its worker immediately.
+/// 可取消的低内存监视器。drop 时立即唤醒并 join worker。
 pub struct MemoryNotificationMonitor {
     stop_event: Arc<OwnedWin32Handle>,
     worker: Option<JoinHandle<()>>,
@@ -105,8 +105,8 @@ fn run(
             return Ok(());
         }
 
-        // Notification handles are level-triggered. Wait for high memory before rearming
-        // low-memory cleanup so sustained pressure cannot produce a busy loop or cache churn.
+        // 通知句柄为电平触发。先等高内存再重新武装低内存清理，
+        // 避免持续压力导致忙等或缓存抖动。
         if wait_or_stop(&high, stop_event)? == WaitOutcome::Stop {
             return Ok(());
         }

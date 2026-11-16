@@ -1,7 +1,7 @@
 use gpui_kit::component::{ActiveTheme, Theme, ThemeMode, button::Button, tooltip::Tooltip};
 use gpui_kit::{App, InteractiveElement, SharedString, Styled, Window, px};
 
-/// Use a styled tooltip when the component theme disables shadows.
+/// 组件主题关闭阴影时使用自定义样式的 tooltip。
 pub fn button_tooltip(button: Button, text: impl Into<SharedString>, cx: &App) -> Button {
     let text = text.into();
     if cx.theme().shadow {
@@ -24,7 +24,7 @@ fn apply_platform_style(theme: &mut Theme, windows_11_or_later: bool) {
     }
 }
 
-/// Initialize the light theme and apply Win10 square-corner chrome when needed.
+/// 初始化浅色主题；必要时应用 Win10 直角边框样式。
 pub fn init_light_theme(window: &mut Window, cx: &mut App) {
     Theme::change(ThemeMode::Light, None, cx);
     let windows_11_or_later = crate::win32::os::is_windows_11_or_later();

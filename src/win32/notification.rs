@@ -36,8 +36,8 @@ pub fn show(title: &str, body: &str) -> Result<()> {
     );
 
     ComApartment::run(|| {
-        // Static WinRT factory caches can outlive a torn-down apartment.
-        // Activate locally and release every factory before ComApartment::run returns.
+        // 静态 WinRT 工厂缓存可能比已拆除的套间更长寿。
+        // 本地激活，并在 `ComApartment::run` 返回前释放全部工厂。
         let doc: XmlDocument = unsafe {
             windows::Win32::System::WinRT::RoActivateInstance(&HSTRING::from(
                 <XmlDocument as windows::core::RuntimeName>::NAME,
@@ -128,8 +128,8 @@ fn ensure_start_menu_shortcut() -> Result<()> {
     })
 }
 
-/// Read the shortcut's target path and compare with `current_exe`.
-/// Returns `true` if they match, or if the shortcut cannot be read (conservative).
+/// 读取快捷方式目标路径并与 `current_exe` 比较。
+/// 匹配或无法读取时返回 `true`（保守策略）。
 fn shortcut_target_matches(shortcut_path: &Path, current_exe: &Path) -> bool {
     read_shortcut_target(shortcut_path)
         .ok()
@@ -141,7 +141,7 @@ fn shortcut_target_matches(shortcut_path: &Path, current_exe: &Path) -> bool {
         .unwrap_or(false)
 }
 
-/// Load an existing `.lnk` and return its target path.
+/// 加载已有 `.lnk` 并返回其目标路径。
 fn read_shortcut_target(shortcut_path: &Path) -> Result<PathBuf> {
     ComApartment::run(|| unsafe {
         let link: IShellLinkW =
@@ -198,7 +198,7 @@ mod tests {
         CoInitializeEx, CoUninitialize,
     };
 
-    // An explicit MTA elsewhere can make fresh threads report an implicit MTA.
+    // 别处显式 MTA 可能使新线程报告隐式 MTA。
     static COM_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
     fn apartment_type() -> windows::core::Result<APTTYPE> {
@@ -223,7 +223,7 @@ mod tests {
         std::thread::spawn(|| {
             assert_com_uninitialized();
             for _ in 0..3 {
-                // U+0001 is invalid XML, so Show cannot submit a visible toast.
+                // U+0001 非法 XML，Show 无法提交可见 toast。
                 show("invalid\u{1}", "body").expect_err("invalid toast XML must fail");
                 assert_com_uninitialized();
             }

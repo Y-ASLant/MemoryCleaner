@@ -20,13 +20,13 @@ use windows::Win32::System::Threading::{
 use crate::memory::MemoryStatus;
 use crate::win32::handle::OwnedWin32Handle;
 
-/// Running process entry for the exclusion picker dropdown.
+/// 排除列表下拉用的运行中进程条目。
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ProcessPickerEntry {
     pub name: String,
     pub instance_count: u32,
     pub working_set_bytes: u64,
-    /// How many instances returned a readable working-set size.
+    /// 能读出工作集大小的实例数。
     pub memory_readable_count: u32,
 }
 #[derive(Default)]
@@ -46,7 +46,7 @@ impl ProcessPickerEntry {
     }
 }
 
-/// Processes that should not appear in the exclusion picker.
+/// 不应出现在排除选择器中的进程。
 fn is_picker_hidden_process(name: &str) -> bool {
     matches!(name, "[systemprocess]" | "systemidleprocess")
 }
@@ -75,7 +75,7 @@ fn query_process_working_set_bytes(pid: u32) -> Option<u64> {
     }
 }
 
-/// Normalize a process name for exclusion matching: lowercase, no whitespace, no `.exe`.
+/// 规范化进程名供排除匹配：小写、去空白、去 `.exe`。
 pub fn normalize_process_name(name: &str) -> String {
     normalize_process_chars(name.chars(), name.len())
 }
@@ -145,7 +145,7 @@ pub fn is_process_excluded(process_name: &str, excluded: &[String]) -> bool {
     excluded.iter().any(|name| name == &normalized)
 }
 
-/// Distinct running processes for the exclusion picker, excluding system/hidden entries.
+/// 排除选择器用的去重运行进程列表，不含系统/隐藏项。
 pub fn list_processes_for_exclusion_picker(
     self_base: &str,
     excluded: &[String],
@@ -202,7 +202,7 @@ fn complete_working_set_cleanup(
     Ok(())
 }
 
-/// Empty working sets for every running process except those in `excluded`.
+/// 清空除 `excluded` 外所有运行进程的工作集。
 pub fn empty_working_sets_except(excluded: &[String]) -> Result<()> {
     let mut succeeded = 0usize;
     let mut access_denied = 0usize;
@@ -226,7 +226,7 @@ pub fn empty_working_sets_except(excluded: &[String]) -> Result<()> {
                     access_denied += 1;
                     return false;
                 }
-                // Processes can exit between taking the snapshot and opening the handle.
+                // 快照与打开句柄之间进程可能已退出。
                 Err(error)
                     if error.code()
                         == windows::core::HRESULT::from_win32(ERROR_INVALID_PARAMETER.0) =>
@@ -256,7 +256,7 @@ pub fn empty_working_sets_except(excluded: &[String]) -> Result<()> {
     complete_working_set_cleanup(succeeded, access_denied, errors)
 }
 
-/// Return true if any process with the given executable name is running.
+/// 若存在给定可执行名的进程则返回 true。
 pub fn is_process_running(exe_name: &str) -> bool {
     let target: Vec<u16> = exe_name.encode_utf16().collect();
     let mut found = false;
@@ -270,7 +270,7 @@ pub fn is_process_running(exe_name: &str) -> bool {
     found
 }
 
-/// Terminate every running process whose executable name matches `exe_name`.
+/// 终止所有可执行名匹配 `exe_name` 的运行进程。
 pub fn kill_process_by_name(exe_name: &str) -> Result<u32> {
     let target: Vec<u16> = exe_name.encode_utf16().collect();
     let mut killed = 0u32;
@@ -292,7 +292,7 @@ pub fn kill_process_by_name(exe_name: &str) -> Result<u32> {
     Ok(killed)
 }
 
-/// Wait until no process with the given name is running, or timeout.
+/// 等到无该名进程在跑，或超时。
 pub fn wait_for_process_exit(exe_name: &str, timeout_ms: u32) -> bool {
     let steps = timeout_ms / 100;
     for _ in 0..steps {

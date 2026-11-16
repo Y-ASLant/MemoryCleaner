@@ -1,18 +1,18 @@
 use crate::locale::locale_from_lang_id;
 
-/// Windows 8 starts at build 9200; earlier releases are unsupported.
+/// Windows 8 起自 build 9200；更早版本不受支持。
 const WINDOWS_8_MIN_BUILD: u32 = 9200;
 
-/// Windows 11 starts at build 22000.
+/// Windows 11 起自 build 22000。
 const WINDOWS_11_BUILD: u32 = 22000;
 
-/// Returns `true` on supported systems (Windows 8 and later).
+/// 在受支持系统（Windows 8 及更高）上返回 `true`。
 pub fn is_supported() -> bool {
     is_build_at_least(WINDOWS_8_MIN_BUILD)
 }
 
-/// Shows a bilingual "unsupported OS" message box. Call only when
-/// [`is_supported`] returns `false`.
+/// 显示中英双语「不支持的操作系统」消息框。仅在
+/// [`is_supported`] 为 `false` 时调用。
 pub fn reject_unsupported() {
     use windows::Win32::Foundation::HWND;
     use windows::Win32::UI::WindowsAndMessaging::{MB_ICONERROR, MB_OK, MessageBoxW};
@@ -32,7 +32,7 @@ pub fn reject_unsupported() {
     }
 }
 
-/// Returns the system UI locale mapped to a supported app locale (`zh-CN` or `en`).
+/// 返回映射到受支持应用语言的系统 UI 区域（`zh-CN` 或 `en`）。
 pub fn system_ui_locale() -> &'static str {
     use windows::Win32::Globalization::GetUserDefaultUILanguage;
 
@@ -40,7 +40,7 @@ pub fn system_ui_locale() -> &'static str {
     locale_from_lang_id(lang_id)
 }
 
-/// Returns `true` on Windows 11 and later (build >= 22000).
+/// 在 Windows 11 及更高（build >= 22000）上返回 `true`。
 pub fn is_windows_11_or_later() -> bool {
     is_build_at_least(WINDOWS_11_BUILD)
 }

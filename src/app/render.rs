@@ -24,7 +24,7 @@ impl Render for MemoryCleanerApp {
         use gpui_kit::component::{h_flex, v_flex};
         use gpui_kit::prelude::FluentBuilder;
 
-        // Tick animations — if still running, schedule next frame.
+        // 推进动画；若仍在运行则请求下一帧。
         if self.tick_animations(window) {
             window.request_animation_frame();
         }

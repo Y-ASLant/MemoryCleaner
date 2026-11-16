@@ -14,9 +14,9 @@ use crate::app::MemoryCleanerApp;
 use crate::auto_cleanup::AutoCleanupSource;
 use crate::memory::{MemorySection, SystemWorkingSet};
 
-/// Delay between 90° rotation steps while optimizing.
+/// 优化进行中每次旋转 90° 的间隔。
 const SPIN_STEP_MS: u64 = 96;
-/// Native tray frames are pre-scaled once; animation must never copy the 512px source.
+/// 托盘帧已预缩放一次；动画绝不可再拷贝 512px 源图。
 const TRAY_ICON_SIZE: u32 = 32;
 
 static TRAY: AtomicPtr<Tray> = AtomicPtr::new(std::ptr::null_mut());
@@ -46,7 +46,7 @@ impl TrayMenuState {
         }
     }
 
-    /// Records the requested state and reports whether native menu text must change.
+    /// 记录目标状态，并报告原生菜单文案是否需要更新。
     fn changed(
         &mut self,
         locale: &str,
@@ -86,12 +86,12 @@ pub struct Tray {
 pub enum TrayCommand {
     ActivateWindow,
     RefreshTooltip,
-    /// Global hotkey (`RegisterHotKey`) triggered memory cleanup.
+    /// 全局热键（`RegisterHotKey`）触发的内存清理。
     Optimize,
-    /// Windows reported low physical memory.
+    /// Windows 报告物理内存不足。
     LowMemory,
     MenuAction(String),
-    /// Tray icon spin animation frame (0 = upright). Handled on the GPUI thread only.
+    /// 托盘图标旋转动画帧（0 = 正立）。仅在 GPUI 线程处理。
     SetSpinFrame {
         quarters: u32,
         generation: u32,
@@ -174,7 +174,7 @@ fn tray() -> Option<&'static Tray> {
     if ptr.is_null() {
         None
     } else {
-        // SAFETY: `TRAY` is set once during install and the value is leaked for process lifetime.
+        // SAFETY: `TRAY` 在安装时只写一次，值泄漏至进程生命周期。
         Some(unsafe { &*ptr })
     }
 }
@@ -187,7 +187,7 @@ fn icon_from_rgba(rgba: Vec<u8>, width: u32, height: u32) -> Icon {
     })
 }
 
-/// Rotate a square tray icon by quarter turns (0–3). Avoids alpha tricks on Windows.
+/// 将方形托盘图标按四分之一圈旋转（0–3）。避免 Windows 上的透明通道技巧。
 pub(crate) fn rotate_quarters(source: &RgbaImage, quarters: u32) -> RgbaImage {
     match quarters % 4 {
         0 => source.clone(),
@@ -198,7 +198,7 @@ pub(crate) fn rotate_quarters(source: &RgbaImage, quarters: u32) -> RgbaImage {
     }
 }
 
-/// Build the four 90° rotation frames once at tray install.
+/// 托盘安装时一次性构建四帧 90° 旋转图。
 fn build_icon_frames(source: &RgbaImage) -> [RgbaImage; 4] {
     [
         rotate_quarters(source, 0),

@@ -39,7 +39,7 @@ impl MemoryCleanerApp {
     ) {
         self.sync_auto_cleanup_monitors(cx);
 
-        // Tray, hotkey, and low-memory notification commands are handled on the GPUI thread.
+        // 托盘、热键与低内存通知命令在 GPUI 线程处理。
         cx.spawn(async move |this, cx| {
             loop {
                 let (command, rx) = smol::unblock(move || {
@@ -193,8 +193,8 @@ impl MemoryCleanerApp {
         self.run_optimize_from(source.into(), cx);
     }
 
-    /// Re-evaluate the configurable threshold trigger. `above_threshold_ticks`
-    /// carries the sustained-pressure counter across polls.
+    /// 重新评估可配置阈值触发。`above_threshold_ticks`
+    /// 在轮询间保留持续压力计数。
     fn poll_auto_cleanup(&mut self, above_threshold_ticks: &mut u32) -> Option<AutoCleanupSource> {
         if !self.settings.auto_cleanup_enabled || self.is_busy() {
             return None;

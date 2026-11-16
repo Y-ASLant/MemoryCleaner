@@ -1,6 +1,6 @@
 use crate::settings::Settings;
 
-/// Maps a Windows UI language ID to a supported app locale.
+/// 将 Windows UI 语言 ID 映射为受支持的应用语言。
 pub fn locale_from_lang_id(lang_id: u16) -> &'static str {
     match lang_id & 0x3FF {
         0x04 => "zh-CN",
@@ -8,7 +8,7 @@ pub fn locale_from_lang_id(lang_id: u16) -> &'static str {
     }
 }
 
-/// Returns the list separator for the active locale.
+/// 返回当前语言环境下的列表分隔符。
 pub fn list_separator() -> &'static str {
     match rust_i18n::locale().as_ref() {
         "en" => ", ",
@@ -16,7 +16,7 @@ pub fn list_separator() -> &'static str {
     }
 }
 
-/// Applies the effective locale from settings to the global i18n state.
+/// 按设置中的有效语言写入全局 i18n 状态。
 pub fn apply(settings: &Settings) {
     rust_i18n::set_locale(settings.effective_locale());
 }

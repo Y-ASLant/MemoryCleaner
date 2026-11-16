@@ -13,14 +13,14 @@ use memory_cleaner::{
 actions!(wmc_gpui, [Quit]);
 
 fn main() {
-    // Bail out before any other work on systems older than Windows 8.
+    // Windows 8 以下直接退出，不做后续工作。
     if !win32::os::is_supported() {
         win32::os::reject_unsupported();
         return;
     }
 
-    // Wake an already-running instance before touching UAC: a same-integrity
-    // launch can activate the running window without an elevation round-trip.
+    // 触碰 UAC 前先唤醒已运行实例：同完整性级别启动可直接激活窗口，
+    // 无需提权往返。
     if win32::single_instance::signal_existing_instance()
         == win32::single_instance::InstanceSignal::Signaled
     {
@@ -31,8 +31,7 @@ fn main() {
         return;
     }
 
-    // The elevated relaunch enters here; retry the signal now that the
-    // integrity level matches the running instance, then claim the mutex.
+    // 提权重启从这里进入；完整性已对齐后再发信号，然后抢互斥体。
     if win32::single_instance::signal_existing_instance()
         == win32::single_instance::InstanceSignal::Signaled
     {

@@ -26,8 +26,8 @@ pub enum SystemMemoryListCommand {
 pub struct SystemFileCacheInformation64 {
     pub current_size: usize,
     pub peak_size: usize,
-    pub page_fault_count: u32, // ULONG — must be 4 bytes, not 8
-    pub _pad: u32,             // explicit padding to align the following SIZE_T fields
+    pub page_fault_count: u32, // ULONG — 必须为 4 字节而非 8
+    pub _pad: u32,             // 显式填充，对齐后续 SIZE_T 字段
     pub minimum_working_set: usize,
     pub maximum_working_set: usize,
     pub current_size_in_pages: usize,
@@ -230,7 +230,7 @@ pub(crate) fn flush_volume_handle(handle: &OwnedWin32Handle) -> Result<()> {
 
 /// # Safety
 ///
-/// `info` must point to valid memory of at least `len` bytes for `class`.
+/// `info` 须指向对 `class` 至少 `len` 字节的有效内存。
 pub unsafe fn nt_set_system_information(
     class: InfoClass,
     info: *mut core::ffi::c_void,

@@ -57,8 +57,8 @@ fn launch_elevated(exe: &Path, parameters: &str) -> Result<OwnedWin32Handle> {
     shell_execute_process(exe, parameters, "runas").context("elevated process launch failed")
 }
 
-/// Relaunches through UAC when needed. Returns `true` after creating the
-/// specific elevated child, so the unelevated caller can return normally.
+/// 必要时经 UAC 重新拉起。创建指定提权子进程后返回 `true`，
+/// 未提权调用方即可正常退出。
 pub fn ensure_elevated() -> bool {
     if std::env::args().any(|arg| arg == ELEVATED_ARG) || is_elevated() {
         return false;
@@ -71,8 +71,8 @@ pub fn ensure_elevated() -> bool {
         Ok(_child) => true,
         Err(error) => {
             crate::log_msg(&format!("[elevation] relaunch failed: {error:#}"));
-            // UAC was declined or launch failed. Continue without admin so
-            // non-privileged features remain available.
+            // UAC 被拒或启动失败。无管理员权限继续运行，
+            // 保留非特权功能可用。
             false
         }
     }

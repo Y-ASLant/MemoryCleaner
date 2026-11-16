@@ -4,20 +4,20 @@ use std::rc::Rc;
 use anyhow::{Context, Result};
 use windows::Win32::System::Com::{COINIT_APARTMENTTHREADED, CoInitializeEx, CoUninitialize};
 
-/// Balances one successful STA initialization on the same thread.
-/// Declare before COM objects so they are released before the apartment.
+/// 在同一线程上配对一次成功的 STA 初始化。
+/// 须声明在 COM 对象之前，以便对象先于套间释放。
 pub(crate) struct ComApartment {
-    // COM initialization is thread-local: neither moving nor sharing this guard is safe.
+    // COM 初始化是线程局部的：移动或共享此守卫均不安全。
     _thread_bound: PhantomData<Rc<()>>,
 }
 
 impl ComApartment {
-    /// Return owned data only; COM objects must remain inside the operation.
+    /// 只返回自有数据；COM 对象须留在闭包内。
     pub(crate) fn run<T>(operation: impl FnOnce() -> Result<T>) -> Result<T> {
         let _com = Self::initialize()?;
         operation().map_err(|error| {
-            // windows::Error can own IErrorInfo. Detach its HRESULT and diagnostics
-            // before releasing the apartment, including on early-return paths.
+            // windows::Error 可能持有 IErrorInfo。在释放套间前拆出 HRESULT 与诊断信息，
+            // 含提前返回路径。
             if let Some(native) = error.downcast_ref::<windows::core::Error>() {
                 anyhow::Error::new(windows::core::Error::from_hresult(native.code()))
                     .context(format!("{error:#}"))
@@ -33,7 +33,7 @@ impl ComApartment {
                 .ok()
                 .context("CoInitializeEx(STA) failed")?;
         }
-        // Both S_OK and S_FALSE own an initialization; failures own nothing.
+        // S_OK 与 S_FALSE 均占用一次初始化；失败则不占用。
         Ok(Self {
             _thread_bound: PhantomData,
         })

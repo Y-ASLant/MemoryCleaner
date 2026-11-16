@@ -99,7 +99,7 @@ pub struct MemoryCleanerApp {
     pub icon_cache_status: String,
     pub settings_expanded: bool,
     window_shown: bool,
-    /// When the last automatic cleanup ran; anchors the threshold cooldown.
+    /// 上次自动清理时间；作为阈值冷却的基准。
     last_auto_cleanup: Option<Instant>,
     threshold_cleanup_task: Option<Task<()>>,
     command_tx: std::sync::mpsc::Sender<TrayCommand>,
@@ -114,9 +114,9 @@ pub struct MemoryCleanerApp {
     anim_optimize: AnimatedValue,
     anim_settings_expand: TimedAnimatedValue,
     anim_dirty: bool,
-    /// Wall-clock of the previous interpolator tick (`None` when settled).
+    /// 上次插值时钟时间（稳定时为 `None`）。
     last_anim_tick: Option<Instant>,
-    /// Last known window content height (updated on every resize).
+    /// 最近一次窗口内容高度（每次调整大小时更新）。
     current_window_height: f32,
 }
 

@@ -1,10 +1,8 @@
-//! Run-at-startup via a Task Scheduler logon task with highest privileges.
+//! 通过任务计划程序的登录任务（最高权限）实现开机自启。
 //!
-//! A `HKCU\...\Run` value cannot grant elevation, so it would trigger a UAC
-//! prompt (or a degraded, unprivileged start) at every sign-in. Instead the
-//! autostart is registered as a scheduled task created with `/RL HIGHEST`,
-//! which starts the process elevated without prompting. The legacy Run value
-//! is still deleted so users migrating from older versions are moved over.
+//! `HKCU\...\Run` 无法提权，每次登录都会触发 UAC
+//!（或以无特权降级启动）。因此自启注册为带 `/RL HIGHEST` 的计划任务，
+//! 无需提示即可提权启动。仍会删除旧版 Run 项，便于从旧版本迁移。
 
 use anyhow::{Context, Result};
 use windows::Win32::Foundation::{
@@ -28,14 +26,14 @@ use crate::win32::com::ComApartment;
 use crate::win32::elevation::ELEVATED_ARG;
 use crate::win32::handle::{OwnedRegistryKey, OwnedWin32Handle};
 
-/// Registry / CLI flag for silent login autostart (tray only, no main window).
+/// 静默登录自启的注册表/CLI 标志（仅托盘，无主窗口）。
 pub const STARTUP_ARG: &str = "--startup";
 
 pub fn is_startup_launch() -> bool {
     std::env::args().any(|arg| arg == STARTUP_ARG)
 }
 
-/// Args passed to the elevated child so startup mode survives UAC relaunch.
+/// 传给提权子进程的参数，使启动模式在 UAC 重拉起后仍保留。
 pub fn elevation_relaunch_args() -> String {
     if is_startup_launch() {
         format!("{ELEVATED_ARG} {STARTUP_ARG}")
@@ -44,21 +42,21 @@ pub fn elevation_relaunch_args() -> String {
     }
 }
 
-/// Name of the Task Scheduler task in the root folder.
+/// 任务计划程序根目录中的任务名。
 const TASK_NAME: &str = "MemoryCleaner_Autostart";
 
-/// Legacy autostart location (`HKCU\...\Run`), deleted on sync for migration.
+/// 旧版自启位置（`HKCU\...\Run`），同步时删除以完成迁移。
 const RUN_KEY_PATH: &str = "Software\\Microsoft\\Windows\\CurrentVersion\\Run";
 
-/// Task action command line: quoted exe path plus the startup flag.
+/// 任务操作命令行：带引号的 exe 路径加上启动标志。
 fn task_trigger_value() -> Result<String> {
     let exe = std::env::current_exe().context("current_exe unavailable")?;
     Ok(format!("\"{}\" {STARTUP_ARG}", exe.display()))
 }
 
 fn schtasks_create_arguments() -> Result<String> {
-    // The inner quotes survive CommandLineToArgvW as `\"`, so paths with
-    // spaces reach schtasks as a single /TR value.
+    // 内层引号经 CommandLineToArgvW 保留为 `\"`，含空格路径
+    // 作为单个 /TR 值交给 schtasks。
     Ok(format!(
         "/Create /F /SC ONLOGON /RL HIGHEST /TN \"{TASK_NAME}\" /TR \"{}\"",
         task_trigger_value()?.replace('"', "\\\"")
@@ -67,7 +65,7 @@ fn schtasks_create_arguments() -> Result<String> {
 
 const SCHTASKS_TIMEOUT_MS: u32 = 10_000;
 
-/// Wait only for our owned child, requesting termination if its deadline expires.
+/// 仅等待本进程拥有的子进程；超时则请求终止。
 fn wait_for_process(process: &OwnedWin32Handle, timeout_ms: u32) -> Result<i32> {
     let wait = unsafe { WaitForSingleObject(process.raw(), timeout_ms) };
     if wait == WAIT_TIMEOUT {
@@ -76,7 +74,7 @@ fn wait_for_process(process: &OwnedWin32Handle, timeout_ms: u32) -> Result<i32> 
             std::io::ErrorKind::TimedOut,
             format!("process timed out after {timeout_ms} ms"),
         ));
-        // Termination is asynchronous; never extend the deadline with another wait.
+        // 终止为异步；切勿再用一次等待去延长截止时间。
         return Err(match termination {
             Ok(()) => error,
             Err(termination_error) => {
@@ -96,7 +94,7 @@ fn wait_for_process(process: &OwnedWin32Handle, timeout_ms: u32) -> Result<i32> 
     Ok(exit_code as i32)
 }
 
-/// Run `schtasks` detached from any console and return its exit code.
+/// 在无控制台环境下运行 `schtasks` 并返回其退出码。
 fn run_schtasks(arguments: &str) -> Result<i32> {
     let mut command_line = wide_null(&format!("schtasks {arguments}"));
     let startup_info = STARTUPINFOW {
@@ -126,7 +124,7 @@ fn run_schtasks(arguments: &str) -> Result<i32> {
     }
 }
 
-/// HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND), returned by `ITaskFolder::GetTask`.
+/// HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND)，由 `ITaskFolder::GetTask` 返回。
 const TASK_NOT_FOUND_HRESULT: HRESULT = HRESULT(0x8007_0002_u32 as i32);
 
 fn is_task_not_found(code: HRESULT) -> bool {
@@ -178,7 +176,7 @@ fn delete_task() -> Result<()> {
 pub fn set_enabled(enabled: bool) -> Result<()> {
     if enabled {
         ensure_task()?;
-        // Migrate away from a leftover legacy Run-key entry.
+        // 迁移并清除残留的旧版 Run 项。
         delete_value_best_effort();
     } else {
         delete_task()?;
@@ -268,14 +266,14 @@ mod tests {
 
     #[test]
     fn process_wait_times_out_and_terminates_owned_child() {
-        // A suspended, disposable child cannot exit before the timeout.
+        // 挂起的一次性子进程在超时前无法自行退出。
         let process = disposable_child(CREATE_SUSPENDED);
         let started = std::time::Instant::now();
         let result = wait_for_process(&process, 20);
         let elapsed = started.elapsed();
         let stopped = unsafe { WaitForSingleObject(process.raw(), 5_000) };
         if stopped != WAIT_OBJECT_0 {
-            // Keep the regression itself from leaking a child if termination breaks.
+            // 若终止失败，避免回归测试本身泄漏子进程。
             unsafe { TerminateProcess(process.raw(), ERROR_TIMEOUT.0) }
                 .expect("clean up disposable child");
         }
@@ -310,7 +308,7 @@ mod tests {
         assert!(arguments.contains("/SC ONLOGON"));
         assert!(arguments.contains("/RL HIGHEST"));
         assert!(arguments.contains(&format!("/TN \"{TASK_NAME}\"")));
-        // The exe path must be wrapped in escaped quotes so /TR stays one value.
+        // exe 路径须用转义引号包裹，使 /TR 保持为单一值。
         assert!(arguments.contains("\\\""));
         assert!(arguments.ends_with(format!("{STARTUP_ARG}\"").as_str()));
     }

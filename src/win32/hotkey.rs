@@ -27,7 +27,7 @@ static COMMAND_TX: OnceLock<Sender<TrayCommand>> = OnceLock::new();
 static SERVICE: OnceLock<Mutex<HotkeyService>> = OnceLock::new();
 static CLASS_REGISTERED: OnceLock<()> = OnceLock::new();
 
-/// Parsed global hotkey chord for `RegisterHotKey`.
+/// 解析后的全局热键组合，供 `RegisterHotKey` 使用。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct HotkeyBinding {
     pub modifiers: HOT_KEY_MODIFIERS,
@@ -75,7 +75,7 @@ impl HotkeyBinding {
         })
     }
 
-    /// Build a settings chord such as `Ctrl+Alt+C` from modifier flags and a key token.
+    /// 由修饰键标志与主键 token 生成设置用组合，如 `Ctrl+Alt+C`。
     pub fn format_chord(
         control: bool,
         alt: bool,
@@ -109,7 +109,7 @@ impl HotkeyBinding {
         Self::parse(&chord).map(|_| chord)
     }
 
-    /// Convert a settings chord such as `Ctrl+Alt+C` into a GPUI `Keystroke` for `Kbd` display.
+    /// 将设置用组合（如 `Ctrl+Alt+C`）转为 GPUI `Keystroke`，供 `Kbd` 显示。
     pub fn chord_to_keystroke(chord: &str) -> Option<Keystroke> {
         let chord = chord.trim();
         if chord.is_empty() {
@@ -415,8 +415,8 @@ mod tests {
             .expect("an uncommon hotkey must be available for the test");
         let original_binding = HotkeyBinding::parse(&original.cleanup_hotkey).unwrap();
 
-        // A separate RAII worker reserves the conflicting chord for the entire test.
-        // Neither worker binds COMMAND_TX or synthesizes hotkey/cleanup commands.
+        // 单独的 RAII worker 在整个测试期间占用冲突组合。
+        // 两个 worker 均不绑定 COMMAND_TX，也不合成热键/清理命令。
         let (conflicting, _reservation) = candidates()
             .find_map(|settings| {
                 let binding = HotkeyBinding::parse(&settings.cleanup_hotkey).unwrap();

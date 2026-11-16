@@ -38,7 +38,7 @@ impl MemoryAreas {
         .union(Self::STANDBY_LIST)
         .union(Self::COMBINED_PAGE_LIST);
 
-    /// Returns the i18n key for this memory area's display name.
+    /// 返回该内存区域显示名的 i18n 键。
     pub const fn label_key(self) -> &'static str {
         match self {
             Self::WORKING_SET => "area.working_set",
@@ -52,7 +52,7 @@ impl MemoryAreas {
         }
     }
 
-    /// Returns the localized display name for this memory area.
+    /// 返回该内存区域的本地化显示名。
     pub fn label(self) -> String {
         t!(self.label_key()).to_string()
     }

@@ -24,7 +24,7 @@ impl MemoryCleanerApp {
 
         let mut areas = self.settings.memory_areas();
         if enabled {
-            // Standby List variants are mutually exclusive.
+            // 待机列表变体互斥。
             match area {
                 MemoryAreas::STANDBY_LIST => {
                     areas.remove(MemoryAreas::STANDBY_LIST_LOW_PRIORITY);

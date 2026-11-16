@@ -1,9 +1,8 @@
-//! Single-instance guard plus a wake-up signal for the already-running app.
+//! 单实例守卫，并向已运行实例发送唤醒信号。
 //!
-//! The first instance creates a named mutex retained for the process lifetime
-//! and an auto-reset event watched by a dedicated thread. A second launch opens
-//! the event, sets it, and exits; the watcher forwards the signal as
-//! `TrayCommand::ActivateWindow` so the running instance shows its main window.
+//! 首个实例创建进程生命周期内持有的命名互斥体，以及由专用线程监视的自动复位事件。
+//! 第二次启动打开该事件、置位后退出；监视线程将信号转发为
+//! `TrayCommand::ActivateWindow`，使运行中实例显示主窗口。
 
 use anyhow::{Context, Result, anyhow, bail};
 use std::sync::{OnceLock, mpsc::Sender};
@@ -23,20 +22,20 @@ const MUTEX_NAME: &str = "MemoryCleaner_{B8F3A7E2-4C1D-4F5A-9B6E-2D8C3F7A1E9B}";
 const SHOW_EVENT_NAME: &str = "MemoryCleaner_{B8F3A7E2-4C1D-4F5A-9B6E-2D8C3F7A1E9B}_ShowWindow";
 static INSTANCE_MUTEX: OnceLock<OwnedWin32Handle> = OnceLock::new();
 
-/// Outcome of trying to wake a possibly running instance.
+/// 尝试唤醒可能已在运行的实例的结果。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InstanceSignal {
-    /// No running instance was detected; startup may continue.
+    /// 未检测到运行中实例；可继续启动。
     NotRunning,
-    /// A running instance was signaled to show its window; this launch should exit.
+    /// 已通知运行中实例显示窗口；本次启动应退出。
     Signaled,
-    /// An instance is running but cannot be signaled from this process
-    /// (integrity-level mismatch before elevation). Startup continues; the
-    /// post-elevation retry or the mutex check resolves the outcome.
+    /// 已有实例在跑，但本进程无法发信号
+    /// （提权前完整性级别不匹配）。继续启动；
+    /// 提权后重试或互斥检查会判定最终结果。
     AccessDenied,
 }
 
-/// Try to wake an already-running instance so it shows its main window.
+/// 尝试唤醒已运行实例以显示主窗口。
 pub fn signal_existing_instance() -> InstanceSignal {
     let name = wide_null(SHOW_EVENT_NAME);
 
@@ -52,9 +51,8 @@ pub fn signal_existing_instance() -> InstanceSignal {
     }
 }
 
-/// Ensure only one instance of the application is running. On success this
-/// process is the instance and `event_watcher` forwards wake-up signals to
-/// `command_tx`.
+/// 确保应用仅有一个实例。成功时本进程即为该实例，
+/// 且 `event_watcher` 将唤醒信号转发到 `command_tx`。
 pub fn ensure_single_instance(command_tx: Sender<TrayCommand>) -> Result<()> {
     let mutex_name = wide_null(MUTEX_NAME);
 

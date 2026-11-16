@@ -4,7 +4,7 @@ pub fn window_size(expanded: bool) -> Size<Pixels> {
     size(px(WINDOW_WIDTH), px(window_height(expanded)))
 }
 
-/// Target window height for the given expanded state.
+/// 给定展开状态下的目标窗口高度。
 pub fn window_height(expanded: bool) -> f32 {
     if expanded {
         crate::ui::layout::expanded_window_height(CONTENT_PADDING)
@@ -149,8 +149,8 @@ impl MemoryCleanerApp {
                 None => return,
             };
 
-            // Read settings_expanded at window creation time, not at spawn time.
-            // This prevents a stale height if settings change during the async gap.
+            // 在创建窗口时读取 `settings_expanded`，而非 spawn 时。
+            // 避免异步间隙内设置变更导致高度过时。
             let expanded = entity.update(cx, |app, _| app.settings_expanded);
             let options = cx.update(|app| window_options(expanded, app));
             let opened = cx.update(|cx| {
@@ -283,7 +283,7 @@ impl MemoryCleanerApp {
         }
     }
 
-    /// Set optimize progress and kick the animation loop.
+    /// 设置优化进度并启动动画循环。
     pub(super) fn set_optimize_percent(&mut self, value: f32) {
         self.anim_optimize.target = value;
         self.anim_dirty = true;
@@ -313,8 +313,8 @@ impl MemoryCleanerApp {
         self.open_window(cx);
     }
 
-    /// Destroy the GPUI window referenced by `self.window`, then clear tracking state.
-    /// Safe to call when no handle is held (still resets `window_shown` and pauses loops).
+    /// 销毁 `self.window` 引用的 GPUI 窗口并清除跟踪状态。
+    /// 无句柄时也可调用（仍会重置 `window_shown` 并暂停循环）。
     fn release_window_handle(&mut self, cx: &mut Context<Self>, source: &str) {
         if let Some(handle) = self.window.take() {
             match handle.update(cx, |_, window, _| window.remove_window()) {
@@ -332,8 +332,8 @@ impl MemoryCleanerApp {
         self.pause_memory_refresh();
     }
 
-    /// Remove the GPUI window and drop our handle. `activate_window` recreates it via
-    /// `open_window()`.
+    /// 移除 GPUI 窗口并丢弃句柄。`activate_window` 会经
+    /// `open_window()` 重建。
     fn destroy_window_to_tray(&mut self, window: &mut Window, source: &str) {
         window.remove_window();
         self.window = None;
@@ -342,7 +342,7 @@ impl MemoryCleanerApp {
         crate::log_msg(&format!("[close] hide_to_tray destroy ok source={source}"));
     }
 
-    /// Invalidate pending snapshots before synchronously saving the latest settings.
+    /// 使待处理快照失效，再同步保存最新设置。
     pub fn save_settings_on_close(&self) {
         self.settings_save_gen
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -378,11 +378,11 @@ impl MemoryCleanerApp {
         cx.notify();
     }
 
-    /// Tick all active animations each frame (render-driven, vsync-paced).
-    /// Returns `true` if any animation is still running (caller schedules next frame).
+    /// 每帧推进全部活动动画（渲染驱动，随 vsync）。
+    /// 若仍有动画在跑返回 `true`（由调用方请求下一帧）。
     pub(super) fn tick_animations(&mut self, window: &mut Window) -> bool {
-        // Only ring geometry transitions between memory samples; numeric labels
-        // use the latest sample. Event and layout animations tick independently.
+        // 仅圆环几何在内存采样间过渡；数值标签
+        // 用最新采样。事件与布局动画独立推进。
         if self.anim_dirty {
             let now = Instant::now();
             let dt = self
@@ -399,8 +399,8 @@ impl MemoryCleanerApp {
             self.last_anim_tick = None;
         }
 
-        // When settled, expand progress is exactly 0/1, so this equals the
-        // collapsed/expanded height; while animating it tracks the live progress.
+        // 稳定时展开进度为 0/1，等于收起/展开高度；
+        // 动画中则跟随实时进度。
         self.resize_window_height(window, self.animated_window_height());
 
         self.anim_dirty
