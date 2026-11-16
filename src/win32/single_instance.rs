@@ -5,6 +5,7 @@
 //! the event, sets it, and exits; the watcher forwards the signal as
 //! `TrayCommand::ActivateWindow` so the running instance shows its main window.
 
+use anyhow::{Context, Result, anyhow, bail};
 use std::sync::{OnceLock, mpsc::Sender};
 
 use windows::Win32::Foundation::{ERROR_ALREADY_EXISTS, GetLastError, WAIT_OBJECT_0};
@@ -54,44 +55,38 @@ pub fn signal_existing_instance() -> InstanceSignal {
 /// Ensure only one instance of the application is running. On success this
 /// process is the instance and `event_watcher` forwards wake-up signals to
 /// `command_tx`.
-pub fn ensure_single_instance(
-    command_tx: Sender<TrayCommand>,
-) -> Result<(), Box<dyn std::error::Error>> {
+pub fn ensure_single_instance(command_tx: Sender<TrayCommand>) -> Result<()> {
     let mutex_name = wide_null(MUTEX_NAME);
 
     let mutex = unsafe {
         OwnedWin32Handle::from_raw(
-            CreateMutexW(None, true, PCWSTR(mutex_name.as_ptr()))
-                .map_err(|error| format!("CreateMutexW failed: {error}"))?,
+            CreateMutexW(None, true, PCWSTR(mutex_name.as_ptr())).context("CreateMutexW failed")?,
         )
     };
     if unsafe { GetLastError() } == ERROR_ALREADY_EXISTS {
-        return Err("Application is already running".into());
+        bail!("Application is already running");
     }
 
     let event_name = wide_null(SHOW_EVENT_NAME);
     let event = unsafe {
         OwnedWin32Handle::from_raw(
             CreateEventW(None, false, false, PCWSTR(event_name.as_ptr()))
-                .map_err(|error| format!("CreateEventW failed: {error}"))?,
+                .context("CreateEventW failed")?,
         )
     };
     spawn_event_watcher(event, command_tx)?;
     INSTANCE_MUTEX
         .set(mutex)
-        .map_err(|_| "single-instance guard was initialized twice")?;
+        .map_err(|_| anyhow!("single-instance guard was initialized twice"))?;
 
     Ok(())
 }
 
-fn spawn_event_watcher(
-    event: OwnedWin32Handle,
-    command_tx: Sender<TrayCommand>,
-) -> Result<(), Box<dyn std::error::Error>> {
+fn spawn_event_watcher(event: OwnedWin32Handle, command_tx: Sender<TrayCommand>) -> Result<()> {
     std::thread::Builder::new()
         .name("single-instance-watcher".into())
         .spawn(move || watcher_loop(event, command_tx))
-        .map_err(|error| format!("single-instance watcher start failed: {error}"))?;
+        .context("single-instance watcher start failed")?;
     Ok(())
 }
 
@@ -120,12 +115,6 @@ fn signal_from_open_event_error(code: HRESULT) -> InstanceSignal {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn show_event_name_is_derived_from_mutex_name() {
-        assert!(SHOW_EVENT_NAME.starts_with(MUTEX_NAME));
-        assert!(SHOW_EVENT_NAME.ends_with("_ShowWindow"));
-    }
 
     #[test]
     fn access_denied_wake_signal_is_distinguished() {

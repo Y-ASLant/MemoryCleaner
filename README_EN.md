@@ -17,7 +17,7 @@ A Windows memory optimization tool built with Rust + GPUI. Real-time memory moni
 - **Automatic Cleanup** — Can be enabled in the Window Behavior dialog; supports Windows low-physical-memory notifications and a sustained physical-memory usage threshold (two consecutive above-threshold checks, then a 10-minute cooldown)
 - **Global Hotkey** — Default `Ctrl+Alt+C` triggers cleanup; can be toggled and custom combo recorded in the Window Behavior dialog (`RegisterHotKey`); failed registrations retain the previous binding and settings and display an error
 - **System Notifications** — Windows Toast popups on cleanup start and completion (can be disabled in the Window Behavior dialog)
-- **System Tray** — Right-click menu (Optimize Memory, Show/Hide Window, Exit); left-click shows/activates the main window; **spin animation** during cleanup (rotates 90° every 96ms to indicate activity)
+- **System Tray** — Right-click menu (Optimize Memory, Show/Hide Window, Run at Startup, Automatic Cleanup, Exit); left-click shows/activates the main window; **spin animation** during cleanup (rotates 90° every 96ms to indicate activity)
 - **Window Behavior** — Title bar gear menu: Always on Top, Close to Tray, Run at Startup, Debug Logging, Optimization Notifications, Global Hotkey, Language, Automatic Cleanup threshold
 - **Process Exclusions** — Select running processes to exclude; Working Set cleanup skips excluded process base names
 - **Desktop Icon Cache Refresh** — Title bar refresh button; terminates and restarts Explorer to clear `IconCache.db` and related caches
@@ -62,7 +62,7 @@ cargo run --release
 
 ## Interface Overview
 
-Main window has a fixed width of **520px**, height varies with expand state (collapsed ~**450px**, expanded ~**826px**), top to bottom:
+Main window has a fixed width of **520px**, height varies with expand state (collapsed ~**322px**, expanded ~**698px**), top to bottom:
 
 1. **Title Bar** — App name, Window Behavior (gear), icon cache refresh, expand/collapse, minimize, close
 2. **Memory Cards** — Physical and system committed memory ring charts, with a system working-set current/peak card below (always visible by default)

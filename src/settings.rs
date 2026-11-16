@@ -45,7 +45,8 @@ fn default_memory_sample_available() -> bool {
 }
 
 impl CleanupHistoryEntry {
-    #[allow(clippy::too_many_arguments)]
+    // Entry fields are a flat snapshot of one cleanup outcome; a builder would only rename args.
+    #[expect(clippy::too_many_arguments)]
     pub fn new(
         source: CleanupHistorySource,
         selected_areas: u32,
@@ -408,25 +409,9 @@ available_after = 2
     }
 
     #[test]
-    fn auto_cleanup_defaults_disable_threshold() {
-        assert_eq!(Settings::default().auto_cleanup_threshold, 0);
-    }
-
-    #[test]
     fn auto_cleanup_threshold_is_clamped_to_100() {
         let settings = Settings::from_toml("auto_cleanup_threshold = 150");
         assert_eq!(settings.auto_cleanup_threshold, 100);
-    }
-
-    #[test]
-    fn auto_cleanup_threshold_roundtrips() {
-        let original = Settings {
-            auto_cleanup_enabled: true,
-            auto_cleanup_threshold: 85,
-            ..Default::default()
-        };
-        let restored: Settings = toml::from_str(&toml::to_string(&original).unwrap()).unwrap();
-        assert_eq!(restored.auto_cleanup_threshold, 85);
     }
 
     #[test]

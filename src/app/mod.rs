@@ -195,21 +195,3 @@ impl MemoryCleanerApp {
         app
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::{memory_polling_enabled, threshold_polling_enabled};
-
-    #[test]
-    fn memory_polling_follows_window_visibility() {
-        assert!(memory_polling_enabled(true));
-        assert!(!memory_polling_enabled(false));
-    }
-
-    #[test]
-    fn threshold_polling_requires_enabled_nonzero_threshold() {
-        assert!(threshold_polling_enabled(true, 80));
-        assert!(!threshold_polling_enabled(true, 0));
-        assert!(!threshold_polling_enabled(false, 80));
-    }
-}

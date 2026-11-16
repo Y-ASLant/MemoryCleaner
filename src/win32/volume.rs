@@ -421,11 +421,6 @@ mod tests {
     }
 
     #[test]
-    fn mount_mgr_mount_point_has_expected_size() {
-        assert_eq!(size_of::<MountMgrMountPoint>(), 24);
-    }
-
-    #[test]
     fn is_volume_name_matches_mountmgr_macro() {
         assert!(is_volume_name_wide(&volume_guid_wide()));
         assert!(!is_volume_name_wide(

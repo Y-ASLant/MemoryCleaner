@@ -9,20 +9,6 @@ fn truncate_chars(text: &str, max_chars: usize) -> String {
     truncated
 }
 
-#[cfg(test)]
-mod tests {
-    use super::truncate_chars;
-
-    #[test]
-    fn truncation_preserves_unicode_and_only_marks_omitted_characters() {
-        assert_eq!(truncate_chars("", 0), "");
-        assert_eq!(truncate_chars("系统缓存", 0), "…");
-        assert_eq!(truncate_chars("系统缓存", 4), "系统缓存");
-        assert_eq!(truncate_chars("系统缓存", 3), "系统缓…");
-        assert_eq!(truncate_chars("A🖥️B", 3), "A🖥️…");
-    }
-}
-
 fn cleanup_step_text(app: &MemoryCleanerApp) -> String {
     if app.optimize_step.is_empty() {
         t!("button.cleanup_preparing").to_string()
@@ -134,4 +120,17 @@ pub fn render_cleanup_footer(
         app.optimize_status.clone()
     };
     crate::ui::theme::button_tooltip(button, tooltip, cx)
+}
+#[cfg(test)]
+mod tests {
+    use super::truncate_chars;
+
+    #[test]
+    fn truncation_preserves_unicode_and_only_marks_omitted_characters() {
+        assert_eq!(truncate_chars("", 0), "");
+        assert_eq!(truncate_chars("系统缓存", 0), "…");
+        assert_eq!(truncate_chars("系统缓存", 4), "系统缓存");
+        assert_eq!(truncate_chars("系统缓存", 3), "系统缓…");
+        assert_eq!(truncate_chars("A🖥️B", 3), "A🖥️…");
+    }
 }

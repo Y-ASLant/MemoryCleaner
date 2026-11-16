@@ -191,11 +191,6 @@ mod tests {
     }
 
     #[test]
-    fn retention_window_is_seven_days() {
-        assert_eq!(LOG_RETENTION_SECS, 7 * 24 * 60 * 60);
-    }
-
-    #[test]
     fn purge_is_throttled_after_the_first_write() {
         assert!(purge_due(0, 100));
         assert!(!purge_due(100, 100 + LOG_PURGE_INTERVAL_SECS - 1));

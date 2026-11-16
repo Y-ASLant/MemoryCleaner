@@ -20,6 +20,12 @@ path = "src/main.rs"
 name = "memory_cleaner"
 path = "src/lib.rs"
 
+[lints.rust]
+unsafe_op_in_unsafe_fn = "warn"
+
+[lints.clippy]
+all = { level = "deny", priority = 10 }
+
 [dev-dependencies]
 tempfile = "3.27.0"
 

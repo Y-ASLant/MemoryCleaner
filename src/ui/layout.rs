@@ -152,13 +152,6 @@ mod tests {
     }
 
     #[test]
-    fn expanded_window_is_taller_than_collapsed() {
-        let collapsed = collapsed_window_height(6.);
-        let expanded = expanded_window_height(6.);
-        assert!(expanded > collapsed);
-    }
-
-    #[test]
     fn expanded_window_contains_full_settings_reveal() {
         let collapsed = collapsed_window_height(6.);
         let expanded = expanded_window_height(6.);

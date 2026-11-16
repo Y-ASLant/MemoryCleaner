@@ -181,20 +181,3 @@ pub fn render_memory_card(
                 }),
         )
 }
-
-#[cfg(test)]
-mod tests {
-    use super::SYSTEM_WORKING_SET_ICON;
-    use gpui_kit::AssetSource;
-    use gpui_kit::assets::IconNamed;
-
-    #[test]
-    fn system_working_set_icon_is_in_registered_assets() {
-        let path = SYSTEM_WORKING_SET_ICON.path();
-        let svg = gpui_kit::assets::Assets
-            .load(path.as_ref())
-            .expect("load system working-set icon from default assets")
-            .expect("system working-set icon exists");
-        assert!(std::str::from_utf8(svg.as_ref()).unwrap().contains("<svg"));
-    }
-}

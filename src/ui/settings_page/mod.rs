@@ -40,8 +40,6 @@ use cleanup_areas::render_cleanup_areas;
 use process_exclusion::render_process_exclusion;
 
 pub use cleanup_footer::render_cleanup_footer;
-#[cfg(test)]
-pub(crate) use window_behavior::auto_cleanup_description;
 pub use window_behavior::render_window_behavior_dialog;
 
 const ROW_GAP: f32 = 6.;

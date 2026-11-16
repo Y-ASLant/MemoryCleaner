@@ -117,7 +117,7 @@ just clean # cargo clean + remove dist/
 | `src/win32/volume.rs` | Mount Manager volume enumeration and modified-file-cache flush |
 | `src/win32/startup.rs` | Run-at-startup via a Task Scheduler logon task (`/RL HIGHEST`); deletes the legacy `HKCU\...\Run` entry |
 | `docs/CHANGELOG.md` | Version changelog (final diff vs previous release only) |
-| `Cargo.toml` | Dependencies, features, release profile (LTO, strip, abort-on-panic) |
+| `Cargo.toml` | Dependencies, features, package lints, release profile (LTO, strip, abort-on-panic) |
 | `build.rs` | Icon embedding via `winres` |
 | `.justfile` | fmt / check / build / clean tasks (just task runner) |
 
@@ -154,7 +154,7 @@ While `run_optimize` is in progress, `tray::start_spin()` posts `TrayCommand::Se
 ## Runtime / Tooling Preferences
 
 - **Toolchain:** Latest stable Rust with MSVC (Windows Build Tools or Visual Studio required). No `rust-version` field — no MSRV enforcement.
-- **No rust-toolchain.toml, .cargo/config.toml, clippy.toml, or rustfmt.toml** — defaults only.
+- **No rust-toolchain.toml, .cargo/config.toml, clippy.toml, or rustfmt.toml** — defaults only. Package Clippy policy lives in `Cargo.toml` `[lints]` (`clippy.all = deny`), matching `just check`.
 - **Async:** `smol` (not tokio).
 - **Release profile:** Aggressive optimization — LTO enabled, symbols stripped, `opt-level = "z"` (size), single codegen unit, `panic = "abort"`.
 - **Package manager:** Cargo only. No npm, no other package managers.
@@ -162,7 +162,7 @@ While `run_optimize` is in progress, `tray::start_spin()` posts `TrayCommand::Se
 
 ## Testing & QA
 
-- **Unit tests:** `cargo test` — memory formatting, cleanup messages, settings TOML, tray tooltip, hotkey chord parse/format and failed rebind preservation, optimize step plan, auto-cleanup trigger policy, startup task command line and bounded child waits, layout metrics, icon-cache outcomes, notification XML escape and COM lifecycle, volume flush helpers.
+- **Unit tests:** `cargo test` — memory formatting, cleanup messages, settings TOML/normalize, tray tooltip, hotkey chord parse/format and failed rebind preservation, optimize step plan, auto-cleanup trigger policy, startup task command line and bounded child waits, layout metrics, icon-cache outcome messages, notification XML escape and COM lifecycle, volume flush helpers. Prefer contract/edge-case tests over wiring, constant pins, or full i18n string snapshots.
 - **Integration tests:** `tests/settings_persistence.rs` — settings save/load and atomic write in isolated `%APPDATA%`.
 - **Manual QA:** Win32 memory cleanup, tray, GPUI dialogs, Explorer restart, global hotkey, Windows Toast (admin required for most cleanup).
 - **Diagnostics:** DebugView for `OutputDebugString`; optional `App.log` when debug logging is enabled.

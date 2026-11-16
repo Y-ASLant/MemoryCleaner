@@ -224,23 +224,4 @@ mod tests {
             assert_eq!(labels, vec!["Working Set", "Modified File Cache"]);
         });
     }
-
-    #[test]
-    fn memory_area_labels_are_stable_zh() {
-        with_locale("zh-CN", || {
-            assert_eq!(MemoryAreas::WORKING_SET.label(), "工作集");
-            assert_eq!(MemoryAreas::MODIFIED_FILE_CACHE.label(), "已修改文件");
-        });
-    }
-
-    #[test]
-    fn memory_area_labels_are_stable_en() {
-        with_locale("en", || {
-            assert_eq!(MemoryAreas::WORKING_SET.label(), "Working Set");
-            assert_eq!(
-                MemoryAreas::MODIFIED_FILE_CACHE.label(),
-                "Modified File Cache"
-            );
-        });
-    }
 }

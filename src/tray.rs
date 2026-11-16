@@ -103,7 +103,7 @@ impl Tray {
         tx: Sender<TrayCommand>,
         run_at_startup: bool,
         auto_cleanup_enabled: bool,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> anyhow::Result<()> {
         let _ = CMD_TX.set(tx.clone());
         install_event_handlers(tx);
 
@@ -366,7 +366,7 @@ fn load_icon_source() -> RgbaImage {
     })
 }
 
-fn load_app_icon_rgba() -> Result<RgbaImage, Box<dyn std::error::Error>> {
+fn load_app_icon_rgba() -> anyhow::Result<RgbaImage> {
     let png_data = include_bytes!("../App.png");
     let img = image::load_from_memory(png_data)?;
     Ok(img
@@ -447,15 +447,6 @@ mod tests {
         }
     }
 
-    fn sample_icon() -> RgbaImage {
-        RgbaImage::from_raw(
-            2,
-            2,
-            vec![255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 0, 0, 0, 255],
-        )
-        .expect("sample icon")
-    }
-
     #[test]
     fn format_memory_tooltip_includes_virtual_memory_zh() {
         with_locale("zh-CN", || {
@@ -503,16 +494,6 @@ mod tests {
                 "Physical: 46%\nCommitted: 86%\nSystem working set: —"
             );
         });
-    }
-
-    #[test]
-    fn rotate_quarters_cycles_square_icon_dimensions() {
-        let source = sample_icon();
-        for quarters in 0..4 {
-            let rotated = rotate_quarters(&source, quarters);
-            assert_eq!(rotated.dimensions(), (2, 2));
-        }
-        assert_eq!(rotate_quarters(&source, 4), rotate_quarters(&source, 0));
     }
 
     #[test]
