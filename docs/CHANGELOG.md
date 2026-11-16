@@ -20,7 +20,7 @@
 - **Windows 10 悬浮提示**：标题栏、进程排除与清理按钮的普通悬浮提示遵循主题阴影开关，在 Windows 10 下保留直角与边框并关闭阴影；Windows 11 保留默认效果。文档明确当前组件库对话框、下拉菜单与图表悬浮卡片的阴影限制。
 - **内存监控动画**：物理内存与提交内存卡片的百分比、已用与可用容量直接显示最新采样值，圆环弧线仅在百分比变化时进行 220 毫秒的短过渡，完成后保持静止；从托盘恢复窗口时立即刷新并对齐当前数据，减少数字持续跳动与不必要的逐帧渲染。
 - **窗口底部边距**：清理按钮下方内边距调整为 2px，与四边视觉一致；窗口折叠高度为 322px、展开高度为 698px。
-- **应用设置细节**：版本号改用组件库 Tag 展示；刷新桌面图标缓存的确认弹窗说明其修复图标显示异常的用途。
+- **应用设置细节**：版本信息改为「应用名 v版本号 · GitHub」行，版本号为普通文本、仓库链接使用 Link 组件；刷新桌面图标缓存的确认弹窗说明其修复图标显示异常的用途。
 
 ### 移除
 
@@ -217,7 +217,7 @@ Records Memory Cleaner releases. Format follows [Keep a Changelog](https://keepa
 - **Windows 10 tooltips** — Ordinary title-bar, process-exclusion, and cleanup-button tooltips honor the theme shadow flag, retaining square corners and borders without shadows on Windows 10. Windows 11 keeps the default appearance. Documentation clarifies the current component library's shadow limitations for dialogs, dropdown menus, and chart hover cards.
 - **Memory-monitor animation** — Physical- and committed-memory cards show the latest sampled percentage and used/available capacity directly. Ring arcs use a short 220 ms transition only when the percentage changes, then remain still. Restoring the window from the tray immediately refreshes and aligns the display with current readings, reducing continuously changing numbers and unnecessary frame-by-frame rendering.
 - **Window bottom padding** — The cleanup button's bottom padding is now 2px to visually match the other edges; window heights are 322px collapsed and 698px expanded.
-- **Settings details** — The version number now uses a component-library Tag; the refresh icon-cache confirmation dialog explains that it fixes abnormal icon display.
+- **Settings details** — The version line now reads "app name vX.Y.Z · GitHub", with the version as plain text and the repository as a Link; the refresh icon-cache confirmation dialog explains that it fixes abnormal icon display.
 
 ### Removed
 

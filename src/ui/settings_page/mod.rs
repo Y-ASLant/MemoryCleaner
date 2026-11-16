@@ -6,6 +6,7 @@ use gpui_kit::component::{
     h_flex,
     kbd::Kbd,
     label::Label,
+    link::Link,
     menu::{DropdownMenu, PopupMenuItem},
     progress::ProgressCircle,
     scroll::ScrollableElement as _,

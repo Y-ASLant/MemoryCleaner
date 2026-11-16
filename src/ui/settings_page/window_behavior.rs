@@ -42,21 +42,21 @@ fn switch_row_app(
 }
 
 fn render_version_row(cx: &App) -> impl IntoElement {
-    let version = format!("v{}", crate::version::VERSION);
+    let muted_fg = cx.theme().muted_foreground;
 
-    h_flex().w_full().justify_center().items_center().child(
-        div()
-            .id("version-link")
-            .cursor_pointer()
-            .on_click(|_, _, cx| cx.open_url(crate::version::REPO_URL))
-            .child(
-                Tag::secondary()
-                    .outline()
-                    .small()
-                    .rounded(cx.theme().radius)
-                    .child(version),
-            ),
-    )
+    h_flex()
+        .w_full()
+        .justify_center()
+        .items_center()
+        .gap_2()
+        .child(
+            div()
+                .text_sm()
+                .text_color(muted_fg)
+                .child(format!("{} v{}", crate::version::APP_NAME, crate::version::VERSION)),
+        )
+        .child(div().text_sm().text_color(muted_fg).child("·"))
+        .child(Link::new("version-link").href(crate::version::REPO_URL).child("GitHub"))
 }
 
 fn render_language_selector(
