@@ -49,14 +49,17 @@ fn render_version_row(cx: &App) -> impl IntoElement {
         .justify_center()
         .items_center()
         .gap_2()
-        .child(
-            div()
-                .text_sm()
-                .text_color(muted_fg)
-                .child(format!("{} v{}", crate::version::APP_NAME, crate::version::VERSION)),
-        )
+        .child(div().text_sm().text_color(muted_fg).child(format!(
+            "{} v{}",
+            crate::version::APP_NAME,
+            crate::version::VERSION
+        )))
         .child(div().text_sm().text_color(muted_fg).child("·"))
-        .child(Link::new("version-link").href(crate::version::REPO_URL).child("GitHub"))
+        .child(
+            Link::new("version-link")
+                .href(crate::version::REPO_URL)
+                .child("GitHub"),
+        )
 }
 
 fn render_language_selector(
