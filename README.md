@@ -161,6 +161,7 @@ locales/
 └── zh-CN.yml            # 中英文 UI 文案（rust-i18n _version: 2 格式）
 
 src/
+├── lib.rs               # 库 crate：rust_i18n! 注册与各模块导出
 ├── anim.rs              # 内存数值/环形图与布局过渡动画插值器
 ├── auto_cleanup.rs      # 自动清理触发策略（低内存通知、阈值、冷却）
 ├── main.rs              # 入口：UAC、单实例、通知初始化、托盘/热键、GPUI 启动
@@ -188,15 +189,17 @@ src/
 │   ├── memory_notification.rs # Windows 低/高内存资源通知监听
 │   ├── notification.rs  # Windows Toast 与开始菜单快捷方式
 │   ├── nt.rs            # NtSetSystemInformation 等 NT 原语
-│   ├── os.rs            # RtlGetVersion、GetUserDefaultUILanguage
+│   ├── os.rs            # 最低系统版本门槛、Win11 build 检测、GetUserDefaultUILanguage
 │   ├── process.rs       # 进程枚举/结束（Explorer 重启）
 │   ├── single_instance.rs
 │   ├── startup.rs       # 通过 Task Scheduler 实现最高权限登录自启
 │   ├── volume.rs        # Mount Manager 卷枚举与已修改文件缓存刷写
 │   └── window.rs        # 窗口置顶、隐藏到托盘
 └── ui/                  # GPUI UI 组件
+    ├── cleanup_history.rs
     ├── layout.rs
     ├── memory_card.rs
+    ├── mod.rs
     ├── settings_page/   # 设置页面按职责拆分
     │   ├── mod.rs
     │   ├── cleanup_areas.rs

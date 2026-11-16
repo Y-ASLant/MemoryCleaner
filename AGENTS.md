@@ -15,7 +15,7 @@ main.rs → wake-signal check → ensure_elevated() → wake-signal retry → si
  ├─ auto_cleanup.rs (auto-cleanup trigger policy: low-memory notifications, threshold decisions, cooldown)
  ├─ log.rs (optional App.log output, hourly retention, malformed-content bounds, I/O diagnostics)
  ├─ locale.rs (rust-i18n locale apply, list separator, lang-id mapping)
- ├─ memory.rs (GlobalMemoryStatusEx + GetPerformanceInfo → physical and system commit status)
+ ├─ memory.rs (GlobalMemoryStatusEx + GetPerformanceInfo → physical/commit; NtQuerySystemInformation → system working set)
  ├─ optimize.rs (MemoryAreas bitflags → NT cache-purge steps)
  ├─ settings.rs (TOML persistence at %APPDATA%\MemoryCleaner\settings.toml)
  ├─ privileges.rs (SeProfileSingleProcessPrivilege, SeIncreaseQuotaPrivilege)

@@ -161,6 +161,7 @@ locales/
 └── zh-CN.yml            # Chinese & English UI strings (rust-i18n _version: 2 format)
 
 src/
+├── lib.rs               # Library crate: rust_i18n! registration and module exports
 ├── anim.rs              # Interpolators for memory values, ring charts, and layout transitions
 ├── auto_cleanup.rs      # Automatic-cleanup trigger policy (low-memory notification, threshold, cooldown)
 ├── main.rs              # Entry: UAC, single-instance, notification init, tray/hotkey, GPUI launch
@@ -188,15 +189,17 @@ src/
 │   ├── memory_notification.rs # Windows low/high memory resource notification monitor
 │   ├── notification.rs  # Windows Toast and Start Menu shortcut
 │   ├── nt.rs            # NtSetSystemInformation and NT primitives
-│   ├── os.rs            # RtlGetVersion, GetUserDefaultUILanguage
+│   ├── os.rs            # Minimum-OS gate, Win11 build detection, GetUserDefaultUILanguage
 │   ├── process.rs       # Process enumeration/termination (Explorer restart)
 │   ├── single_instance.rs
 │   ├── startup.rs       # Highest-privilege logon startup via Task Scheduler
 │   ├── volume.rs        # Mount Manager volume enumeration and modified-file-cache flushing
 │   └── window.rs        # Window always-on-top, hide to tray
 └── ui/                  # GPUI UI components
+    ├── cleanup_history.rs
     ├── layout.rs
     ├── memory_card.rs
+    ├── mod.rs
     ├── settings_page/   # Settings UI split by responsibility
     │   ├── mod.rs
     │   ├── cleanup_areas.rs
