@@ -2,7 +2,6 @@
 name = "memory-cleaner"
 version = "1.2.1"
 edition = "2024"
-rust-version = "1.97.1"
 description = "Memory Cleaner"
 license = "MIT"
 repository = "https://github.com/Y-ASLant/MemoryCleaner"

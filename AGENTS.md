@@ -81,7 +81,7 @@ just clean # cargo clean + remove dist/
 
 ## Code Conventions & Common Patterns
 
-- **Language:** Rust, Edition 2024 (requires Rust 1.97.1+).
+- **Language:** Rust, Edition 2024 (no `rust-version` pin; use latest stable).
 - **Platform:** Windows-only. All modules assume `target_os = "windows"`.
 - **Error handling:** Functions return `Result<T, E>` or use `Option` for fallible lookups. `anyhow` is used in optimize/icon_cache paths; settings and most UI code use concrete errors.
 - **Unsafe / FFI:** `unsafe` is concentrated in `src/win32/` (NT API calls, privilege token manipulation, hotkey message loop) and `src/optimize.rs` (NtSetSystemInformation). Each unsafe block is narrowly scoped.
@@ -153,7 +153,7 @@ While `run_optimize` is in progress, `tray::start_spin()` posts `TrayCommand::Se
 
 ## Runtime / Tooling Preferences
 
-- **Toolchain:** Rust 1.97.1+ with MSVC (Windows Build Tools or Visual Studio required).
+- **Toolchain:** Latest stable Rust with MSVC (Windows Build Tools or Visual Studio required). No `rust-version` field — no MSRV enforcement.
 - **No rust-toolchain.toml, .cargo/config.toml, clippy.toml, or rustfmt.toml** — defaults only.
 - **Async:** `smol` (not tokio).
 - **Release profile:** Aggressive optimization — LTO enabled, symbols stripped, `opt-level = "z"` (size), single codegen unit, `panic = "abort"`.
