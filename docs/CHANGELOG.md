@@ -17,7 +17,7 @@
 ### 变更
 
 - **二次启动**：已运行实例收到信号后走托盘清理入口，不再尝试显示窗口。
-- **产品名与版本**：更名为 **Memory Cleaner Lite**，版本号 `1.0.0`（托盘精简版；二进制仍为 `MemoryCleaner.exe`，配置目录仍为 `%APPDATA%\MemoryCleaner`）。
+- **产品名与版本**：**Memory Cleaner Lite** `1.0.0`，与 master 完整版并行独立——二进制 `MemoryCleanerLite.exe`、配置 `%APPDATA%\MemoryCleanerLite`、独立互斥体/自启任务/AUMID。
 - **配置精简**：不再读写 `always_on_top` / `close_to_notification_area` / `cleanup_history`（旧 TOML 键加载时忽略，下次保存丢弃）。
 - **任务栏窗口闪烁**：`WS_POPUP` 嵌 `Shell_TrayWnd` 后 `IsChild` 恒 false，热路径误 `SetParent` 触发每秒 `WM_SHOWWINDOW` 显隐；改为 `GetParent == taskbar` 判定，失败不重嵌。
 
@@ -137,7 +137,7 @@
 ### 新增
 
 - **自动清理策略**：自动清理支持 Windows 低内存通知和持续内存占用阈值两种触发方式；可在窗口行为设置中选择阈值。
-- **GitHub Actions**：新增仅由 `v*` 标签触发的 Windows 构建与发布流程；标签须匹配版本号，随后自动执行格式检查、Clippy、测试、release 构建，并创建附带 `MemoryCleaner.exe` 的 GitHub Release。
+- **GitHub Actions**：新增仅由 `v*` 标签触发的 Windows 构建与发布流程；标签须匹配版本号，随后自动执行格式检查、Clippy、测试、release 构建，并创建附带 `MemoryCleanerLite.exe` 的 GitHub Release。
 
 ### 变更
 
@@ -241,7 +241,7 @@ Records Memory Cleaner Lite releases. Format follows [Keep a Changelog](https://
 - **Tray-only, no main window**: Removed the GPUI GUI; the app runs as a system-tray resident with a Win32 message pump on the main thread.
 - **Dependencies**: Add `sysinfo` 0.40 (`system` + `network` only); remove `gpui-kit`, `raw-window-handle`, and `smol`.
 - **Second launch**: A running instance receives the wake signal as the tray cleanup entry path; no window is shown.
-- **Product name and version**: Renamed to **Memory Cleaner Lite**, version `1.0.0` (tray-only edition; binary remains `MemoryCleaner.exe`, config dir still `%APPDATA%\MemoryCleaner`).
+- **Product name and version**: **Memory Cleaner Lite** `1.0.0`, independent of full master — binary `MemoryCleanerLite.exe`, config `%APPDATA%\MemoryCleanerLite`, separate mutex / startup task / AUMID.
 - **Settings trim**: Stop reading/writing `always_on_top` / `close_to_notification_area` / `cleanup_history` (legacy TOML keys ignored on load, dropped on next save). Hotkey chord remains TOML-only.
 - **Taskbar strip flicker**: After `SetParent` of a `WS_POPUP` into `Shell_TrayWnd`, `IsChild` stays false and the hot path re-`SetParent`ed every second (`WM_SHOWWINDOW` hide/show). Now uses `GetParent == taskbar`; no re-embed when `GetParent` fails.
 
@@ -360,7 +360,7 @@ Final changes since [1.0.4].
 ### Added
 
 - **Automatic-cleanup policies** — Automatic cleanup now supports Windows low-memory notifications and sustained memory-usage thresholds. The threshold is configurable in Window Behavior settings.
-- **GitHub Actions** — Added a Windows build-and-release workflow triggered only by `v*` tags. The tag must match the package version; it checks formatting, runs Clippy and tests, builds the release binary, and creates a GitHub Release with `MemoryCleaner.exe`.
+- **GitHub Actions** — Added a Windows build-and-release workflow triggered only by `v*` tags. The tag must match the package version; it checks formatting, runs Clippy and tests, builds the release binary, and creates a GitHub Release with `MemoryCleanerLite.exe`.
 
 ### Changed
 

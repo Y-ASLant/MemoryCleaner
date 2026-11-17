@@ -1,243 +1,56 @@
 <p align="center">
-  <img src="App.png" alt="Memory Cleaner" width="128" />
+  <img src="App.png" alt="Memory Cleaner Lite" width="128" />
 </p>
 
-# Memory Cleaner
+# Memory Cleaner Lite
 
-A Windows memory optimization tool built with Rust + GPUI. Real-time memory monitoring, configurable cleanup regions, automatic cleanup, system tray resident, global hotkey, and one-click optimization.
+Windows tray-resident memory cleaner (Rust). Monitors physical/commit memory plus CPU and network, and requests reclamation via NT memory-management APIs. Settings live in the **tray context menu**. Most cleanup steps need administrator rights. MIT.
 
-**[中文文档](README.md)**
+Independent from full **Memory Cleaner**: binary `MemoryCleanerLite.exe`, config `%APPDATA%\MemoryCleanerLite\`, can run side by side.
 
 ## Features
 
-- **Real-time Memory Monitoring** — Physical and system committed memory usage with ring progress charts, plus system working-set current size, historical peak, and percentage of peak; auto-refreshes every **1 second** when the main window is visible, pauses polling when minimized to tray to save CPU; tray icon tooltip updates instantly on hover
-- **One-Click Cleanup** — Executes cleanup steps sequentially based on selected regions; progress and result summary shown in the bottom button (retained for ~5 seconds after completion)
-- **Cleanup Results & History** — The result reports available-memory and physical-memory-pressure changes; the latest 7 cleanup records retain their trigger, selected/completed/failed count, duration, and before/after memory values. Use the title-bar Cleanup History button to view all records
-- **Configurable Cleanup Regions** — 7 memory regions selectable via checkboxes (Standby List and Standby List Low Priority are mutually exclusive)
-- **Automatic Cleanup** — Can be enabled in the Window Behavior dialog; supports Windows low-physical-memory notifications and a sustained physical-memory usage threshold (two consecutive above-threshold checks, then a 10-minute cooldown)
-- **Global Hotkey** — Default `Ctrl+Alt+C` triggers cleanup; can be toggled and custom combo recorded in the Window Behavior dialog (`RegisterHotKey`); failed registrations retain the previous binding and settings and display an error
-- **System Notifications** — Windows Toast popups on cleanup start and completion (can be disabled in the Window Behavior dialog)
-- **System Tray** — Right-click menu (Optimize Memory, Show/Hide Window, Run at Startup, Automatic Cleanup, Exit); left-click shows/activates the main window; **spin animation** during cleanup (rotates 90° every 96ms to indicate activity)
-- **Window Behavior** — Title bar gear menu: Always on Top, Close to Tray, Run at Startup, Debug Logging, Optimization Notifications, Global Hotkey, Language, Automatic Cleanup threshold
-- **Desktop Icon Cache Refresh** — Title bar refresh button; terminates and restarts Explorer to clear `IconCache.db` and related caches
-- **Custom Title Bar** — Settings, icon cache refresh, expand/collapse, minimize, close (no maximize button)
-- **Configuration Persistence** — `%APPDATA%\MemoryCleaner\settings.toml`, auto-created on first run
-- **Debug Logging** — Optional `App.log` output in the application directory; entries older than seven days are purged at most hourly, and malformed content is bounded
-- **Auto Elevation** — Detects admin privileges at startup and triggers UAC elevation if needed
-- **Single Instance** — Named mutex plus wake event; repeated launches activate the existing instance and then exit the new process
-- **Platform UI Adaptation** — Windows 11 uses default rounded corners; Windows 10 automatically switches to square buttons, cards, dialogs, etc. (build < 22000)
-- **Interface Internationalization** — Simplified Chinese / English, switchable in the Window Behavior dialog; default is "Follow System" (detected via `GetUserDefaultUILanguage`)
+- **One-shot cleanup**: tray left-click / global hotkey / second-instance wake
+- **Cleanup areas**: working set, system file cache, modified page list, standby list (normal/low-priority mutually exclusive), combined pages, modified file cache
+- **Automatic cleanup**: Windows low-memory notification + optional physical-usage threshold
+- **Tray menu**: areas, auto-cleanup and threshold, run at startup, notifications, debug log, hotkey toggle, taskbar strip, language, open config folder
+- **Taskbar strip**: 2×2 (↑/↓/CPU/RAM) left of the notification area
+- **Global hotkey**: default `Ctrl+Alt+C` (toggle in menu; chord in `settings.toml`)
+- **Single instance**: a second launch triggers cleanup on the running process
+- **Config**: `%APPDATA%\MemoryCleanerLite\settings.toml`
 
-## System Requirements
-
-| Item | Requirement |
-|------|-------------|
-| OS | Windows 8 / 10 / 11 Desktop (64-bit); Windows 11 requires build ≥ 22000; versions below Windows 8 are rejected at startup |
-| Rust | Latest stable (Edition 2024) |
-| Build Tools | MSVC (Visual Studio Build Tools or Visual Studio) |
-| Other | Available GPU driver; most cleanup operations require administrator privileges |
-
-## Quick Start
-
-### Build
+## Build
 
 ```bash
-just build
-# or
-cargo build --release
-```
-
-Build artifact: `target/release/MemoryCleaner.exe`
-
-### Run
-
-```bash
-cargo run
-# or (recommended, requires admin privileges)
+just build          # clippy + release
 cargo run --release
 ```
 
-> The application will automatically request UAC elevation at startup. If the user declines, some cleanup operations will fail.
+Artifact: `target/release/MemoryCleanerLite.exe`
 
-## Interface Overview
+## Settings
 
-Main window has a fixed width of **520px**, height varies with expand state (collapsed ~**322px**, expanded ~**698px**), top to bottom:
+| Key | Type | Default | Notes |
+|---|---|---|---|
+| `run_at_startup` | bool | `false` | Highest-privilege logon task, tray only |
+| `memory_areas` | u32 | `43` | Cleanup area bitmask |
+| `show_optimization_notifications` | bool | `true` | Toast when cleanup finishes |
+| `language` | string | `"auto"` | `auto` / `zh-CN` / `en` |
+| `debug_logging` | bool | `false` | `App.log` beside the exe (≤ 2 MiB single file) |
+| `cleanup_hotkey_enabled` | bool | `true` | Global hotkey on/off |
+| `cleanup_hotkey` | string | `"Ctrl+Alt+C"` | Hotkey chord |
+| `auto_cleanup_enabled` | bool | `false` | Automatic cleanup |
+| `auto_cleanup_threshold` | u32 | `0` | Physical usage %; `0` = low-memory notify only |
+| `show_taskbar_window` | bool | `true` | Taskbar metrics strip |
 
-1. **Title Bar** — App name, Window Behavior (gear), icon cache refresh, expand/collapse, minimize, close
-2. **Memory Cards** — Physical and system committed memory ring charts, with a system working-set current/peak card below (always visible by default)
-3. **Expand Panel** — Click the arrow to reveal the "Cleanup Regions" checkbox panel
-4. **One-Click Cleanup** — Bottom action button; cleanup progress and results displayed directly in the button
+Legacy keys (`always_on_top`, `excluded_processes`, …) are ignored on load and dropped on save.
 
-Collapsed by default, showing only memory cards and the cleanup button; expanding the window automatically increases height to accommodate cleanup region settings. Window behavior is configured via the dialog opened from the title bar gear icon; clicking the blank area outside the dialog will not close it.
+## Development
 
-When closing the main window, if "Close to Tray" is enabled, the window hides and destroys the GPUI window handle, and the process continues running in the tray; clicking the tray icon again reopens the main window.
-
-Run-at-startup synchronization runs in the background both on launch and after setting changes, without blocking the UI. The switch is disabled while an update is pending. Each `schtasks` child wait is limited to 10 seconds; a timeout requests termination of that child. Failed updates retain the previous setting and display an error.
-
-### Interface Screenshots (Windows 10 / 11 Comparison)
-
-Side-by-side comparison (numbered 1–4 consistent across platforms):
-
-| | Windows 10 (Square Corners) | Windows 11 (Rounded Corners) |
-|:--|:--|:--|
-| **1 · Collapsed** | ![Win10 Collapsed](assets/Win10_1.png) | ![Win11 Collapsed](assets/Win11_1.png) |
-| **2 · Window Behavior** | ![Win10 Window Behavior](assets/Win10_2.png) | ![Win11 Window Behavior](assets/Win11_2.png) |
-| **3 · Expanded** | ![Win10 Expanded](assets/Win10_3.png) | ![Win11 Expanded](assets/Win11_3.png) |
-| **4 · Window Behavior (Expanded BG)** | ![Win10 Window Behavior-Expanded](assets/Win10_4.png) | ![Win11 Window Behavior-Expanded](assets/Win11_4.png) |
-
-### Windows 10 / 11 UI Style
-
-At startup, the system build number is detected via `RtlGetVersion`, and gpui-kit theme corner radius is adjusted automatically — no user configuration needed:
-
-| System | Condition | UI |
-|--------|-----------|----|
-| Windows 11 | build ≥ 22000 | Default rounded corners (`radius` 6px / `radius_lg` 8px) |
-| Windows 10 | build < 22000 | Square corners (`radius` / `radius_lg` set to 0; component shadows that honor the theme flag are disabled) |
-
-Buttons, GroupBox cards, switches, checkboxes, dialogs, settings panels, etc. all follow the theme `radius`; memory ring charts remain circular. Ordinary button tooltips disable shadows on Windows 10 while retaining their borders. In `gpui-component 0.9.1`, dialogs and tooltips (including chart hover cards) still draw their own shadows without a public override; these surfaces remain square. Native window shadows, tray menus, and Windows notifications are controlled by the OS. Implementation in `src/ui/theme.rs` and `src/win32/os.rs`.
-
-## Cleanup Regions
-
-| Region | Description | Requires Admin |
-|--------|-------------|:-:|
-| Working Set | Clear all process working sets | Yes |
-| System File Cache | Release system file cache | Yes |
-| Modified Pages | Flush modified page list | Yes |
-| Standby List | Clear standby list | Yes |
-| Standby List (Low Priority) | Clear low-priority standby list | Yes |
-| Merged Pages | Release merged pages | Yes |
-| Modified Files | Flush file system cache for all volumes via Mount Manager | Yes |
-
-> "Standby List" and "Standby List (Low Priority)" are mutually exclusive — selecting one automatically deselects the other.
->
-> **Disk impact:** Of the 7 cleanup regions, only "Modified Files" and "Modified Pages" involve disk writes; the remaining 5 (Working Set, System File Cache, Standby List, Standby List Low Priority, Merged Pages) are pure RAM operations. See FAQ below.
-
-If any volume flush fails, Modified Files is counted as a failed region.
-
-Default enabled regions: Working Set, System File Cache, Standby List, Merged Pages (bitmask `43`). Modified Pages and Modified Files are disabled by default as they involve disk writes.
-
-## Configuration
-
-Config file: `%APPDATA%\MemoryCleaner\settings.toml`. Changes are saved in the background after a 300 ms debounce; failures appear in the settings dialog. Closing or exiting synchronously saves the latest settings.
-
-| Setting | Type | Default | Description |
-|---------|------|---------|-------------|
-| `always_on_top` | bool | `false` | Window always on top |
-| `run_at_startup` | bool | `false` | Launch silently into the tray after Windows sign-in via a highest-privilege scheduled task |
-| `close_to_notification_area` | bool | `true` | Hide to tray on close instead of exiting |
-| `memory_areas` | u32 | `43` | Cleanup region bitmask (sum of `MemoryAreas` flag bits) |
-| `language` | string | `"auto"` | Interface language: `auto` (follow system), `zh-CN`, `en` |
-| `debug_logging` | bool | `false` | Write detailed runtime info to `App.log` in the application directory |
-| `show_optimization_notifications` | bool | `true` | Show Windows Toast on cleanup start/completion |
-| `cleanup_hotkey_enabled` | bool | `true` | Enable global cleanup hotkey |
-| `cleanup_hotkey` | string | `"Ctrl+Alt+C"` | Hotkey combo (`Ctrl`/`Alt`/`Shift`/`Win` + letter or digit) |
-| `auto_cleanup_enabled` | bool | `false` | Enable automatic cleanup |
-| `auto_cleanup_threshold` | u32 | `0` | Physical-memory usage threshold percent; `0` disables threshold trigger, so automatic cleanup only reacts to low-memory notifications when enabled |
-| `cleanup_history` | array | `[]` | Latest 7 cleanup outcome records, automatically maintained by the app |
-
-The system working set follows [Mem Reduct](https://github.com/henrypp/memreduct), using `SystemFileCacheInformation.CurrentSize / PeakSize` to show the historical peak after the system working-set title and the current size plus its percentage of the peak as plain text below it. The peak is an observed maximum, not a capacity limit. This ratio does not indicate memory pressure or trigger automatic cleanup, and the difference between peak and current size is not allocatable free memory. A failed query marks only this card as unavailable.
-
-Committed memory uses `GetPerformanceInfo` to show system-wide commit usage and limit, rather than paging-file size or a process's virtual address space. Memory is sampled immediately before and after cleanup; failed samples are shown as unavailable rather than replaced with cached values. Standby pages already count as available physical memory, so purging them does not guarantee more available memory or better performance.
-
-## Tech Stack
-
-| Dependency | Purpose |
-|------------|---------|
-| [Rust](https://www.rust-lang.org/) | Language and runtime |
-| [gpui-kit](https://github.com/longbridge/gpui-kit) 0.9.1 | GPU-accelerated UI framework and component library (`gpui-fast` backend enabled, with default components and assets) |
-| [windows-rs](https://github.com/microsoft/windows-rs) 0.62 | Win32 API (memory management, privileges, window control, Toast, RegisterHotKey) |
-| [tray-icon](https://crates.io/crates/tray-icon) | System tray icon and menu |
-| [smol](https://crates.io/crates/smol) | Async scheduling and blocking task offload |
-| [rust-i18n](https://crates.io/crates/rust-i18n) | Interface internationalization (`locales/zh-CN.yml`) |
-| [image](https://crates.io/crates/image) | Tray PNG decoding and scaling |
-
-## Project Structure
-
-```
-assets/                  # UI screenshots (Win10 / Win11 comparison, numbered 1–4)
-locales/
-└── zh-CN.yml            # Chinese & English UI strings (rust-i18n _version: 2 format)
-
-src/
-├── lib.rs               # Library crate: rust_i18n! registration and module exports
-├── anim.rs              # Interpolators for memory values, ring charts, and layout transitions
-├── auto_cleanup.rs      # Automatic-cleanup trigger policy (low-memory notification, threshold, cooldown)
-├── main.rs              # Entry: UAC, single-instance, notification init, tray/hotkey, GPUI launch
-├── app/                  # Core state split into window, settings, optimization, and rendering
-│   ├── mod.rs
-│   ├── optimization.rs
-│   ├── render.rs
-│   ├── settings.rs
-│   └── window.rs
-├── icon_cache.rs        # Explorer icon cache cleanup
-├── locale.rs            # Locale apply, list separator, system language mapping
-├── log.rs               # Debug log writing, throttled retention, and file-error reporting
-├── memory.rs            # Physical/commit and system working-set queries
-├── messages.rs          # Cleanup result message assembly
-├── optimize.rs          # 7 cleanup regions and NtSetSystemInformation calls
-├── privileges.rs        # Windows privilege elevation
-├── settings.rs          # TOML config read/write
-├── tray.rs              # System tray icon, tooltip, menu, cleanup spin animation
-├── version.rs           # Version constant
-├── win32/               # Windows API wrappers
-│   ├── elevation.rs     # UAC elevation check and relaunch
-│   ├── com.rs           # Thread-bound COM lifetime and error-return boundary
-│   ├── handle.rs        # RAII ownership for HANDLE/HKEY resources
-│   ├── hotkey.rs        # RegisterHotKey global hotkey (dedicated message loop thread)
-│   ├── memory_notification.rs # Windows low/high memory resource notification monitor
-│   ├── notification.rs  # Windows Toast and Start Menu shortcut
-│   ├── nt.rs            # NtSetSystemInformation and NT primitives
-│   ├── os.rs            # Minimum-OS gate, Win11 build detection, GetUserDefaultUILanguage
-│   ├── single_instance.rs
-│   ├── startup.rs       # Highest-privilege logon startup via Task Scheduler
-│   ├── volume.rs        # Mount Manager volume enumeration and modified-file-cache flushing
-│   └── window.rs        # Window always-on-top, hide to tray
-└── ui/                  # GPUI UI components
-    ├── cleanup_history.rs
-    ├── layout.rs
-    ├── memory_card.rs
-    ├── mod.rs
-    ├── settings_page/   # Settings UI split by responsibility
-    │   ├── mod.rs
-    │   ├── cleanup_areas.rs
-    │   ├── cleanup_footer.rs
-    │   ├── process_exclusion.rs
-    │   └── window_behavior.rs
-    ├── theme.rs
-    └── title_bar.rs
+```bash
+just format
+just check
+just test
 ```
 
-## FAQ
-
-**Why are admin privileges required?**
-
-Most cleanup operations are performed through kernel interfaces like `NtSetSystemInformation`, which require privileges such as `SeProfileSingleProcessPrivilege` and `SeIncreaseQuotaPrivilege`. The application automatically detects and requests UAC elevation at startup.
-
-**Will freeing memory slow down the system?**
-
-Windows will reload frequently used pages into memory on demand. There may be a brief delay after cleanup due to cache rebuilding, but no long-term impact; when memory is tight, active cleanup can free up more available memory.
-
-**What if the global hotkey doesn't work?**
-
-Check whether the hotkey is enabled in the Window Behavior dialog, and whether the key combination conflicts with other software. Hotkeys are registered via `RegisterHotKey` and require at least one modifier key (Ctrl/Alt/Shift/Win) plus a letter or digit.
-
-**How do I view logs?**
-
-- **Always available:** Diagnostic output goes to `OutputDebugString`, viewable with [DebugView](https://learn.microsoft.com/en-us/sysinternals/downloads/debugview) (Release builds have no console window).
-- **Debug logging:** Enable "Debug Logging" in the title bar gear menu; detailed runtime info is written to `App.log` in the application directory (same directory as `MemoryCleaner.exe`). Each line is formatted as `[unix_secs.millis] message`. Retention runs on the first write after enabling and at most hourly afterward, removing timestamped entries older than seven days. Untimestamped content is capped at the newest 256 lines and 64 KiB; file I/O failures are reported through `OutputDebugString`.
-
-**Which cleanup operations affect disk lifespan?**
-
-The 7 cleanup regions fall into two categories by disk behavior:
-
-- **Pure RAM operations (no disk impact):** Working Set, System File Cache, Standby List, Standby List (Low Priority), Merged Pages. These only reclaim or discard cached pages in memory without any disk writes. Re-accessing files after cleanup triggers re-reads from disk, but reads do not consume SSD write endurance.
-
-- **Involve disk writes:**
-  - **Modified Files** — Flushes file system cache for all volumes via `NtFlushBuffersFile`; write volume depends on accumulated dirty data — highest impact
-  - **Modified Pages** — Writes dirty pages from memory back to their backing files via `FlushModifiedList`
-
-Occasional manual use is not a concern. If you clean frequently, consider excluding "Modified Files" and "Modified Pages" to reduce disk writes.
-
-## Links
-
-- [Linux DO](https://linux.do/new)
+See `AGENTS.md` and `docs/CHANGELOG.md`.

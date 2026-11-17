@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Memory Cleaner is a **Windows-only** tray-resident memory-optimization tool written in Rust. It monitors physical and system committed memory (and CPU/network via `sysinfo`), and requests memory reclamation through Windows NT memory-management APIs (`NtSetSystemInformation`, `SetSystemFileCacheSize`, etc.). Settings are changed from the **system-tray right-click menu**. Most cleanup operations require administrator privileges. Licensed MIT.
+Memory Cleaner Lite is a **Windows-only** tray-resident memory-optimization tool written in Rust. It monitors physical and system committed memory (and CPU/network via `sysinfo`), and requests memory reclamation through Windows NT memory-management APIs (`NtSetSystemInformation`, `SetSystemFileCacheSize`, etc.). Settings are changed from the **system-tray right-click menu**. Most cleanup operations require administrator privileges. Licensed MIT.
 
 ## Architecture & Data Flow
 
@@ -21,7 +21,7 @@ main.rs → OS gate → wake-signal → ensure_elevated() → wake-signal retry
  ├─ memory.rs (GlobalMemoryStatusEx + GetPerformanceInfo; NtQuery FileCache)
  ├─ system_metrics.rs (sysinfo: CPU + network)
  ├─ optimize.rs (MemoryAreas → NT purge steps)
- ├─ settings.rs (%APPDATA%\MemoryCleaner\settings.toml)
+ ├─ settings.rs (%APPDATA%\MemoryCleanerLite\settings.toml)
  ├─ privileges.rs
  ├─ messages.rs / version.rs
  ├─ fonts/ (Lilex Medium embedded for taskbar strip)
@@ -37,7 +37,7 @@ main.rs → OS gate → wake-signal → ensure_elevated() → wake-signal retry
 - **Console suppression:** `#![windows_subsystem = "windows"]`; diagnostics via `OutputDebugStringA` / optional `App.log`.
 - **Tray command channel:** One `mpsc` carries tray clicks/menu, hotkeys, single-instance wake, low-memory, spin frames, and optimize finished into the main `run_loop`.
 - **Automatic cleanup:** Low-memory `MemoryNotificationMonitor` + threshold poll thread; both honor `auto_cleanup_enabled`. Threshold `0` disables threshold triggers.
-- **Settings via tray:** Cleanup area checks (standby variants mutually exclusive), auto-cleanup, threshold presets, run at startup, notifications, debug log, hotkey enable, taskbar window, language, open config folder. **Hotkey chord string** is TOML-only (no GUI recorder).
+- **Settings via tray:** Cleanup area checks (standby variants mutually exclusive), auto-cleanup, threshold presets, run at startup, notifications, debug log, hotkey enable, taskbar window, language, open config folder. **Hotkey chord string** is TOML-only (no GUI recorder). Independent of full Memory Cleaner (separate exe, config dir, mutex, startup task).
 - **Hotkey:** Transactional rebind in `win32::hotkey` (`RegisterHotKey` worker thread). Enable/disable from tray; chord edit via `settings.toml`.
 - **Startup:** Task Scheduler logon task `/RL HIGHEST`; always tray-only (no “launch hidden window”).
 - **COM lifetime:** `ComApartment::run` for toast/startup paths; release COM objects before leaving the apartment.
@@ -76,7 +76,7 @@ just clean
 - Rust Edition 2024, latest stable, Windows-only.
 - `Result` / `Option`; `anyhow` on optimize paths; settings use concrete errors.
 - `unsafe` concentrated in `src/win32/` and `optimize.rs`.
-- Settings: atomic TOML write under `%APPDATA%\MemoryCleaner\settings.toml`.
+- Settings: atomic TOML write under `%APPDATA%\MemoryCleanerLite\settings.toml`.
 - `MemoryAreas` bitflags in `optimize.rs`.
 - Embedded `App.ico` (`winres`) / `App.png` (`include_bytes!` in tray).
 - Debug logging: `log_msg` → OutputDebugString; `log::write` → `App.log` when enabled (default off; single file ≤ 2 MiB).
@@ -107,7 +107,7 @@ just clean
 - MSVC toolchain; no `rust-toolchain.toml` / clippy.toml / rustfmt.toml.
 - No async runtime dependency (std threads + main pump).
 - Release: LTO, strip, `opt-level = "z"`, `panic = "abort"`.
-- Binary: `MemoryCleaner.exe`.
+- Binary: `MemoryCleanerLite.exe`.
 
 ## Documentation & Changelog
 

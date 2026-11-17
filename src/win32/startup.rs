@@ -43,7 +43,7 @@ pub fn elevation_relaunch_args() -> String {
 }
 
 /// 任务计划程序根目录中的任务名。
-const TASK_NAME: &str = "MemoryCleaner_Autostart";
+const TASK_NAME: &str = "MemoryCleanerLite_Autostart";
 
 /// 旧版自启位置（`HKCU\...\Run`），同步时删除以完成迁移。
 const RUN_KEY_PATH: &str = "Software\\Microsoft\\Windows\\CurrentVersion\\Run";

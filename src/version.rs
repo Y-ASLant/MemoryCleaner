@@ -2,4 +2,7 @@
 pub const APP_NAME: &str = "Memory Cleaner Lite";
 
 /// 进程/任务基名（无扩展名）。
-pub const PROCESS_BASE_NAME: &str = "MemoryCleaner";
+pub const PROCESS_BASE_NAME: &str = "MemoryCleanerLite";
+
+/// `%APPDATA%` 下配置目录名（与 master 版隔离）。
+pub const CONFIG_DIR_NAME: &str = "MemoryCleanerLite";

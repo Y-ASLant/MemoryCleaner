@@ -48,8 +48,8 @@ jobs:
       - name: Upload release binary
         uses: actions/upload-artifact@v7
         with:
-          name: MemoryCleaner-windows-x64
-          path: target/release/MemoryCleaner.exe
+          name: MemoryCleanerLite-windows-x64
+          path: target/release/MemoryCleanerLite.exe
           if-no-files-found: error
           retention-days: 3
 
@@ -81,11 +81,11 @@ jobs:
       - name: Download release binary
         uses: actions/download-artifact@v8
         with:
-          name: MemoryCleaner-windows-x64
+          name: MemoryCleanerLite-windows-x64
           path: release
 
       - name: Publish release
         uses: softprops/action-gh-release@v3
         with:
           body_path: release-notes.md
-          files: release/MemoryCleaner.exe
+          files: release/MemoryCleanerLite.exe

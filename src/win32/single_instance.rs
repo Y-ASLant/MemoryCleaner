@@ -18,8 +18,8 @@ use super::wide_null;
 use crate::tray::TrayCommand;
 use crate::win32::handle::OwnedWin32Handle;
 
-const MUTEX_NAME: &str = "MemoryCleaner_{B8F3A7E2-4C1D-4F5A-9B6E-2D8C3F7A1E9B}";
-const SHOW_EVENT_NAME: &str = "MemoryCleaner_{B8F3A7E2-4C1D-4F5A-9B6E-2D8C3F7A1E9B}_ShowWindow";
+const MUTEX_NAME: &str = "MemoryCleanerLite_{C4E91F0A-7B2D-4A63-9E18-5F6D0C8B3A21}";
+const SHOW_EVENT_NAME: &str = "MemoryCleanerLite_{C4E91F0A-7B2D-4A63-9E18-5F6D0C8B3A21}_ShowWindow";
 static INSTANCE_MUTEX: OnceLock<OwnedWin32Handle> = OnceLock::new();
 
 /// 尝试唤醒可能已在运行的实例的结果。

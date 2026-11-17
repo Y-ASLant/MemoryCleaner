@@ -86,7 +86,7 @@ impl Settings {
         std::env::var_os("APPDATA")
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from("."))
-            .join("MemoryCleaner")
+            .join(crate::version::CONFIG_DIR_NAME)
     }
 
     fn config_path() -> PathBuf {

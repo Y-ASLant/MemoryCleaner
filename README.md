@@ -1,242 +1,56 @@
 <p align="center">
-  <img src="App.png" alt="Memory Cleaner" width="128" />
+  <img src="App.png" alt="Memory Cleaner Lite" width="128" />
 </p>
 
-# Memory Cleaner
+# Memory Cleaner Lite
 
-Windows 内存清理工具，基于 Rust + GPUI 构建。提供实时内存监控、可配置的清理区域、自动清理、系统托盘常驻、全局快捷键，以及一键优化。
+Windows 托盘常驻内存清理工具（Rust）。监控物理/提交内存与 CPU、网速，通过 NT 内存管理 API 请求回收。设置在**托盘右键菜单**完成。多数清理操作需要管理员权限。MIT。
 
-**[English](README_EN.md)**
+与完整版 **Memory Cleaner** 独立：二进制 `MemoryCleanerLite.exe`，配置 `%APPDATA%\MemoryCleanerLite\`，可并行安装运行。
 
 ## 功能
 
-- **实时内存监控** — 物理内存与提交内存使用情况，环形进度图可视化；另显示系统工作集的当前大小、历史峰值与占峰值比例；主窗口可见时每 **1 秒** 自动刷新，隐藏到托盘后暂停轮询以节省 CPU；鼠标悬停托盘图标时也会即时刷新 Tooltip
-- **一键清理** — 按所选区域依次执行；进度与结果摘要显示在底部按钮内（完成后保留约 5 秒）
-- **清理效果与历史** — 清理通知与历史记录显示可用内存和物理内存压力的变化；自动保留最近 7 次清理的触发原因、选中/成功/失败数量、耗时和前后内存数据；标题栏的清理历史按钮可查看全部记录
-- **可配置清理区域** — 7 种内存区域通过复选框勾选（待机列表与普通/低优先级互斥）
-- **自动清理** — 可在窗口行为对话框中启用；支持 Windows 低物理内存通知，以及连续两次超过所选物理内存占用阈值后触发（阈值触发后冷却 10 分钟）
-- **全局快捷键** — 默认 `Ctrl+Alt+C` 触发清理；可在窗口行为对话框中开关、录制自定义组合键（`RegisterHotKey`）；新组合键注册失败时保留原绑定和设置，并显示错误提示
-- **系统通知** — 清理开始与完成时弹出 Windows Toast（可在窗口行为对话框中关闭）
-- **系统托盘** — 右键菜单（优化内存、显示/隐藏窗口、开机自启、自动清理、退出）；左键单击显示/激活主窗口；**执行内存清理时**托盘图标旋转动画（每 96ms 转 90°，表示进行中）
-- **窗口行为** — 标题栏齿轮菜单：置顶、关闭时隐藏到托盘、开机自启、调试日志、优化通知、全局热键、语言、自动清理阈值
-- **桌面图标缓存刷新** — 标题栏刷新按钮；结束并重启 Explorer 以清理 `IconCache.db` 等缓存
-- **自定义标题栏** — 设置、图标缓存、展开/收起、最小化、关闭（无最大化按钮）
-- **配置持久化** — `%APPDATA%\MemoryCleaner\settings.toml`，首次运行自动创建
-- **调试日志** — 可选写入程序目录下的 `App.log`；至多每小时清理一次 7 天前的记录，并限制异常格式内容增长
-- **自动提权** — 启动时检测管理员权限，不足时触发 UAC 提升
-- **单实例** — 命名互斥量与唤醒事件；重复启动会激活已有实例并退出当前进程
-- **平台 UI 适配** — Windows 11 使用默认圆角；Windows 10 自动切换直角按钮、卡片、对话框等（build &lt; 22000）
-- **界面国际化** — 简体中文 / English，窗口行为对话框中可切换；默认「跟随系统」（通过 `GetUserDefaultUILanguage` 检测）
+- **一键清理**：托盘左键 / 全局热键 / 二次启动唤醒
+- **清理区域**：工作集、系统文件缓存、已修改页面、待机列表（普通/低优先级互斥）、合并页面、已修改文件缓存
+- **自动清理**：Windows 低内存通知 + 可选物理内存占用阈值
+- **托盘菜单**：区域、自动清理与阈值、开机自启、通知、调试日志、热键开关、任务栏条、语言、打开配置目录
+- **任务栏条**：通知区左侧 2×2（↑/↓/CPU/RAM）
+- **全局热键**：默认 `Ctrl+Alt+C`（开关在菜单；组合键改 `settings.toml`）
+- **单实例**：已运行时再次启动触发清理
+- **配置**：`%APPDATA%\MemoryCleanerLite\settings.toml`
 
-## 系统要求
-
-| 项目 | 要求 |
-|------|------|
-| 操作系统 | Windows 8 / 10 / 11 桌面版（64 位）；Windows 11 为 build ≥ 22000；低于 Windows 8 的版本启动时会被拒绝 |
-| Rust | 最新稳定版（Edition 2024） |
-| 构建工具 | MSVC（Visual Studio Build Tools 或 Visual Studio） |
-| 其他 | 可用 GPU 驱动；大部分清理操作需管理员权限 |
-
-## 快速开始
-
-### 构建
+## 构建
 
 ```bash
-just build
-# 或
-cargo build --release
-```
-
-构建产物：`target/release/MemoryCleaner.exe`
-
-### 运行
-
-```bash
-cargo run
-# 或（推荐，需管理员权限）
+just build          # clippy + release
 cargo run --release
 ```
 
-> 程序启动时会自动请求 UAC 提权。若用户拒绝，部分清理操作将失败。
-
-## 界面说明
-
-主窗口固定宽度 **520px**，高度随展开状态变化（折叠约 **322px**，展开约 **698px**），自上而下分为：
-
-1. **标题栏** — 应用名称、窗口行为（齿轮）、图标缓存刷新、展开/收起、最小化、关闭
-2. **内存卡片** — 物理内存与提交内存环形图，下方为系统工作集的当前/峰值卡片（默认始终可见）
-3. **展开面板** — 点击箭头后展开「清理区域」复选框面板
-4. **一键清理** — 底部操作按钮；清理进度与结果直接显示在按钮内
-
-默认折叠，仅显示内存卡片与清理按钮；展开后窗口自动增高以容纳清理区域设置。窗口行为通过标题栏齿轮图标打开的对话框配置；点击弹窗外空白区域不会关闭对话框。
-
-关闭主窗口时，若开启「关闭时隐藏到托盘」，窗口会隐藏并销毁 GPUI 窗口句柄，进程继续在托盘运行；再次点击托盘图标可重新打开主窗口。
-
-开机自启在启动时和修改设置时均通过后台任务同步，不阻塞界面。处理中开关暂时禁用；`schtasks` 子进程等待上限为 10 秒，超时后请求终止该子进程。更新失败时保留原设置并显示错误提示。
-
-### 界面截图（Windows 10 / 11 对比）
-
-实机运行对比（序号 1–4 两平台一致）：
-
-| | Windows 10（直角） | Windows 11（圆角） |
-|:--|:--|:--|
-| **1 · 折叠** | ![Win10 折叠](assets/Win10_1.png) | ![Win11 折叠](assets/Win11_1.png) |
-| **2 · 窗口行为** | ![Win10 窗口行为](assets/Win10_2.png) | ![Win11 窗口行为](assets/Win11_2.png) |
-| **3 · 展开** | ![Win10 展开](assets/Win10_3.png) | ![Win11 展开](assets/Win11_3.png) |
-| **4 · 窗口行为（展开背景）** | ![Win10 窗口行为-展开](assets/Win10_4.png) | ![Win11 窗口行为-展开](assets/Win11_4.png) |
-
-### Windows 10 / 11 界面风格
-
-启动时通过 `RtlGetVersion` 检测系统 build 号，自动调整 gpui-kit 主题圆角，无需用户配置：
-
-| 系统 | 条件 | 界面 |
-|------|------|------|
-| Windows 11 | build ≥ 22000 | 默认圆角（`radius` 6px / `radius_lg` 8px） |
-| Windows 10 | build &lt; 22000 | 直角（`radius` / `radius_lg` 为 0，关闭遵循主题开关的组件阴影） |
-
-按钮、GroupBox 卡片、开关、复选框、对话框、设置面板等均跟随主题 `radius`；内存环形图保持圆形。普通按钮悬浮提示在 Windows 10 下关闭阴影并保留边框。当前 `gpui-component 0.9.1` 的对话框与悬浮提示（含图表悬浮卡片）仍自行绘制阴影，公开接口无法统一关闭；这些面板仍为直角。原生窗口阴影、托盘菜单和 Windows 通知由系统控制。实现见 `src/ui/theme.rs` 与 `src/win32/os.rs`。
-
-## 清理区域
-
-| 区域 | 说明 | 需要管理员 |
-|------|------|-----------|
-| 工作集 | 清空所有进程工作集 | 是 |
-| 系统文件缓存 | 释放系统文件缓存 | 是 |
-| 已修改页面 | 刷写已修改页面列表 | 是 |
-| 待机列表 | 清空备用列表 | 是 |
-| 待机列表（低优先级） | 清空低优先级备用列表 | 是 |
-| 合并页面 | 释放合并页面 | 是 |
-| 已修改文件 | 通过 Mount Manager 枚举卷并刷写文件系统缓存 | 是 |
-
-> 「待机列表」与「待机列表（低优先级）」只能二选一，勾选其一会自动取消另一项。
->
-> **磁盘影响：** 7 个清理区域中，仅「已修改文件」「已修改页面」涉及磁盘写入；其余 5 项（工作集、系统文件缓存、待机列表、待机列表低优先级、合并页面）均为纯 RAM 操作，不写磁盘。详见下方 FAQ。
-
-已修改文件刷写中任何卷失败，都会在结果中计为失败区域。
-
-默认启用的区域：工作集、系统文件缓存、待机列表、合并页面（位掩码 `43`）。已修改页面和已修改文件因涉及磁盘写入，默认不启用。
+产物：`target/release/MemoryCleanerLite.exe`
 
 ## 配置项
 
-配置文件：`%APPDATA%\MemoryCleaner\settings.toml`。修改后防抖 300 毫秒在后台保存；失败时设置对话框显示提示，关闭或退出时同步保存最新设置。
+| 键 | 类型 | 默认 | 说明 |
+|---|---|---|---|
+| `run_at_startup` | bool | `false` | 登录后最高权限计划任务托盘启动 |
+| `memory_areas` | u32 | `43` | 清理区域位掩码 |
+| `show_optimization_notifications` | bool | `true` | 清理完成 Toast |
+| `language` | string | `"auto"` | `auto` / `zh-CN` / `en` |
+| `debug_logging` | bool | `false` | 写入 exe 旁 `App.log`（单文件 ≤ 2 MiB） |
+| `cleanup_hotkey_enabled` | bool | `true` | 全局热键开关 |
+| `cleanup_hotkey` | string | `"Ctrl+Alt+C"` | 热键组合 |
+| `auto_cleanup_enabled` | bool | `false` | 自动清理 |
+| `auto_cleanup_threshold` | u32 | `0` | 物理内存占用阈值；`0` 仅低内存通知 |
+| `show_taskbar_window` | bool | `true` | 任务栏指标条 |
 
-| 配置项 | 类型 | 默认值 | 说明 |
-|--------|------|--------|------|
-| `always_on_top` | bool | `false` | 窗口始终置顶 |
-| `run_at_startup` | bool | `false` | 登录 Windows 后通过最高权限计划任务静默启动到托盘 |
-| `close_to_notification_area` | bool | `true` | 点击关闭时隐藏到托盘而非退出 |
-| `memory_areas` | u32 | `43` | 清理区域位掩码（各 `MemoryAreas` 标志位之和） |
-| `language` | string | `"auto"` | 界面语言：`auto`（跟随系统）、`zh-CN`、`en` |
-| `debug_logging` | bool | `false` | 将详细运行信息写入程序目录下的 `App.log` |
-| `show_optimization_notifications` | bool | `true` | 清理开始/完成时弹出 Windows Toast |
-| `cleanup_hotkey_enabled` | bool | `true` | 启用全局清理热键 |
-| `cleanup_hotkey` | string | `"Ctrl+Alt+C"` | 热键组合（`Ctrl`/`Alt`/`Shift`/`Win` + 字母或数字） |
-| `auto_cleanup_enabled` | bool | `false` | 启用自动清理 |
-| `auto_cleanup_threshold` | u32 | `0` | 物理内存占用阈值百分比；`0` 表示关闭阈值触发，启用自动清理时仅由低内存通知触发 |
-| `cleanup_history` | array | `[]` | 最近 7 条清理结果记录，由程序自动维护 |
+旧键（如 `always_on_top`、`excluded_processes`）加载时忽略，保存时丢弃。
 
-系统工作集参考 [Mem Reduct](https://github.com/henrypp/memreduct) 的统计口径，读取 `SystemFileCacheInformation.CurrentSize / PeakSize`，标题在系统工作集名称后标注历史峰值，下方以纯文本显示当前大小及其占峰值比例。峰值是观测到的历史最大值，并非容量上限；该比例不用于判断内存压力或触发自动清理，峰值与当前值之差不代表可分配空闲内存。查询失败时该卡片独立显示不可用。
+## 开发
 
-提交内存通过 `GetPerformanceInfo` 显示系统级提交量与提交上限，不代表分页文件大小或进程虚拟地址空间。清理前后均即时采样；采样失败时显示不可用，不使用缓存值计算释放量。待机页面已经包含在可用物理内存中，清空待机列表不保证可用内存增加，也不保证性能提升。
-
-## 技术栈
-
-| 依赖 | 用途 |
-|------|------|
-| [Rust](https://www.rust-lang.org/) | 语言与运行时 |
-| [gpui-kit](https://github.com/longbridge/gpui-kit) 0.9.1 | GPU 加速 UI 框架与组件库（启用 `gpui-fast` 后端，保留默认组件与资源） |
-| [windows-rs](https://github.com/microsoft/windows-rs) 0.62 | Win32 API（内存管理、权限、窗口控制、Toast、RegisterHotKey） |
-| [tray-icon](https://crates.io/crates/tray-icon) | 系统托盘图标与菜单 |
-| [smol](https://crates.io/crates/smol) | 异步定时与阻塞任务卸载 |
-| [rust-i18n](https://crates.io/crates/rust-i18n) | 界面国际化（`locales/zh-CN.yml`） |
-| [image](https://crates.io/crates/image) | 托盘 PNG 解码与缩放 |
-
-## 项目结构
-
-```
-assets/                  # 界面截图（Win10 / Win11 对比，1–4 序号一致）
-locales/
-└── zh-CN.yml            # 中英文 UI 文案（rust-i18n _version: 2 格式）
-
-src/
-├── lib.rs               # 库 crate：rust_i18n! 注册与各模块导出
-├── anim.rs              # 内存数值/环形图与布局过渡动画插值器
-├── auto_cleanup.rs      # 自动清理触发策略（低内存通知、阈值、冷却）
-├── main.rs              # 入口：UAC、单实例、通知初始化、托盘/热键、GPUI 启动
-├── app/                  # 应用核心状态及按职责拆分的窗口、设置、优化与渲染
-│   ├── mod.rs
-│   ├── optimization.rs
-│   ├── render.rs
-│   ├── settings.rs
-│   └── window.rs
-├── icon_cache.rs        # Explorer 图标缓存清理
-├── locale.rs            # locale 应用、列表分隔符、系统语言映射
-├── log.rs               # 调试日志写入、低频保留清理与文件错误报告
-├── memory.rs            # 物理/提交内存与系统工作集查询
-├── messages.rs          # 清理结果文案组装
-├── optimize.rs          # 7 种清理区域与 NtSetSystemInformation 调用
-├── privileges.rs        # Windows 特权提升
-├── settings.rs          # TOML 配置读写
-├── tray.rs              # 系统托盘图标、Tooltip、菜单、清理过程旋转动画
-├── version.rs           # 版本常量
-├── win32/               # Windows API 封装
-│   ├── elevation.rs     # UAC 提权检测与重新启动
-│   ├── com.rs           # 线程绑定的 COM 生命周期与错误返回边界
-│   ├── handle.rs        # HANDLE/HKEY RAII 所有权封装
-│   ├── hotkey.rs        # RegisterHotKey 全局热键（独立消息循环线程）
-│   ├── memory_notification.rs # Windows 低/高内存资源通知监听
-│   ├── notification.rs  # Windows Toast 与开始菜单快捷方式
-│   ├── nt.rs            # NtSetSystemInformation 等 NT 原语
-│   ├── single_instance.rs
-│   ├── startup.rs       # 通过 Task Scheduler 实现最高权限登录自启
-│   ├── volume.rs        # Mount Manager 卷枚举与已修改文件缓存刷写
-│   └── window.rs        # 窗口置顶、隐藏到托盘
-└── ui/                  # GPUI UI 组件
-    ├── cleanup_history.rs
-    ├── layout.rs
-    ├── memory_card.rs
-    ├── mod.rs
-    ├── settings_page/   # 设置页面按职责拆分
-    │   ├── mod.rs
-    │   ├── cleanup_areas.rs
-    │   ├── cleanup_footer.rs
-    │   ├── process_exclusion.rs
-    │   └── window_behavior.rs
-    ├── theme.rs
-    └── title_bar.rs
+```bash
+just format
+just check
+just test
 ```
 
-## 常见问题
-
-**为什么需要管理员权限？**
-
-大部分清理操作通过 `NtSetSystemInformation` 等内核接口完成，需要 `SeProfileSingleProcessPrivilege`、`SeIncreaseQuotaPrivilege` 等特权。程序启动时会自动检测并请求 UAC 提权。
-
-**释放内存会导致系统变慢吗？**
-
-Windows 会按需将常用页面重新加载到内存。清理后短期内可能因缓存重建而略有延迟，但不会造成长期影响；在内存紧张时，主动清理可释放更多可用内存。
-
-**全局热键不生效怎么办？**
-
-检查窗口行为对话框中是否启用了热键，以及组合键是否与其他软件冲突。热键通过 `RegisterHotKey` 注册，需要至少一个修饰键（Ctrl/Alt/Shift/Win）加一个字母或数字。
-
-**如何查看日志？**
-
-- **始终可用：** 诊断信息通过 `OutputDebugString` 输出，可用 [DebugView](https://learn.microsoft.com/en-us/sysinternals/downloads/debugview) 查看（Release 构建无控制台窗口）。
-- **调试日志：** 在标题栏齿轮菜单中开启「调试日志」后，详细运行信息写入程序目录下的 `App.log`（与 `MemoryCleaner.exe` 同目录）。每行格式为 `[unix_secs.millis] 消息`；启用后首次写入会执行保留清理，之后至多每小时清理一次时间戳早于 7 天的旧行。无法解析时间戳的内容仅保留最新 256 行且不超过 64 KiB；文件读写失败会输出到 `OutputDebugString`。
-
-**哪些清理操作会影响磁盘寿命？**
-
-7 个清理区域按磁盘行为分为两类：
-
-- **纯 RAM 操作（不影响磁盘）：** 工作集、系统文件缓存、待机列表、待机列表（低优先级）、合并页面。这些操作仅回收或丢弃内存中的缓存页面，不产生任何磁盘写入。清理后再次访问文件时会从磁盘重新读取，但读取不会消耗 SSD 写入寿命。
-
-- **涉及磁盘写入：**
-  - **已修改文件** — 通过 `NtFlushBuffersFile` 刷写所有卷的文件系统缓存到磁盘，写入量取决于积压的脏数据量，影响最大
-  - **已修改页面** — 通过 `FlushModifiedList` 将内存中的脏页写回对应文件
-
-日常手动使用无须担心；若频繁清理，建议避开「已修改文件」和「已修改页面」以减少磁盘写入。
-
-## 友链
-
-- [Linux DO](https://linux.do/new)
+详见 `AGENTS.md`、`docs/CHANGELOG.md`。

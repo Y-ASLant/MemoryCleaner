@@ -17,7 +17,7 @@ use windows::core::{HSTRING, Interface};
 
 use crate::win32::com::ComApartment;
 
-pub const APP_USER_MODEL_ID: &str = "MemoryCleaner.App";
+pub const APP_USER_MODEL_ID: &str = "MemoryCleanerLite.App";
 
 pub fn init() -> Result<()> {
     unsafe {

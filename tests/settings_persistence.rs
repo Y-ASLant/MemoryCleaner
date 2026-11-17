@@ -34,7 +34,7 @@ where
 #[test]
 fn settings_save_and_load_roundtrip_in_temp_config_dir() {
     with_temp_appdata(|app_data| {
-        fs::create_dir_all(app_data.join("MemoryCleaner")).expect("create config dir");
+        fs::create_dir_all(app_data.join("MemoryCleanerLite")).expect("create config dir");
 
         let settings = Settings {
             memory_areas: MemoryAreas::WORKING_SET.bits(),
@@ -58,7 +58,7 @@ fn settings_save_uses_atomic_replace() {
     with_temp_appdata(|app_data| {
         Settings::default().save();
 
-        let final_path: PathBuf = app_data.join("MemoryCleaner").join("settings.toml");
+        let final_path: PathBuf = app_data.join("MemoryCleanerLite").join("settings.toml");
         let tmp_path = final_path.with_extension("toml.tmp");
 
         assert!(final_path.is_file());
@@ -69,7 +69,11 @@ fn settings_save_uses_atomic_replace() {
 #[test]
 fn settings_save_reports_directory_errors() {
     with_temp_appdata(|app_data| {
-        fs::write(app_data.join("MemoryCleaner"), "blocks config directory").unwrap();
+        fs::write(
+            app_data.join("MemoryCleanerLite"),
+            "blocks config directory",
+        )
+        .unwrap();
         assert!(Settings::default().try_save().is_err());
     });
 }

@@ -40,7 +40,7 @@ use crate::system_metrics::CpuNetworkSnapshot;
 
 use crate::win32::wide_null;
 
-const CLASS_NAME: PCWSTR = w!("MemoryCleaner.TaskbarWindow");
+const CLASS_NAME: PCWSTR = w!("MemoryCleanerLite.TaskbarWindow");
 const PAD_X: i32 = 4;
 const PAD_Y: i32 = 2;
 const COL_GAP: i32 = 10;
