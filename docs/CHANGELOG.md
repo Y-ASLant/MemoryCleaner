@@ -9,13 +9,20 @@
 
 ### 新增
 
-- **CPU 与网速监控**：主窗口在系统工作集下方新增 CPU 占用与上下行网速单行卡片；托盘提示同步显示。采样基于 `sysinfo`（1 秒刷新，与内存轮询一致），环回/隧道接口不计入网速汇总。
+- **托盘设置菜单**：右键菜单可切换清理区域、自动清理与阈值、开机自启、通知、调试日志、全局热键开关、任务栏窗口与语言；支持打开配置目录。左键托盘图标触发一键清理；托盘仍用应用图标（不绘制占用百分比）。
+- **任务栏窗口**：类似 TrafficMonitor，在通知区左侧显示物理/提交内存、CPU 与网速；色键透明背景 + 描边文字。提权下用 `TOPMOST` 贴靠（非 `SetParent`）。设置项 `show_taskbar_window`；左键触发清理。
+- **CPU 与网速监控**：托盘提示显示 CPU 占用与上下行网速。采样基于 `sysinfo`（约 1 秒刷新），环回/隧道接口不计入网速汇总。
 
 ### 变更
 
-- **依赖**：引入 `sysinfo` 0.40（仅 `system` + `network`）；`gpui-kit` 升级至 0.10.0。
-- **主窗口高度**：折叠约 370px、展开约 746px（新增 CPU/网速卡片）。
-- **物理内存图标**：由 CPU 图标改为内存条图标，避免与真实 CPU 指标混淆。
+- **托盘常驻、无主窗口**：移除 GPUI 图形界面与主窗口；应用仅以系统托盘形式运行，主线程泵送 Win32 消息。
+- **依赖**：引入 `sysinfo` 0.40（仅 `system` + `network`）；移除 `gpui-kit` 与 `raw-window-handle`、`smol`。
+- **二次启动**：已运行实例收到信号后走托盘清理入口，不再尝试显示窗口。
+- **窗口相关设置**：`always_on_top` / `close_to_notification_area` 仍可从旧配置读入但界面不再提供；进程排除列表与热键组合请编辑 `%APPDATA%\MemoryCleaner\settings.toml`。
+
+### 移除
+
+- **主窗口与设置对话框**：含内存圆环、清理历史弹窗、进程选择器、热键录制 UI、桌面图标缓存刷新入口。
 
 
 
@@ -221,13 +228,20 @@ Records Memory Cleaner releases. Format follows [Keep a Changelog](https://keepa
 
 ### Added
 
-- **CPU and network rates**: Main window shows a single-row card under system working set for CPU usage and download/upload throughput; tray tooltip includes the same metrics. Sampling uses `sysinfo` (1s, same cadence as memory polling); loopback/tunnel interfaces are excluded from network totals.
+- **Tray settings menu**: Right-click toggles cleanup areas, auto-cleanup and threshold, run at startup, notifications, debug logging, global hotkey, taskbar window, and language; open config folder. Left-click tray icon runs cleanup; tray keeps the app icon (no usage percent drawn on it).
+- **Taskbar window**: TrafficMonitor-style strip left of the notification area (physical/commit, CPU, network) with color-key transparency and outlined text. Elevated process uses a `TOPMOST` overlay (not `SetParent`); `show_taskbar_window`. Left-click runs cleanup.
+- **CPU and network rates**: Tray tooltip shows CPU usage and download/upload throughput. Sampling uses `sysinfo` (~1s); loopback/tunnel interfaces are excluded from network totals.
 
 ### Changed
 
-- **Dependencies**: Add `sysinfo` 0.40 (`system` + `network` only); upgrade `gpui-kit` to 0.10.0.
-- **Main window height**: Collapsed ~370px, expanded ~746px (new CPU/network card).
-- **Physical memory icon**: Switch from CPU to memory-stick icon so it does not collide with the real CPU metric.
+- **Tray-only, no main window**: Removed the GPUI GUI; the app runs as a system-tray resident with a Win32 message pump on the main thread.
+- **Dependencies**: Add `sysinfo` 0.40 (`system` + `network` only); remove `gpui-kit`, `raw-window-handle`, and `smol`.
+- **Second launch**: A running instance receives the wake signal as the tray cleanup entry path; no window is shown.
+- **Window-related settings**: `always_on_top` / `close_to_notification_area` still load from older TOML but have no UI; process exclusions and hotkey chords are edited in `%APPDATA%\MemoryCleaner\settings.toml`.
+
+### Removed
+
+- **Main window and settings dialogs**: Memory rings, cleanup history popup, process picker, hotkey recorder UI, and desktop icon-cache refresh entry.
 
 ## [1.2.1] - 2026-11-16
 

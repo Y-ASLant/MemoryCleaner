@@ -103,6 +103,8 @@ pub struct Settings {
     /// 触发自动清理的物理内存占用百分比（0–100）。
     /// `0` 关闭阈值触发。
     pub auto_cleanup_threshold: u32,
+    /// 在系统任务栏显示占用信息窗口（TrafficMonitor 同类嵌入/贴靠）。
+    pub show_taskbar_window: bool,
     /// 最近清理结果，最新一条在末尾。
     pub cleanup_history: Vec<CleanupHistoryEntry>,
 }
@@ -122,6 +124,7 @@ impl Default for Settings {
             excluded_processes: Vec::new(),
             auto_cleanup_enabled: false,
             auto_cleanup_threshold: 0,
+            show_taskbar_window: true,
             cleanup_history: Vec::new(),
         }
     }
@@ -155,7 +158,7 @@ impl Settings {
         std::fs::rename(tmp, dest)
     }
 
-    fn config_dir() -> PathBuf {
+    pub fn config_dir() -> PathBuf {
         std::env::var_os("APPDATA")
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from("."))
@@ -258,22 +261,10 @@ impl Settings {
     }
 
     pub fn try_save(&self) -> std::io::Result<()> {
-        self.try_save_if_current(None)
-    }
-
-    pub(crate) fn try_save_if_current(
-        &self,
-        generation: Option<(&std::sync::atomic::AtomicU32, u32)>,
-    ) -> std::io::Result<()> {
         static SAVE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
         let _guard = SAVE_LOCK
             .lock()
             .map_err(|error| std::io::Error::other(error.to_string()))?;
-        if generation.is_some_and(|(current, expected)| {
-            current.load(std::sync::atomic::Ordering::Relaxed) != expected
-        }) {
-            return Ok(());
-        }
         std::fs::create_dir_all(Self::config_dir())?;
         let content = toml::to_string_pretty(self).map_err(std::io::Error::other)?;
         let final_path = Self::config_path();
@@ -315,14 +306,6 @@ impl Settings {
 mod tests {
     use super::*;
     use crate::optimize::MemoryAreas;
-
-    #[test]
-    fn obsolete_save_is_skipped_before_touching_disk() {
-        let current = std::sync::atomic::AtomicU32::new(2);
-        Settings::default()
-            .try_save_if_current(Some((&current, 1)))
-            .expect("skip obsolete save");
-    }
 
     #[test]
     fn legacy_history_loads_without_new_fields() {

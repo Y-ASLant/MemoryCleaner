@@ -2,7 +2,7 @@
 //!
 //! 首个实例创建进程生命周期内持有的命名互斥体，以及由专用线程监视的自动复位事件。
 //! 第二次启动打开该事件、置位后退出；监视线程将信号转发为
-//! `TrayCommand::ActivateWindow`，使运行中实例显示主窗口。
+//! `TrayCommand::Optimize`（与左键清理相同）。
 
 use anyhow::{Context, Result, anyhow, bail};
 use std::sync::{OnceLock, mpsc::Sender};
@@ -27,7 +27,7 @@ static INSTANCE_MUTEX: OnceLock<OwnedWin32Handle> = OnceLock::new();
 pub enum InstanceSignal {
     /// 未检测到运行中实例；可继续启动。
     NotRunning,
-    /// 已通知运行中实例显示窗口；本次启动应退出。
+    /// 已通知运行中实例；本次启动应退出。
     Signaled,
     /// 已有实例在跑，但本进程无法发信号
     /// （提权前完整性级别不匹配）。继续启动；
@@ -35,7 +35,7 @@ pub enum InstanceSignal {
     AccessDenied,
 }
 
-/// 尝试唤醒已运行实例以显示主窗口。
+/// 尝试唤醒已运行实例。
 pub fn signal_existing_instance() -> InstanceSignal {
     let name = wide_null(SHOW_EVENT_NAME);
 
@@ -94,7 +94,7 @@ fn watcher_loop(event: OwnedWin32Handle, command_tx: Sender<TrayCommand>) {
         if result != WAIT_OBJECT_0 {
             break;
         }
-        if command_tx.send(TrayCommand::ActivateWindow).is_err() {
+        if command_tx.send(TrayCommand::Optimize).is_err() {
             break;
         }
     }

@@ -32,33 +32,25 @@ tempfile = "3.27.0"
 [dependencies]
 anyhow = "1.0.104"
 bitflags = "2.13.2"
-gpui-kit = "0.10"
 serde = { version = "1.0.229", features = ["derive"] }
-smol = "2.0.2"
-raw-window-handle = "0.6.2"
 tray-icon = { version = "0.26.1", default-features = false }
 image = { version = "0.25.10", default-features = false, features = ["png"] }
 toml = { version = "1.2.1", default-features = false, features = ["parse", "display", "serde"] }
 rust-i18n = "4.2.4"
+# windows features: only those not already enabled transitively by another listed feature
 windows = { version = "0.62.2", features = [
     "Data_Xml_Dom",
     "UI_Notifications",
-    "Win32_Foundation",
-    "Win32_Security",
+    "Win32_Graphics_Gdi",
     "Win32_System_Com_StructuredStorage",
     "Win32_System_Environment",
-    "Win32_System_Memory",
-    "Win32_System_SystemInformation",
-    "Win32_System_Registry",
-    "Win32_System_Threading",
+    "Win32_System_Ole",
     "Win32_System_TaskScheduler",
     "Win32_System_WinRT",
     "Win32_System_Variant",
     "Win32_Storage_EnhancedStorage",
     "Win32_Storage_FileSystem",
-    "Win32_System_Diagnostics_ToolHelp",
     "Win32_System_IO",
-    "Win32_System_ProcessStatus",
     "Win32_System_LibraryLoader",
     "Win32_UI_Input_KeyboardAndMouse",
     "Win32_UI_Shell_PropertiesSystem",

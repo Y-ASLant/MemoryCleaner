@@ -2,170 +2,119 @@
 
 ## Project Overview
 
-Memory Cleaner is a **Windows-only** GUI memory-optimization tool written in Rust with the **GPUI** framework (from the Zed editor). It monitors physical and system committed memory and requests memory reclamation through Windows NT memory-management APIs (`NtSetSystemInformation`, `SetSystemFileCacheSize`, etc.), runs as a system-tray resident app, and requires administrator privileges for most operations. Licensed MIT.
+Memory Cleaner is a **Windows-only** tray-resident memory-optimization tool written in Rust. It monitors physical and system committed memory (and CPU/network via `sysinfo`), and requests memory reclamation through Windows NT memory-management APIs (`NtSetSystemInformation`, `SetSystemFileCacheSize`, etc.). Settings are changed from the **system-tray right-click menu**. Most cleanup operations require administrator privileges. Licensed MIT.
 
 ## Architecture & Data Flow
 
 ```
-main.rs → wake-signal check → ensure_elevated() → wake-signal retry → single-instance mutex + wake event
-       → notification::init → tray install + hotkey sender → GPUI app launch
-       → MemoryCleanerApp::new: hotkey sync + background startup sync
+main.rs → OS gate → wake-signal → ensure_elevated() → wake-signal retry
+       → single-instance mutex + wake event → locale + notification::init
+       → hotkey bind → Tray::install (HWND on main thread)
+       → Runtime::start (settings, metrics, auto-cleanup)
+       → tray::run_loop: PeekMessage + TrayCommand drain until quit
  │
- ├─ app/ (core state plus window, settings, optimization, and rendering responsibilities)
- ├─ auto_cleanup.rs (auto-cleanup trigger policy: low-memory notifications, threshold decisions, cooldown)
- ├─ log.rs (optional App.log output, hourly retention, malformed-content bounds, I/O diagnostics)
- ├─ locale.rs (rust-i18n locale apply, list separator, lang-id mapping)
- ├─ memory.rs (GlobalMemoryStatusEx + GetPerformanceInfo → physical/commit; NtQuerySystemInformation → system working set)
- ├─ system_metrics.rs (sysinfo: CPU usage + network throughput sampler)
-
- ├─ optimize.rs (MemoryAreas bitflags → NT cache-purge steps)
- ├─ settings.rs (TOML persistence at %APPDATA%\MemoryCleaner\settings.toml)
- ├─ privileges.rs (SeProfileSingleProcessPrivilege, SeIncreaseQuotaPrivilege)
- ├─ tray.rs (tray-icon crate, App.png embedded via include_bytes!)
- ├─ icon_cache.rs (Explorer icon cache purge)
- ├─ version.rs (version constant)
- ├─ ui/ (GPUI components; settings_page/ separates cleanup, exclusions, behavior, and footer)
- └─ win32/ (owned handle RAII plus hotkey, memory, notification, process, startup, volume, window)
+ ├─ runtime.rs (Settings, optimize, auto-cleanup, metrics; no GUI)
+ ├─ tray.rs (tray-icon + muda menu; thread_local TrayState on main thread)
+ ├─ auto_cleanup.rs (threshold policy / cooldown)
+ ├─ log.rs (optional App.log)
+ ├─ locale.rs (rust-i18n)
+ ├─ memory.rs (GlobalMemoryStatusEx + GetPerformanceInfo; NtQuery FileCache)
+ ├─ system_metrics.rs (sysinfo: CPU + network)
+ ├─ optimize.rs (MemoryAreas → NT purge steps)
+ ├─ settings.rs (%APPDATA%\MemoryCleaner\settings.toml)
+ ├─ privileges.rs
+ ├─ messages.rs / version.rs
+ └─ win32/ (elevation, hotkey, memory_notification, notification, nt, os,
+           process, single_instance, startup, volume, handle, com)
 ```
 
-- **Entry flow:** `main.rs` → minimum-OS gate (`win32::os::is_supported`, build ≥ 9200 = Windows 8) → wake any running instance via the named show-window event (before elevation, so a same-integrity launch needs no UAC) → `ensure_elevated()` → wake-signal retry → single-instance mutex + wake event watcher → `locale::apply` → `notification::init` → install tray + bind hotkey sender → GPUI app with `QuitMode::Explicit` → `open_main_window`. `MemoryCleanerApp::new` synchronizes the hotkey and schedules startup synchronization in the background.
-- **i18n:** `rust-i18n` with `locales/zh-CN.yml` (single file, `_version: 2`, zh-CN + en). `rust_i18n::i18n!` is invoked once in `lib.rs`. `settings.language` is `auto` | `zh-CN` | `en`; `auto` uses `GetUserDefaultUILanguage` via `win32::os::system_ui_locale()`. Language changes call `MemoryCleanerApp::apply_locale()` to refresh memory labels and tray menu text immediately.
-- **Async runtime:** `smol` for async task execution (optimization progress updates, memory polling, toast display).
-- **UI stack:** `gpui-kit` (GPUI + Button, Checkbox, Switch, GroupBox, ProgressCircle, Kbd).
-- **Native layer:** `src/win32/` wraps low-level Windows APIs; `src/optimize.rs` orchestrates the cleanup steps.
-- **Console suppression:** `main.rs` uses `#![windows_subsystem = "windows"]`; diagnostics go to `OutputDebugStringA` (viewable via DebugView). Optional file logging via `src/log.rs` when `debug_logging` is enabled.
-- **Tray command channel:** A single `mpsc` channel carries `TrayCommand` from tray events, global hotkeys, the single-instance wake event, the low-memory monitor, and tray spin ticks into `app.rs` via blocking `recv()` — no idle polling loop.
-- **Automatic-cleanup monitors:** `MemoryCleanerApp` owns the cancellable native low/high-memory monitor and the threshold polling task. Both follow `auto_cleanup_enabled`; threshold polling exists only when `auto_cleanup_threshold > 0`, and threshold changes restart it with a fresh sustained-pressure count.
-- **Window lifecycle:** Closing with `close_to_notification_area` hides the GPUI window to tray and may destroy the window handle; `activate_window` reopens it. Memory polling pauses while hidden.
-- **Settings side effects:** Hotkey registration is transactional: register the replacement before releasing the previous worker, and commit settings only on success. Startup synchronization uses `smol::unblock`; pending updates disable the startup switch, failures retain settings, and each `schtasks` child wait has a 10-second deadline.
-- **COM lifetime:** `ComApartment::run` balances successful STA initialization on its originating thread. COM objects and error interfaces must be released before the apartment; only owned data and detached error diagnostics leave the scope. Toast activation uses local WinRT factories rather than static factory caches that can outlive an apartment.
+- **Entry flow:** `main.rs` → minimum-OS gate (`win32::os::is_supported`, build ≥ 9200 = Windows 8) → wake existing instance (before elevation) → `ensure_elevated()` → wake retry → single-instance mutex + event watcher → `locale::apply` → `notification::init` → hotkey sender → `tray::install` on main thread → `Runtime::start` → `tray::run_loop` (commands + Win32 messages).
+- **No GPUI / no main window:** Tray icon + menu only. `TrayIcon` / muda items are **not `Send`**; state lives in `thread_local!` on the main thread. Background work posts `TrayCommand`s; only the main loop calls tray APIs.
+- **i18n:** `rust-i18n` with `locales/zh-CN.yml` (`_version: 2`, zh-CN + en). `settings.language` is `auto` | `zh-CN` | `en`; `auto` uses `GetUserDefaultUILanguage`. Language menu updates locale and tray labels immediately.
+- **Native layer:** `src/win32/` wraps Win32/NT APIs; `src/optimize.rs` runs cleanup steps on a worker thread.
+- **Console suppression:** `#![windows_subsystem = "windows"]`; diagnostics via `OutputDebugStringA` / optional `App.log`.
+- **Tray command channel:** One `mpsc` carries tray clicks/menu, hotkeys, single-instance wake, low-memory, spin frames, and optimize finished into the main `run_loop`.
+- **Automatic cleanup:** Low-memory `MemoryNotificationMonitor` + threshold poll thread; both honor `auto_cleanup_enabled`. Threshold `0` disables threshold triggers.
+- **Settings via tray:** Cleanup area checks (standby variants mutually exclusive), auto-cleanup, threshold presets, run at startup, notifications, debug log, hotkey enable, language, open config folder. **Process exclusion list** and **hotkey chord string** are TOML-only (no GUI picker/recorder).
+- **Obsolete UI-only fields:** `always_on_top`, `close_to_notification_area` still deserialize for compat; unused at runtime.
+- **Hotkey:** Transactional rebind in `win32::hotkey` (`RegisterHotKey` worker thread). Enable/disable from tray; chord edit via `settings.toml`.
+- **Startup:** Task Scheduler logon task `/RL HIGHEST`; always tray-only (no “launch hidden window”).
+- **COM lifetime:** `ComApartment::run` for toast/startup paths; release COM objects before leaving the apartment.
+- **Second instance:** Wake event → `TrayCommand::ActivateWindow` → same path as left-click cleanup (no window).
 
 ## Key Directories
 
 | Path | Purpose |
 |---|---|
-| `src/` | Application source (binary crate, main.rs entry point) |
-| `src/ui/` | GPUI UI components (layout, memory_card, settings_page, theme, title_bar) |
-| `locales/` | rust-i18n translation YAML (`zh-CN.yml`, zh-CN + en strings) |
-| `docs/` | Project docs (`CHANGELOG.md`, technical comparisons) |
-| `.github/workflows/` | GitHub Actions build and tag-release workflows |
-| `src/win32/` | Win32/NT API bindings (hotkey, memory_notification, notification, nt, os, process, single_instance, startup, volume, window) |
+| `src/` | Application source (`main.rs` entry, `runtime.rs` core) |
+| `locales/` | rust-i18n YAML (`zh-CN.yml`, zh-CN + en) |
+| `docs/` | Changelog and technical notes |
+| `.github/workflows/` | Build / tag-release |
+| `src/win32/` | Win32/NT bindings |
 | `.codegraph/` | Codegraph index (gitignored) |
 
 ## Development Commands
 
 ```bash
-# Format
-just format # cargo fmt --all
-
-# Lint (clippy with -D warnings — warnings are errors)
-just check # cargo clippy --release -- -D warnings
-
-# Test
-just test # cargo test
-
-# Build (release, runs clippy first)
-just build # cargo build --release
-
-# Run (debug)
+just format   # cargo fmt --all
+just check    # cargo clippy --release -- -D warnings
+just test     # cargo test
+just build    # cargo build --release (clippy first)
 cargo run
-
-# Run (release behavior — console suppressed)
 cargo run --release
-
-# Clean
-just clean # cargo clean + remove dist/
+just clean
 ```
 
-**CI:** `.github/workflows/build.yml` checks pull requests to `main`, pushes to `main`, and `v*` tags. Only tags publish a release. The tag must match `Cargo.toml`'s version; the workflow checks formatting, runs Clippy and tests, builds the Windows release binary, extracts that version's Chinese and English sections from `docs/CHANGELOG.md`, then creates a GitHub Release with those notes and `MemoryCleaner.exe`.
+**CI:** `.github/workflows/build.yml` on PRs/pushes to `main` and `v*` tags. Tags publish release when version matches `Cargo.toml`; notes from `docs/CHANGELOG.md`.
 
-**Tests:** `just test` / `cargo test` — unit tests in `src/` plus integration tests in `tests/settings_persistence.rs`; use the test output for current counts.
+**Tests:** `cargo test` — unit tests in `src/` + `tests/settings_persistence.rs`.
 
-## Code Conventions & Common Patterns
+## Code Conventions
 
-- **Language:** Rust, Edition 2024 (no `rust-version` pin; use latest stable).
-- **Platform:** Windows-only. All modules assume `target_os = "windows"`.
-- **Error handling:** Functions return `Result<T, E>` or use `Option` for fallible lookups. `anyhow` is used in optimize/icon_cache paths; settings and most UI code use concrete errors.
-- **Unsafe / FFI:** `unsafe` is concentrated in `src/win32/` (NT API calls, privilege token manipulation, hotkey message loop) and `src/optimize.rs` (NtSetSystemInformation). Each unsafe block is narrowly scoped.
-- **Naming:** Standard Rust conventions — `snake_case` functions/variables, `PascalCase` types, `SCREAMING_SNAKE_CASE` constants. Win32 wrappers match the original API names.
-- **State management:** `MemoryCleanerApp` in `app.rs` owns all application state (settings, memory stats, optimization progress, hotkey recording). UI reads from this state via GPUI's `Render` trait.
-- **Settings persistence:** TOML file at `%APPDATA%\MemoryCleaner\settings.toml`, written atomically (temp file + rename), debounced 300 ms. Debounced writes run through `smol::unblock` with serialization and generation checks; shutdown invalidates pending snapshots and saves synchronously. Save failures appear in the settings dialog.
-- **Bitflags:** `MemoryAreas` in `optimize.rs` uses the `bitflags` crate to represent configurable cleaning regions.
-- **Embedded assets:** `App.ico` compiled into the binary via `winres` (`build.rs`); `App.png` embedded via `include_bytes!` in `tray.rs`.
-- **Debug logging:** `log_msg()` always writes to `OutputDebugString` (and stderr in debug builds). `log::write()` additionally appends to `App.log` beside the executable when `settings.debug_logging` is true. Retention runs on the first write after enabling and at most hourly thereafter: timestamped lines older than 7 days are removed, malformed content is capped at 256 lines / 64 KiB, and file I/O failures are reported through the debug stream.
-- **Platform UI chrome:** `win32::os::is_windows_11_or_later()` uses `RtlGetVersion` (build ≥ 22000 = Win11). `ui::theme::init_light_theme` sets gpui-kit `radius` / `radius_lg` to 0 and disables `shadow` on Win10 so buttons, cards, and dialogs render with square corners. Custom UI must use `cx.theme().radius`, not hardcoded `rounded(px(...))`. Button tooltips must use `ui::theme::button_tooltip` to honor the shadow flag. In gpui-component 0.9.1, Dialog and tooltip shadows (including chart tooltips) do not honor that flag and cannot be disabled through public outer-surface styling; do not claim all component shadows are disabled or edit Cargo registry sources.
+- Rust Edition 2024, latest stable, Windows-only.
+- `Result` / `Option`; `anyhow` on optimize paths; settings use concrete errors.
+- `unsafe` concentrated in `src/win32/` and `optimize.rs`.
+- Settings: atomic TOML write under `%APPDATA%\MemoryCleaner\settings.toml`.
+- `MemoryAreas` bitflags in `optimize.rs`.
+- Embedded `App.ico` (`winres`) / `App.png` (`include_bytes!` in tray).
+- Debug logging: `log_msg` → OutputDebugString; `log::write` → `App.log` when enabled.
 
 ## Important Files
 
 | File | Role |
 |---|---|
-| `src/main.rs` | Entry point — elevation, single-instance, notification init, tray/hotkey setup, GPUI launch |
-| `src/app/` | Core application state split into window lifecycle, settings, optimization, and rendering modules |
-| `src/tray.rs` | Tray icon install, cleanup spin animation, tooltip/menu sync, command dispatch |
-| `src/win32/hotkey.rs` | `RegisterHotKey` in dedicated thread; sends `TrayCommand::Optimize` |
-| `src/win32/memory_notification.rs` | Cancellable `CreateMemoryResourceNotification` low/high monitor; follows the auto-cleanup switch and sends `TrayCommand::LowMemory` once per pressure cycle |
-| `src/win32/notification.rs` | Windows Toast + Start Menu shortcut for AppUserModelID |
-| `src/win32/com.rs` | Thread-bound COM apartment scope and apartment-independent error propagation |
-| `src/log.rs` | Optional `App.log` output with throttled retention, malformed-content bounds, and file I/O diagnostics |
-| `src/ui/theme.rs` | Light theme init + Win10 square-corner chrome |
-| `src/ui/settings_page/` | Cleanup areas, process exclusions, cleanup footer, and window behavior dialog |
-| `src/locale.rs` | rust-i18n locale apply, list separator, lang-id mapping |
-| `src/win32/os.rs` | Minimum-OS check (Windows 8+), Windows 11 build detection, system UI locale |
-| `src/win32/elevation.rs` | UAC elevation check and relaunch |
-| `src/win32/handle.rs` | RAII ownership for Win32 `HANDLE` and registry `HKEY` |
-| `src/optimize.rs` | Memory cleanup orchestration (7 cleaning regions) |
-| `src/settings.rs` | TOML settings schema and persistence |
-| `src/win32/nt.rs` | Raw NT API bindings (`NtSetSystemInformation`, `NtCreateFile`, structs, enums) |
-| `src/win32/volume.rs` | Mount Manager volume enumeration and modified-file-cache flush |
-| `src/win32/startup.rs` | Run-at-startup via a Task Scheduler logon task (`/RL HIGHEST`); deletes the legacy `HKCU\...\Run` entry |
-| `docs/CHANGELOG.md` | Version changelog (final diff vs previous release only) |
-| `Cargo.toml` | Dependencies, features, package lints, release profile (LTO, strip, abort-on-panic) |
-| `build.rs` | Icon embedding via `winres` |
-| `.justfile` | fmt / check / build / clean tasks (just task runner) |
+| `src/main.rs` | Entry: elevation, single-instance, tray, message loop |
+| `src/runtime.rs` | Settings, optimize, auto-cleanup, metrics command handlers |
+| `src/tray.rs` | Tray icon, settings menu, spin, main-thread message pump |
+| `src/optimize.rs` | Cleanup orchestration |
+| `src/settings.rs` | TOML schema / persistence |
+| `src/win32/hotkey.rs` | Global cleanup hotkey |
+| `src/win32/memory_notification.rs` | Low-memory monitor |
+| `docs/CHANGELOG.md` | Bilingual Unreleased + releases |
 
-## UI Layout Notes
+## Tray UX
 
-- **Window size:** fixed width 520px; collapsed height ~370px, expanded ~746px (`src/app/` + `src/ui/layout.rs`). Footer bottom padding is `FOOTER_BOTTOM_PADDING` (2px), not `CONTENT_PADDING` — borderless-window frame is thicker at the bottom edge.
-- **Collapsed view:** physical/commit rings, system working-set current/peak card, CPU usage + download/upload rates card, and cleanup button. System working-set sampling uses `NtQuerySystemInformation(FileCache)` independently; its peak ratio is not memory pressure. CPU/network use `sysinfo` on the same 1s memory refresh path.
+- **Left-click:** run cleanup.
+- **Right-click:** full settings menu (areas, auto-cleanup, toggles, language).
+- **Tooltip:** physical %, commit %, system working set, CPU, network.
+- **Spin:** icon frames during cleanup; `SetSpinFrame` applied on main thread only.
 
-- **Expanded view:** adds cleanup-area checkboxes panel (`settings_page::render_settings_content`).
-- **Window behavior dialog** (always on top, close-to-tray, run at startup, debug logging, optimization notifications, cleanup hotkey + recording, language, auto-cleanup threshold): opened from title-bar gear icon; `overlay_closable(false)` — clicking the backdrop does not close it.
-- **Optimization feedback:** progress and result text render inside the cleanup button; result clears after 5 seconds (`OPTIMIZE_RESULT_DISPLAY`).
-- **Memory refresh:** `MEMORY_REFRESH_INTERVAL` = 1 s while main window is visible; paused when hidden to tray (`pause_memory_refresh` / `start_memory_refresh`).
-- **Platform chrome:** Win10 (build &lt; 22000) uses square corners via theme tokens; Win11 keeps gpui-kit defaults.
+## Runtime / Tooling
 
-Implemented settings that must **not** be listed as unimplemented:
-
-- `show_optimization_notifications` — Windows Toast on optimize start/complete
-- `cleanup_hotkey_enabled` / `cleanup_hotkey` — global hotkey via `RegisterHotKey`
-- `run_at_startup` — silent launch to tray after sign-in via `win32::startup`
+- MSVC toolchain; no `rust-toolchain.toml` / clippy.toml / rustfmt.toml.
+- No async runtime dependency (std threads + main pump).
+- Release: LTO, strip, `opt-level = "z"`, `panic = "abort"`.
+- Binary: `MemoryCleaner.exe`.
 
 ## Documentation & Changelog
 
-- **Changelog file:** `docs/CHANGELOG.md` — bilingual (中文 above, English below, separated by `---`; no mixed-language bullets). Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
-- **Scope rule:** Each release entry records **only the final diff** between that version and the **immediately previous tagged release** (e.g. `git diff v1.0.1..HEAD`). Do **not** list intermediate commits, in-progress refactors, or step-by-step bug fixes from development.
-- **What to include:** User-visible features, behavior changes, new/removed settings, dependency or build-profile changes, and noteworthy docs. Describe the **shipped outcome**, not the debugging journey.
-- **What to omit:** Separate “fix” bullets for issues discovered and resolved before release; RAII refactors, API path corrections, or review feedback that never shipped independently.
-- **Sections:** Chinese block uses `### 新增` / `### 变更` / `### 移除`; English block uses `### Added` / `### Changed` / `### Removed`. Mirror the same bullets in both blocks. Older releases may stay as one-line summaries pointing to git history.
-- **Version bump:** When preparing a release, update `Cargo.toml` `version`, add the `docs/CHANGELOG.md` section, and tag (e.g. `v1.0.2`). Compare link at file bottom uses `Y-ASLant/MemoryCleaner` on GitHub.
-- **Technical docs:** Deeper implementation notes (e.g. API comparisons) live under `docs/` and are referenced from the changelog when relevant; they are not a substitute for the changelog entry.
-
-## Tray Icon Spin During Cleanup
-
-While `run_optimize` is in progress, `tray::start_spin()` posts `TrayCommand::SetSpinFrame` ticks every 96ms; the GPUI thread applies them via `set_icon`. Do not call `TrayIcon::set_icon` from background threads — `tray-icon` requires the Win32 tray window thread.
-
-## Runtime / Tooling Preferences
-
-- **Toolchain:** Latest stable Rust with MSVC (Windows Build Tools or Visual Studio required). No `rust-version` field — no MSRV enforcement.
-- **No rust-toolchain.toml, .cargo/config.toml, clippy.toml, or rustfmt.toml** — defaults only. Package Clippy policy lives in `Cargo.toml` `[lints]` (`clippy.all = deny`), matching `just check`.
-- **Async:** `smol` (not tokio).
-- **Release profile:** Aggressive optimization — LTO enabled, symbols stripped, `opt-level = "z"` (size), single codegen unit, `panic = "abort"`.
-- **Package manager:** Cargo only. No npm, no other package managers.
-- **Binary name:** `MemoryCleaner.exe` (see `[[bin]]` name in `Cargo.toml`).
+- `docs/CHANGELOG.md` — 中文 above, English below, `---` separator.
+- Each release = final diff vs previous tag only.
+- Sections: 新增/变更/移除 · Added/Changed/Removed.
+- Version bump: `Cargo.toml` + changelog + tag.
 
 ## Testing & QA
 
-- **Unit tests:** `cargo test` — memory formatting, cleanup messages, settings TOML/normalize, tray tooltip, hotkey chord parse/format and failed rebind preservation, optimize step plan, auto-cleanup trigger policy, startup task command line and bounded child waits, layout metrics, icon-cache outcome messages, notification XML escape and COM lifecycle, volume flush helpers. Prefer contract/edge-case tests over wiring, constant pins, or full i18n string snapshots.
-- **Integration tests:** `tests/settings_persistence.rs` — settings save/load and atomic write in isolated `%APPDATA%`.
-- **Manual QA:** Win32 memory cleanup, tray, GPUI dialogs, Explorer restart, global hotkey, Windows Toast (admin required for most cleanup).
-- **Diagnostics:** DebugView for `OutputDebugString`; optional `App.log` when debug logging is enabled.
+- Unit/integration: `cargo test`.
+- Manual: elevated cleanup, tray menu persistence to settings.toml, hotkey, toast, second-instance wake.
+- Diagnostics: DebugView; optional `App.log`.

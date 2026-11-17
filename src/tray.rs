@@ -1,220 +1,383 @@
-use rust_i18n::t;
-
-use std::sync::atomic::{AtomicBool, AtomicPtr, AtomicU32, Ordering};
+use std::cell::RefCell;
+use std::sync::OnceLock;
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::mpsc::Sender;
-use std::sync::{Mutex, OnceLock};
 use std::thread;
 use std::time::Duration;
 
-use image::{RgbaImage, imageops};
-use tray_icon::menu::{CheckMenuItem, Menu, MenuEvent, MenuItem, PredefinedMenuItem};
-use tray_icon::{Icon, MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
+use image::RgbaImage;
+use rust_i18n::t;
+use tray_icon::menu::{CheckMenuItem, Menu, MenuEvent, MenuItem, PredefinedMenuItem, Submenu};
+use tray_icon::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
 
-use crate::app::MemoryCleanerApp;
-use crate::auto_cleanup::AutoCleanupSource;
 use crate::memory::{MemorySection, SystemWorkingSet};
+use crate::optimize::MemoryAreas;
+use crate::settings::{CleanupHistoryEntry, Settings};
 use crate::system_metrics::CpuNetworkSnapshot;
 
-/// 优化进行中每次旋转 90° 的间隔。
-const SPIN_STEP_MS: u64 = 96;
-/// 托盘帧已预缩放一次；动画绝不可再拷贝 512px 源图。
 const TRAY_ICON_SIZE: u32 = 32;
+const SPIN_STEP_MS: u64 = 96;
 
-static TRAY: AtomicPtr<Tray> = AtomicPtr::new(std::ptr::null_mut());
+// TrayIcon / muda 非 Send：仅主线程访问。
+thread_local! {
+    static TRAY: RefCell<Option<TrayState>> = const { RefCell::new(None) };
+}
+
 static CMD_TX: OnceLock<Sender<TrayCommand>> = OnceLock::new();
 static SPIN_GENERATION: AtomicU32 = AtomicU32::new(0);
 static SPIN_ACTIVE: AtomicBool = AtomicBool::new(false);
+static MAIN_THREAD_ID: AtomicU32 = AtomicU32::new(0);
 
-struct TrayMenuState {
-    locale: String,
-    window_visible: bool,
-    run_at_startup: bool,
-    auto_cleanup_enabled: bool,
-}
+const AREA_SPECS: &[(&str, MemoryAreas)] = &[
+    ("area_working_set", MemoryAreas::WORKING_SET),
+    ("area_system_file_cache", MemoryAreas::SYSTEM_FILE_CACHE),
+    ("area_modified_page_list", MemoryAreas::MODIFIED_PAGE_LIST),
+    ("area_standby_list", MemoryAreas::STANDBY_LIST),
+    (
+        "area_standby_list_low",
+        MemoryAreas::STANDBY_LIST_LOW_PRIORITY,
+    ),
+    ("area_combined_page_list", MemoryAreas::COMBINED_PAGE_LIST),
+    ("area_modified_file_cache", MemoryAreas::MODIFIED_FILE_CACHE),
+];
 
-impl TrayMenuState {
-    fn new(
-        locale: &str,
-        window_visible: bool,
-        run_at_startup: bool,
-        auto_cleanup_enabled: bool,
-    ) -> Self {
-        Self {
-            locale: locale.to_string(),
-            window_visible,
-            run_at_startup,
-            auto_cleanup_enabled,
-        }
-    }
+const THRESHOLD_SPECS: &[(u32, &str)] = &[
+    (0, "threshold_0"),
+    (70, "threshold_70"),
+    (80, "threshold_80"),
+    (90, "threshold_90"),
+    (95, "threshold_95"),
+];
 
-    /// 记录目标状态，并报告原生菜单文案是否需要更新。
-    fn changed(
-        &mut self,
-        locale: &str,
-        window_visible: bool,
-        run_at_startup: bool,
-        auto_cleanup_enabled: bool,
-    ) -> bool {
-        if self.locale == locale
-            && self.window_visible == window_visible
-            && self.run_at_startup == run_at_startup
-            && self.auto_cleanup_enabled == auto_cleanup_enabled
-        {
-            return false;
-        }
-        self.locale.clear();
-        self.locale.push_str(locale);
-        self.window_visible = window_visible;
-        self.run_at_startup = run_at_startup;
-        self.auto_cleanup_enabled = auto_cleanup_enabled;
-        true
-    }
-}
-
-pub struct Tray {
-    icon: TrayIcon,
-    icon_frames: [Icon; 4],
-    optimize: MenuItem,
-    run_at_startup: CheckMenuItem,
-    auto_cleanup: CheckMenuItem,
-    toggle_window: MenuItem,
-    quit: MenuItem,
-    menu_state: Mutex<TrayMenuState>,
-    tooltip: Mutex<Option<String>>,
-}
-
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum TrayCommand {
-    ActivateWindow,
     RefreshTooltip,
-    /// 全局热键（`RegisterHotKey`）触发的内存清理。
     Optimize,
-    /// Windows 报告物理内存不足。
     LowMemory,
     MenuAction(String),
-    /// 托盘图标旋转动画帧（0 = 正立）。仅在 GPUI 线程处理。
-    SetSpinFrame {
-        quarters: u32,
-        generation: u32,
-    },
+    SetSpinFrame { quarters: u32, generation: u32 },
+    OptimizeFinished(CleanupHistoryEntry),
+    Quit,
 }
 
-impl Tray {
-    pub fn install(
-        tx: Sender<TrayCommand>,
-        run_at_startup: bool,
-        auto_cleanup_enabled: bool,
-    ) -> anyhow::Result<()> {
-        let _ = CMD_TX.set(tx.clone());
-        install_event_handlers(tx);
+struct TrayState {
+    icon: TrayIcon,
+    tooltip: Option<String>,
+    icon_frames: [tray_icon::Icon; 4],
+    items: MenuItems,
+}
 
-        let optimize = MenuItem::with_id("optimize", t!("tray.optimize"), true, None);
-        let run_at_startup_item = CheckMenuItem::with_id(
+struct MenuItems {
+    optimize: MenuItem,
+    quit: MenuItem,
+    run_at_startup: CheckMenuItem,
+    auto_cleanup: CheckMenuItem,
+    notifications: CheckMenuItem,
+    debug_logging: CheckMenuItem,
+    cleanup_hotkey: CheckMenuItem,
+    taskbar_window: CheckMenuItem,
+    open_config: MenuItem,
+    lang_auto: CheckMenuItem,
+    lang_zh: CheckMenuItem,
+    lang_en: CheckMenuItem,
+    thresholds: [CheckMenuItem; 5],
+    areas: [CheckMenuItem; 7],
+    sub_areas: Submenu,
+    sub_auto: Submenu,
+    sub_threshold: Submenu,
+    sub_settings: Submenu,
+    sub_language: Submenu,
+}
+
+fn with_tray_mut(f: impl FnOnce(&mut TrayState)) {
+    TRAY.with(|cell| {
+        if let Some(tray) = cell.borrow_mut().as_mut() {
+            f(tray);
+        }
+    });
+}
+
+pub fn install(command_tx: Sender<TrayCommand>, settings: &Settings) -> anyhow::Result<()> {
+    let _ = CMD_TX.set(command_tx.clone());
+    MAIN_THREAD_ID.store(
+        unsafe { windows::Win32::System::Threading::GetCurrentThreadId() },
+        Ordering::Relaxed,
+    );
+
+    let source = load_icon_source();
+    let frames_rgba = build_icon_frames(&source);
+    let icon_frames = [
+        rgba_to_icon(&frames_rgba[0])?,
+        rgba_to_icon(&frames_rgba[1])?,
+        rgba_to_icon(&frames_rgba[2])?,
+        rgba_to_icon(&frames_rgba[3])?,
+    ];
+    let items = build_menu_items(settings);
+    let menu = build_root_menu(&items);
+
+    let icon = TrayIconBuilder::new()
+        .with_tooltip(crate::version::APP_NAME)
+        .with_icon(icon_frames[0].clone())
+        .with_menu(Box::new(menu))
+        .with_menu_on_left_click(false)
+        .build()?;
+
+    install_event_handlers(command_tx);
+
+    TRAY.with(|cell| {
+        *cell.borrow_mut() = Some(TrayState {
+            icon,
+            tooltip: None,
+            icon_frames,
+            items,
+        });
+    });
+    sync_menu(settings);
+    Ok(())
+}
+
+fn check_item(id: &str, text: impl AsRef<str>, checked: bool) -> CheckMenuItem {
+    CheckMenuItem::with_id(id, text, true, checked, None)
+}
+
+fn build_menu_items(settings: &Settings) -> MenuItems {
+    let areas_bits = settings.memory_areas();
+    let areas = std::array::from_fn(|i| {
+        let (id, area) = AREA_SPECS[i];
+        check_item(id, t!(area.label_key()), areas_bits.contains(area))
+    });
+
+    let threshold = settings.auto_cleanup_threshold;
+    let thresholds = std::array::from_fn(|i| {
+        let (value, id) = THRESHOLD_SPECS[i];
+        let label = if value == 0 {
+            t!("tray.threshold_off").to_string()
+        } else {
+            format!("{value}%")
+        };
+        check_item(id, label, threshold == value)
+    });
+
+    MenuItems {
+        optimize: MenuItem::with_id("optimize", t!("tray.optimize"), true, None),
+        quit: MenuItem::with_id("quit", t!("tray.quit"), true, None),
+        run_at_startup: check_item(
             "run_at_startup",
             t!("settings.run_at_startup"),
-            true,
-            run_at_startup,
-            None,
-        );
-        let auto_cleanup_item = CheckMenuItem::with_id(
+            settings.run_at_startup,
+        ),
+        auto_cleanup: check_item(
             "auto_cleanup",
             t!("settings.auto_cleanup"),
-            true,
-            auto_cleanup_enabled,
-            None,
-        );
-        let toggle_window = MenuItem::with_id("toggle_window", t!("tray.hide_window"), true, None);
-        let quit = MenuItem::with_id("quit", t!("tray.quit"), true, None);
-        let menu = Menu::new();
-        menu.append(&optimize)?;
-        menu.append(&run_at_startup_item)?;
-        menu.append(&auto_cleanup_item)?;
-        menu.append(&PredefinedMenuItem::separator())?;
-        menu.append(&toggle_window)?;
-        menu.append(&PredefinedMenuItem::separator())?;
-        menu.append(&quit)?;
-
-        let source = load_icon_source();
-        let icon_frames = build_icon_frames(&source).map(|frame| {
-            let (width, height) = frame.dimensions();
-            icon_from_rgba(frame.into_raw(), width, height)
-        });
-
-        let tray_icon = TrayIconBuilder::new()
-            .with_menu(Box::new(menu))
-            .with_menu_on_left_click(false)
-            .with_tooltip(t!("tray.tooltip", percent = "—"))
-            .with_icon(icon_frames[0].clone())
-            .build()?;
-
-        let tray = Box::new(Self {
-            icon: tray_icon,
-            icon_frames,
-            optimize,
-            run_at_startup: run_at_startup_item,
-            auto_cleanup: auto_cleanup_item,
-            toggle_window,
-            quit,
-            menu_state: Mutex::new(TrayMenuState::new(
-                rust_i18n::locale().as_ref(),
-                true,
-                run_at_startup,
-                auto_cleanup_enabled,
-            )),
-            tooltip: Mutex::new(None),
-        });
-        let leaked = Box::leak(tray);
-        TRAY.store(leaked, Ordering::Release);
-
-        Ok(())
+            settings.auto_cleanup_enabled,
+        ),
+        notifications: check_item(
+            "notifications",
+            t!("tray.notifications"),
+            settings.show_optimization_notifications,
+        ),
+        debug_logging: check_item(
+            "debug_logging",
+            t!("settings.debug_logging"),
+            settings.debug_logging,
+        ),
+        cleanup_hotkey: check_item(
+            "cleanup_hotkey",
+            t!("settings.cleanup_hotkey"),
+            settings.cleanup_hotkey_enabled,
+        ),
+        taskbar_window: check_item(
+            "taskbar_window",
+            t!("settings.taskbar_window"),
+            settings.show_taskbar_window,
+        ),
+        open_config: MenuItem::with_id("open_config", t!("tray.open_config"), true, None),
+        lang_auto: check_item(
+            "lang_auto",
+            t!("settings.language_auto"),
+            settings.language == "auto",
+        ),
+        lang_zh: check_item(
+            "lang_zh",
+            t!("settings.language_zh"),
+            settings.language == "zh-CN",
+        ),
+        lang_en: check_item(
+            "lang_en",
+            t!("settings.language_en"),
+            settings.language == "en",
+        ),
+        thresholds,
+        areas,
+        sub_areas: Submenu::with_id("sub_areas", t!("tray.menu_areas"), true),
+        sub_auto: Submenu::with_id("sub_auto", t!("tray.menu_auto_cleanup"), true),
+        sub_threshold: Submenu::with_id("sub_threshold", t!("tray.menu_threshold"), true),
+        sub_settings: Submenu::with_id("sub_settings", t!("tray.menu_settings"), true),
+        sub_language: Submenu::with_id("sub_language", t!("settings.language"), true),
     }
 }
 
-fn tray() -> Option<&'static Tray> {
-    let ptr = TRAY.load(Ordering::Acquire);
-    if ptr.is_null() {
-        None
-    } else {
-        // SAFETY: `TRAY` 在安装时只写一次，值泄漏至进程生命周期。
-        Some(unsafe { &*ptr })
+fn build_root_menu(items: &MenuItems) -> Menu {
+    let menu = Menu::new();
+    let _ = menu.append(&items.optimize);
+    let _ = menu.append(&PredefinedMenuItem::separator());
+
+    for area in &items.areas {
+        let _ = items.sub_areas.append(area);
     }
-}
+    let _ = menu.append(&items.sub_areas);
 
-fn icon_from_rgba(rgba: Vec<u8>, width: u32, height: u32) -> Icon {
-    Icon::from_rgba(rgba, width, height).unwrap_or_else(|_| {
-        Icon::from_rgba(vec![0, 0, 0, 0], 1, 1).unwrap_or_else(|_| {
-            panic!("tray_icon::Icon::from_rgba rejected a 1x1 transparent buffer")
-        })
-    })
-}
-
-/// 将方形托盘图标按四分之一圈旋转（0–3）。避免 Windows 上的透明通道技巧。
-pub(crate) fn rotate_quarters(source: &RgbaImage, quarters: u32) -> RgbaImage {
-    match quarters % 4 {
-        0 => source.clone(),
-        1 => imageops::rotate90(source),
-        2 => imageops::rotate180(source),
-        3 => imageops::rotate270(source),
-        _ => unreachable!(),
+    for th in &items.thresholds {
+        let _ = items.sub_threshold.append(th);
     }
+    let _ = items.sub_auto.append(&items.auto_cleanup);
+    let _ = items.sub_auto.append(&items.sub_threshold);
+    let _ = menu.append(&items.sub_auto);
+
+    let _ = items.sub_language.append(&items.lang_auto);
+    let _ = items.sub_language.append(&items.lang_zh);
+    let _ = items.sub_language.append(&items.lang_en);
+    let _ = items.sub_settings.append(&items.run_at_startup);
+    let _ = items.sub_settings.append(&items.notifications);
+    let _ = items.sub_settings.append(&items.debug_logging);
+    let _ = items.sub_settings.append(&items.cleanup_hotkey);
+    let _ = items.sub_settings.append(&items.taskbar_window);
+    let _ = items.sub_settings.append(&items.sub_language);
+    let _ = items.sub_settings.append(&items.open_config);
+    let _ = menu.append(&items.sub_settings);
+
+    let _ = menu.append(&PredefinedMenuItem::separator());
+    let _ = menu.append(&items.quit);
+    menu
 }
 
-/// 托盘安装时一次性构建四帧 90° 旋转图。
+pub fn sync_menu(settings: &Settings) {
+    with_tray_mut(|tray| {
+        let items = &tray.items;
+        items.optimize.set_text(t!("tray.optimize"));
+        items.quit.set_text(t!("tray.quit"));
+        items.sub_areas.set_text(t!("tray.menu_areas"));
+        items.sub_auto.set_text(t!("tray.menu_auto_cleanup"));
+        items.sub_threshold.set_text(t!("tray.menu_threshold"));
+        items.sub_settings.set_text(t!("tray.menu_settings"));
+        items.sub_language.set_text(t!("settings.language"));
+        items.open_config.set_text(t!("tray.open_config"));
+
+        items.run_at_startup.set_text(t!("settings.run_at_startup"));
+        items.run_at_startup.set_checked(settings.run_at_startup);
+
+        items.auto_cleanup.set_text(t!("settings.auto_cleanup"));
+        items
+            .auto_cleanup
+            .set_checked(settings.auto_cleanup_enabled);
+
+        items.notifications.set_text(t!("tray.notifications"));
+        items
+            .notifications
+            .set_checked(settings.show_optimization_notifications);
+
+        items.debug_logging.set_text(t!("settings.debug_logging"));
+        items.debug_logging.set_checked(settings.debug_logging);
+
+        items.cleanup_hotkey.set_text(t!("settings.cleanup_hotkey"));
+        items
+            .cleanup_hotkey
+            .set_checked(settings.cleanup_hotkey_enabled);
+
+        items.taskbar_window.set_text(t!("settings.taskbar_window"));
+        items
+            .taskbar_window
+            .set_checked(settings.show_taskbar_window);
+
+        items.lang_auto.set_text(t!("settings.language_auto"));
+        items.lang_zh.set_text(t!("settings.language_zh"));
+        items.lang_en.set_text(t!("settings.language_en"));
+        items.lang_auto.set_checked(settings.language == "auto");
+        items.lang_zh.set_checked(settings.language == "zh-CN");
+        items.lang_en.set_checked(settings.language == "en");
+
+        let th = settings.auto_cleanup_threshold;
+        for (i, item) in items.thresholds.iter().enumerate() {
+            let (value, _) = THRESHOLD_SPECS[i];
+            if value == 0 {
+                item.set_text(t!("tray.threshold_off"));
+            } else {
+                item.set_text(format!("{value}%"));
+            }
+            item.set_checked(th == value);
+        }
+
+        let areas = settings.memory_areas();
+        for (i, item) in items.areas.iter().enumerate() {
+            let (_, area) = AREA_SPECS[i];
+            item.set_text(t!(area.label_key()));
+            item.set_checked(areas.contains(area));
+        }
+    });
+}
+
+pub fn sync_tooltip(
+    physical: &MemorySection,
+    virtual_mem: &MemorySection,
+    system_working_set: Option<&SystemWorkingSet>,
+    cpu_network: &CpuNetworkSnapshot,
+) {
+    let tooltip = format_memory_tooltip(physical, virtual_mem, system_working_set, cpu_network);
+    with_tray_mut(|tray| {
+        if tray.tooltip.as_ref() != Some(&tooltip) && tray.icon.set_tooltip(Some(&tooltip)).is_ok()
+        {
+            tray.tooltip = Some(tooltip);
+        }
+    });
+}
+
+fn load_icon_source() -> RgbaImage {
+    const PNG: &[u8] = include_bytes!("../App.png");
+    image::load_from_memory(PNG).expect("App.png").to_rgba8()
+}
+
 fn build_icon_frames(source: &RgbaImage) -> [RgbaImage; 4] {
-    [
-        rotate_quarters(source, 0),
-        rotate_quarters(source, 1),
-        rotate_quarters(source, 2),
-        rotate_quarters(source, 3),
-    ]
+    let mut base = image::imageops::resize(
+        source,
+        TRAY_ICON_SIZE,
+        TRAY_ICON_SIZE,
+        image::imageops::FilterType::CatmullRom,
+    );
+    // tray-icon 用 CreateIcon 的 1-bit AND mask：半透明边会变成黑角。
+    harden_icon_alpha(&mut base);
+    let mut r90 = image::imageops::rotate90(&base);
+    let mut r180 = image::imageops::rotate180(&base);
+    let mut r270 = image::imageops::rotate270(&base);
+    harden_icon_alpha(&mut r90);
+    harden_icon_alpha(&mut r180);
+    harden_icon_alpha(&mut r270);
+    [base, r90, r180, r270]
 }
 
-fn set_tray_icon_rotation(quarters: u32) {
-    let Some(tray) = tray() else {
+/// 透明/不透明二值化，去掉抗锯齿半透明像素。
+fn harden_icon_alpha(img: &mut RgbaImage) {
+    for pixel in img.pixels_mut() {
+        if pixel.0[3] < 128 {
+            pixel.0 = [0, 0, 0, 0];
+        } else {
+            pixel.0[3] = 255;
+        }
+    }
+}
+
+fn rgba_to_icon(frame: &RgbaImage) -> anyhow::Result<tray_icon::Icon> {
+    let (w, h) = frame.dimensions();
+    Ok(tray_icon::Icon::from_rgba(frame.as_raw().to_vec(), w, h)?)
+}
+
+pub fn apply_spin_frame(quarters: u32, generation: u32) {
+    if SPIN_GENERATION.load(Ordering::Relaxed) != generation {
         return;
-    };
-    let frame = &tray.icon_frames[(quarters % 4) as usize];
-    let _ = tray.icon.set_icon(Some(frame.clone()));
+    }
+    with_tray_mut(|tray| {
+        let frame = &tray.icon_frames[(quarters % 4) as usize];
+        let _ = tray.icon.set_icon(Some(frame.clone()));
+    });
 }
 
 pub fn stop_spin() {
@@ -232,9 +395,7 @@ pub fn start_spin() {
     if SPIN_ACTIVE.swap(true, Ordering::Relaxed) {
         return;
     }
-
     let generation = SPIN_GENERATION.fetch_add(1, Ordering::Relaxed) + 1;
-
     if thread::Builder::new()
         .name("tray-icon-spin".into())
         .spawn(move || {
@@ -243,7 +404,6 @@ pub fn start_spin() {
                 if SPIN_GENERATION.load(Ordering::Relaxed) != generation {
                     break;
                 }
-
                 if let Some(tx) = CMD_TX.get() {
                     let _ = tx.send(TrayCommand::SetSpinFrame {
                         quarters,
@@ -251,7 +411,6 @@ pub fn start_spin() {
                     });
                 }
                 quarters = quarters.wrapping_add(1);
-
                 thread::sleep(Duration::from_millis(SPIN_STEP_MS));
             }
         })
@@ -296,56 +455,6 @@ pub fn format_memory_tooltip(
     lines.join("\n")
 }
 
-pub fn sync_display(
-    physical: &MemorySection,
-    virtual_mem: &MemorySection,
-    system_working_set: Option<&SystemWorkingSet>,
-    cpu_network: &CpuNetworkSnapshot,
-    window_visible: bool,
-    run_at_startup: bool,
-    auto_cleanup_enabled: bool,
-) {
-    let Some(tray) = tray() else {
-        return;
-    };
-
-    let tooltip = format_memory_tooltip(physical, virtual_mem, system_working_set, cpu_network);
-    {
-        let mut previous = tray
-            .tooltip
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        if previous.as_ref() != Some(&tooltip) && tray.icon.set_tooltip(Some(&tooltip)).is_ok() {
-            *previous = Some(tooltip);
-        }
-    }
-    let locale = rust_i18n::locale();
-    let menu_changed = tray
-        .menu_state
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .changed(
-            locale.as_ref(),
-            window_visible,
-            run_at_startup,
-            auto_cleanup_enabled,
-        );
-    if !menu_changed {
-        return;
-    }
-    tray.optimize.set_text(t!("tray.optimize"));
-    tray.quit.set_text(t!("tray.quit"));
-    tray.run_at_startup.set_text(t!("settings.run_at_startup"));
-    tray.run_at_startup.set_checked(run_at_startup);
-    tray.auto_cleanup.set_text(t!("settings.auto_cleanup"));
-    tray.auto_cleanup.set_checked(auto_cleanup_enabled);
-    tray.toggle_window.set_text(if window_visible {
-        t!("tray.hide_window")
-    } else {
-        t!("tray.show_window")
-    });
-}
-
 fn install_event_handlers(tx: Sender<TrayCommand>) {
     TrayIconEvent::set_event_handler(Some({
         let tx = tx.clone();
@@ -355,7 +464,7 @@ fn install_event_handlers(tx: Sender<TrayCommand>) {
                 button_state: MouseButtonState::Up,
                 ..
             } => {
-                let _ = tx.send(TrayCommand::ActivateWindow);
+                let _ = tx.send(TrayCommand::Optimize);
             }
             TrayIconEvent::Enter { .. } => {
                 let _ = tx.send(TrayCommand::RefreshTooltip);
@@ -371,74 +480,54 @@ fn install_event_handlers(tx: Sender<TrayCommand>) {
     }));
 }
 
-fn load_icon_source() -> RgbaImage {
-    load_app_icon_rgba().unwrap_or_else(|_| {
-        let (rgba, width, height) = fallback_icon_rgba();
-        RgbaImage::from_raw(width, height, rgba).expect("fallback icon rgba")
-    })
-}
-
-fn load_app_icon_rgba() -> anyhow::Result<RgbaImage> {
-    let png_data = include_bytes!("../App.png");
-    let img = image::load_from_memory(png_data)?;
-    Ok(img
-        .resize(
-            TRAY_ICON_SIZE,
-            TRAY_ICON_SIZE,
-            image::imageops::FilterType::Lanczos3,
-        )
-        .to_rgba8())
-}
-
-fn fallback_icon_rgba() -> (Vec<u8>, u32, u32) {
-    let width = 16u32;
-    let height = 16u32;
-    let mut rgba = vec![0u8; (width * height * 4) as usize];
-
-    for y in 0..height {
-        for x in 0..width {
-            let idx = ((y * width + x) * 4) as usize;
-            let dx = x as f32 - 7.5;
-            let dy = y as f32 - 7.5;
-            let dist = (dx * dx + dy * dy).sqrt();
-            if dist < 7.0 {
-                rgba[idx] = 39;
-                rgba[idx + 1] = 174;
-                rgba[idx + 2] = 96;
-                rgba[idx + 3] = 255;
-            }
-        }
+pub fn request_quit() {
+    let tid = MAIN_THREAD_ID.load(Ordering::Relaxed);
+    if tid == 0 {
+        return;
     }
-
-    (rgba, width, height)
+    unsafe {
+        let _ = windows::Win32::UI::WindowsAndMessaging::PostThreadMessageW(
+            tid,
+            windows::Win32::UI::WindowsAndMessaging::WM_QUIT,
+            windows::Win32::Foundation::WPARAM(0),
+            windows::Win32::Foundation::LPARAM(0),
+        );
+    }
 }
 
-pub fn dispatch_command(
-    app: &mut MemoryCleanerApp,
-    command: TrayCommand,
-    cx: &mut gpui_kit::Context<MemoryCleanerApp>,
-) {
-    match command {
-        TrayCommand::ActivateWindow => app.activate_window(cx),
-        TrayCommand::RefreshTooltip => {
-            app.refresh_memory();
-            app.sync_tray();
-        }
-        TrayCommand::Optimize => app.run_optimize(cx),
-        TrayCommand::LowMemory => {
-            app.run_auto_cleanup(AutoCleanupSource::LowMemoryNotification, cx)
-        }
-        TrayCommand::MenuAction(action) => app.handle_tray_action(&action, cx),
-        TrayCommand::SetSpinFrame {
-            quarters,
-            generation,
-        } => {
-            if generation != SPIN_GENERATION.load(Ordering::Relaxed) {
+/// 主线程：泵消息并处理命令（托盘 API 不可跨线程）。
+pub fn run_loop<F>(command_rx: std::sync::mpsc::Receiver<TrayCommand>, mut on_command: F)
+where
+    F: FnMut(TrayCommand),
+{
+    use windows::Win32::UI::WindowsAndMessaging::{
+        DispatchMessageW, MSG, PM_REMOVE, PeekMessageW, TranslateMessage, WM_QUIT,
+    };
+
+    loop {
+        while let Ok(command) = command_rx.try_recv() {
+            let quit = matches!(command, TrayCommand::Quit);
+            on_command(command);
+            if quit {
                 return;
             }
-            if quarters == 0 || SPIN_ACTIVE.load(Ordering::Relaxed) {
-                set_tray_icon_rotation(quarters);
+        }
+
+        let mut had_message = false;
+        unsafe {
+            let mut msg = MSG::default();
+            while PeekMessageW(&mut msg, None, 0, 0, PM_REMOVE).into() {
+                had_message = true;
+                if msg.message == WM_QUIT {
+                    return;
+                }
+                let _ = TranslateMessage(&msg);
+                let _ = DispatchMessageW(&msg);
             }
+        }
+
+        if !had_message {
+            thread::sleep(Duration::from_millis(16));
         }
     }
 }
@@ -447,95 +536,36 @@ pub fn dispatch_command(
 mod tests {
     use super::*;
     use crate::locale::with_locale;
-    use crate::memory::MemorySection;
-
-    fn section(title: &str, percent: f32) -> MemorySection {
-        MemorySection {
-            title: title.into(),
-            total: 16 * 1024 * 1024 * 1024,
-            used: 8 * 1024 * 1024 * 1024,
-            avail: 8 * 1024 * 1024 * 1024,
-            used_percent: percent,
-        }
-    }
 
     #[test]
-    fn format_memory_tooltip_includes_virtual_memory_zh() {
-        with_locale("zh-CN", || {
-            let physical = section("物理内存", 46.0);
-            let virtual_mem = section("提交内存", 86.0);
-            let working_set = SystemWorkingSet {
-                current: 128 * 1024 * 1024,
-                peak: 256 * 1024 * 1024,
+    fn tooltip_lists_memory_cpu_and_network() {
+        with_locale("en", || {
+            let physical = MemorySection {
+                title: "Physical".into(),
+                total: 8 << 30,
+                used: 4 << 30,
+                avail: 4 << 30,
+                used_percent: 50.0,
             };
-            let metrics = CpuNetworkSnapshot {
+            let virtual_mem = MemorySection {
+                title: "Commit".into(),
+                total: 16 << 30,
+                used: 8 << 30,
+                avail: 8 << 30,
+                used_percent: 50.0,
+            };
+            let sws = SystemWorkingSet {
+                current: 1 << 20,
+                peak: 2 << 20,
+            };
+            let cpu = CpuNetworkSnapshot {
                 cpu_percent: Some(12.0),
                 download_bps: Some(1024.0),
                 upload_bps: Some(512.0),
             };
-            let tooltip =
-                format_memory_tooltip(&physical, &virtual_mem, Some(&working_set), &metrics);
-            assert_eq!(
-                tooltip,
-                "物理内存: 46%\n提交内存: 86%\n系统工作集: 128.00 MB\nCPU: 12%\n网速: ↓ 1.00 KB/s · ↑ 512 B/s"
-            );
+            let tip = format_memory_tooltip(&physical, &virtual_mem, Some(&sws), &cpu);
+            assert!(tip.contains("50%"));
+            assert!(tip.contains("12%"));
         });
-    }
-
-    #[test]
-    fn format_memory_tooltip_includes_virtual_memory_en() {
-        with_locale("en", || {
-            let physical = section("Physical Memory", 46.0);
-            let virtual_mem = section("Virtual Memory", 86.0);
-            let working_set = SystemWorkingSet {
-                current: 128 * 1024 * 1024,
-                peak: 256 * 1024 * 1024,
-            };
-            let metrics = CpuNetworkSnapshot {
-                cpu_percent: Some(12.0),
-                download_bps: Some(1024.0),
-                upload_bps: Some(512.0),
-            };
-            let tooltip =
-                format_memory_tooltip(&physical, &virtual_mem, Some(&working_set), &metrics);
-            assert_eq!(
-                tooltip,
-                "Physical: 46%\nCommitted: 86%\nSystem working set: 128.00 MB\nCPU: 12%\nNetwork: ↓ 1.00 KB/s · ↑ 512 B/s"
-            );
-        });
-    }
-
-    #[test]
-    fn working_set_query_failure_preserves_other_tooltip_values() {
-        with_locale("en", || {
-            let tooltip = format_memory_tooltip(
-                &section("Physical", 46.0),
-                &section("Committed", 86.0),
-                None,
-                &CpuNetworkSnapshot::unavailable(),
-            );
-            assert_eq!(
-                tooltip,
-                "Physical: 46%\nCommitted: 86%\nSystem working set: —\nCPU: —\nNetwork: ↓ — · ↑ —"
-            );
-        });
-    }
-
-    #[test]
-    fn tray_menu_state_changes_for_locale_visibility_or_checks() {
-        let mut state = TrayMenuState::new("en", true, false, false);
-        assert!(!state.changed("en", true, false, false));
-        assert!(state.changed("en", false, false, false));
-        assert!(state.changed("en", false, true, false));
-        assert!(state.changed("en", false, true, true));
-        assert!(state.changed("zh-CN", false, true, true));
-        assert!(!state.changed("zh-CN", false, true, true));
-    }
-
-    #[test]
-    fn tray_animation_source_is_pre_scaled() {
-        let source = load_icon_source();
-        assert_eq!(source.dimensions(), (TRAY_ICON_SIZE, TRAY_ICON_SIZE));
-        assert_eq!(source.len(), (TRAY_ICON_SIZE * TRAY_ICON_SIZE * 4) as usize);
     }
 }

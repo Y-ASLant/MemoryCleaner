@@ -26,51 +26,48 @@ area.unknown:
   zh-CN: "未知区域"
   en: "Unknown"
 
-# Memory sections
+# Memory / metrics (tooltip)
 memory.physical:
   zh-CN: "物理内存"
   en: "Physical Memory"
 memory.virtual:
   zh-CN: "提交内存"
   en: "Committed Memory"
-memory.system_working_set:
-  zh-CN: "系统工作集"
-  en: "System Working Set"
-memory.system_working_set_peak:
-  zh-CN: "系统工作集 (峰值 %{peak})"
-  en: "System Working Set (Peak %{peak})"
-memory.current:
-  zh-CN: "当前 %{current} · %{percent}%"
-  en: "%{current} · %{percent}% of peak"
-
-
-# CPU / network metrics
-metrics.cpu:
-  zh-CN: "CPU"
-  en: "CPU"
-metrics.download:
-  zh-CN: "下行"
-  en: "Down"
-metrics.upload:
-  zh-CN: "上行"
-  en: "Up"
+memory.unavailable:
+  zh-CN: "无法读取内存信息"
+  en: "Unable to read memory info"
 metrics.cpu_network_summary:
   zh-CN: "CPU %{cpu} · ↓ %{down} · ↑ %{up}"
   en: "CPU %{cpu} · ↓ %{down} · ↑ %{up}"
 
 # Tray menu
-tray.hide_window:
-  zh-CN: "隐藏窗口"
-  en: "Hide Window"
-tray.show_window:
-  zh-CN: "显示窗口"
-  en: "Show Window"
 tray.optimize:
   zh-CN: "一键清理"
   en: "Clean Up"
 tray.quit:
   zh-CN: "退出程序"
   en: "Quit"
+tray.menu_areas:
+  zh-CN: "清理区域"
+  en: "Cleanup Areas"
+tray.menu_auto_cleanup:
+  zh-CN: "自动清理"
+  en: "Auto Cleanup"
+tray.menu_threshold:
+  zh-CN: "占用阈值"
+  en: "Usage Threshold"
+tray.menu_settings:
+  zh-CN: "设置"
+  en: "Settings"
+tray.open_config:
+  zh-CN: "打开配置目录"
+  en: "Open Config Folder"
+tray.threshold_off:
+  zh-CN: "关闭阈值"
+  en: "Threshold Off"
+tray.notifications:
+  zh-CN: "清理完成通知"
+  en: "Cleanup Notifications"
 tray.tooltip:
   zh-CN: "物理内存: %{percent}"
   en: "Physical: %{percent}"
@@ -88,115 +85,26 @@ tray.tooltip_network:
   en: "Network: ↓ %{down} · ↑ %{up}"
 
 
-# Settings / Window behavior dialog
-dialog.window_behavior:
-  zh-CN: "应用设置"
-  en: "Application Settings"
-settings.save_failed:
-  zh-CN: "设置保存失败；请检查配置目录权限，修改设置后将重试"
-  en: "Settings could not be saved; check configuration permissions. Changes retry saving"
-settings.always_on_top:
-  zh-CN: "窗口置顶"
-  en: "Always on Top"
-settings.always_on_top_desc:
-  zh-CN: "窗口始终保持在最前面"
-  en: "Keep window always in front"
-settings.close_to_tray:
-  zh-CN: "关闭时隐藏到托盘"
-  en: "Minimize to Tray on Close"
-settings.close_to_tray_desc:
-  zh-CN: "点击关闭按钮时最小化到系统托盘"
-  en: "Minimize to system tray when closing"
+settings.taskbar_window:
+  zh-CN: "任务栏窗口"
+  en: "Taskbar Window"
+
+# Settings labels used by tray
 settings.run_at_startup:
   zh-CN: "开机自启"
   en: "Run at Startup"
-settings.run_at_startup_desc:
-  zh-CN: "登录 Windows 后静默启动到系统托盘（不显示主窗口）"
-  en: "Start silently in the system tray after sign-in (no main window)"
-settings.run_at_startup_pending:
-  zh-CN: "正在更新开机自启…"
-  en: "Updating startup settings…"
-settings.run_at_startup_failed:
-  zh-CN: "更新失败；可重试，详情见调试日志"
-  en: "Update failed; retry or check the debug log"
-settings.optimization_notifications:
-  zh-CN: "优化后通知"
-  en: "Post-Optimization Notification"
-settings.optimization_notifications_desc:
-  zh-CN: "内存优化开始与完成时显示 Windows 系统通知"
-  en: "Show Windows notifications when memory cleanup starts and completes"
 settings.debug_logging:
   zh-CN: "调试日志"
   en: "Debug Logging"
-settings.debug_logging_desc:
-  zh-CN: "将详细运行信息写入程序目录下的 App.log（自动清理 7 天前的记录）"
-  en: "Write detailed logs to App.log next to the executable (auto-purges entries older than 7 days)"
 settings.cleanup_hotkey:
   zh-CN: "全局快捷键"
   en: "Global Hotkey"
-settings.cleanup_hotkey_desc:
-  zh-CN: "点击右侧按钮录入快捷键，Esc 取消"
-  en: "Click the button to record a shortcut; Esc cancels"
-settings.cleanup_hotkey_recording:
-  zh-CN: "按下快捷键…"
-  en: "Press shortcut…"
-settings.cleanup_hotkey_failed:
-  zh-CN: "快捷键注册失败；原设置未更改，请尝试其他组合键"
-  en: "Registration failed; settings unchanged. Try another shortcut"
 settings.auto_cleanup:
   zh-CN: "自动清理"
   en: "Automatic Cleanup"
-settings.auto_cleanup_status_disabled:
-  zh-CN: "当前：已关闭。开启后将在 Windows 内存不足或超过阈值时清理"
-  en: "Currently off. Enable to clean on low memory or above the threshold"
-settings.auto_cleanup_status_low_memory:
-  zh-CN: "当前：仅在 Windows 报告物理内存不足时清理"
-  en: "Currently: only when Windows reports low physical memory"
-settings.auto_cleanup_status_threshold:
-  zh-CN: "当前：Windows 报告物理内存不足，或使用率持续达到 %{threshold} 时清理"
-  en: "Currently: when Windows reports low physical memory or usage stays at %{threshold}"
-settings.auto_cleanup_threshold:
-  zh-CN: "内存占用阈值"
-  en: "Memory Usage Threshold"
-settings.auto_cleanup_threshold_desc:
-  zh-CN: "使用率持续高于该阈值时自动清理"
-  en: "Clean when usage stays above the threshold"
-settings.auto_cleanup_option_off:
-  zh-CN: "关闭"
-  en: "Off"
-settings.cleanup_areas:
-  zh-CN: "清理区域"
-  en: "Cleanup Areas"
-settings.cleanup_areas_hint:
-  zh-CN: "提示：「待机列表」与「待机列表(低优先级)」只能勾选其一"
-  en: "Tip: \"Standby List\" and \"Standby List (Low)\" are mutually exclusive"
-settings.process_exclusion:
-  zh-CN: "排除进程"
-  en: "Excluded Processes"
-settings.process_exclusion_select:
-  zh-CN: "选择进程"
-  en: "Select process"
-settings.process_exclusion_add:
-  zh-CN: "添加"
-  en: "Add"
-settings.process_exclusion_remove:
-  zh-CN: "移除"
-  en: "Remove"
-settings.process_exclusion_empty:
-  zh-CN: "暂无排除进程"
-  en: "No excluded processes"
-settings.process_exclusion_picker_detail:
-  zh-CN: "×%{count} · %{memory}"
-  en: "×%{count} · %{memory}"
-settings.process_exclusion_picker_unknown:
-  zh-CN: "—"
-  en: "—"
 settings.language:
   zh-CN: "界面语言"
   en: "Interface Language"
-settings.language_desc:
-  zh-CN: "选择界面显示语言"
-  en: "Select the interface display language"
 settings.language_auto:
   zh-CN: "跟随系统"
   en: "Auto"
@@ -207,32 +115,14 @@ settings.language_en:
   zh-CN: "English"
   en: "English"
 
-# Cleanup button / status
-button.cleanup:
-  zh-CN: "一键清理"
-  en: "Clean Up"
-button.cleanup_preparing:
-  zh-CN: "准备清理…"
-  en: "Preparing…"
 tooltip.select_areas:
   zh-CN: "请先选择清理区域"
   en: "Please select cleanup areas first"
-tooltip.start_cleanup:
-  zh-CN: "开始清理内存"
-  en: "Start memory cleanup"
 
-# Optimize progress
-optimize.step:
-  zh-CN: "正在清理 %{name}..."
-  en: "Cleaning %{name}..."
-optimize.step_with_progress:
-  zh-CN: "正在清理 %{name} (%{volume}) [%{current}/%{total}]..."
-  en: "Cleaning %{name} (%{volume}) [%{current}/%{total}]..."
 optimize.volume_flush_failed:
   zh-CN: "卷 %{volumes} 刷新失败"
   en: "Volume(s) %{volumes} flush failed"
 
-# Cleanup result messages
 cleanup.none:
   zh-CN: "未执行清理"
   en: "No cleanup performed"
@@ -254,36 +144,6 @@ cleanup.partial_detail:
 cleanup.pressure_change:
   zh-CN: "%{before}% → %{after}%"
   en: "%{before}% → %{after}%"
-cleanup.history:
-  zh-CN: "清理历史"
-  en: "Cleanup History"
-cleanup.history_empty:
-  zh-CN: "暂无已完成的清理记录"
-  en: "No completed cleanup records yet"
-cleanup.history_source_manual:
-  zh-CN: "手动清理"
-  en: "Manual cleanup"
-cleanup.history_source_low_memory:
-  zh-CN: "Windows 内存不足"
-  en: "Windows low memory"
-cleanup.history_source_threshold:
-  zh-CN: "内存阈值"
-  en: "Memory threshold"
-cleanup.history_just_now:
-  zh-CN: "刚刚"
-  en: "Just now"
-cleanup.history_minutes_ago:
-  zh-CN: "%{count} 分钟前"
-  en: "%{count}m ago"
-cleanup.history_hours_ago:
-  zh-CN: "%{count} 小时前"
-  en: "%{count}h ago"
-cleanup.history_days_ago:
-  zh-CN: "%{count} 天前"
-  en: "%{count}d ago"
-cleanup.history_detail:
-  zh-CN: "选中 %{selected} 项 · 成功 %{completed} · 失败 %{failed} · %{before}% → %{after}% · 可用 %{available} · %{duration}"
-  en: "%{selected} selected · %{completed} done · %{failed} failed · %{before}% → %{after}% · available %{available} · %{duration}"
 
 notification.optimize_title:
   zh-CN: "内存优化完成"
@@ -294,70 +154,3 @@ notification.optimize_start_title:
 notification.optimize_start_body:
   zh-CN: "正在执行内存优化…"
   en: "Running memory cleanup…"
-
-# Icon cache refresh
-icon_cache.confirm_title:
-  zh-CN: "刷新桌面图标缓存"
-  en: "Refresh Desktop Icon Cache"
-icon_cache.confirm_desc:
-  zh-CN: "修复桌面图标显示异常（如空白、错误图标）。将短暂结束并重启资源管理器，桌面与任务栏会闪断。是否继续？"
-  en: "Fixes abnormal desktop icons (e.g., blank or incorrect icons). Explorer will be briefly terminated and restarted; the desktop and taskbar will flicker. Continue?"
-icon_cache.confirm_action:
-  zh-CN: "刷新"
-  en: "Refresh"
-icon_cache.refreshing:
-  zh-CN: "正在刷新桌面图标缓存…"
-  en: "Refreshing desktop icon cache…"
-icon_cache.tooltip:
-  zh-CN: "刷新桌面图标缓存"
-  en: "Refresh Desktop Icon Cache"
-icon_cache.error.restart_explorer:
-  zh-CN: "刷新失败：无法重启资源管理器"
-  en: "Failed: could not restart Explorer"
-icon_cache.success:
-  zh-CN: "桌面图标缓存已刷新"
-  en: "Desktop icon cache refreshed"
-icon_cache.partial:
-  zh-CN: "已刷新，部分缓存未能清理"
-  en: "Refreshed, but some cache files could not be cleaned"
-icon_cache.log.kill_explorer_failed:
-  zh-CN: "结束 explorer 失败: %{error}"
-  en: "Failed to terminate Explorer: %{error}"
-icon_cache.log.explorer_exit_timeout:
-  zh-CN: "explorer 退出超时"
-  en: "Explorer exit timed out"
-icon_cache.log.localappdata_unset:
-  zh-CN: "LOCALAPPDATA 未设置"
-  en: "LOCALAPPDATA environment variable not set"
-icon_cache.log.restart_explorer_failed:
-  zh-CN: "重启 explorer 失败: %{error}"
-  en: "Failed to restart Explorer: %{error}"
-icon_cache.log.delete_failed:
-  zh-CN: "删除失败: %{path}"
-  en: "Failed to delete: %{path}"
-icon_cache.log.delete_reg_value_failed:
-  zh-CN: "删除注册表值 %{value} 失败"
-  en: "Failed to delete registry value %{value}"
-
-# Common dialog buttons
-dialog.cancel:
-  zh-CN: "取消"
-  en: "Cancel"
-
-# Memory card
-memory.unavailable:
-  zh-CN: "无法读取内存信息"
-  en: "Unable to read memory info"
-memory.used_avail:
-  zh-CN: "已用 %{used} · 可用 %{avail}"
-  en: "Used %{used} · Available %{avail}"
-
-# Debug log messages (keep bilingual for log readability)
-log.debug_enabled:
-  zh-CN: "调试日志已启用，输出路径: %{path}"
-  en: "Debug logging enabled, output path: %{path}"
-
-# Window title
-app.title:
-  zh-CN: "Memory Cleaner"
-  en: "Memory Cleaner"

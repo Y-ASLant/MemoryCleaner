@@ -1,5 +1,4 @@
 use anyhow::{Context, Result};
-use rust_i18n::t;
 use windows::Win32::System::ProcessStatus::{GetPerformanceInfo, PERFORMANCE_INFORMATION};
 use windows::Win32::System::SystemInformation::{GlobalMemoryStatusEx, MEMORYSTATUSEX};
 
@@ -13,26 +12,6 @@ pub struct MemorySection {
 }
 
 impl MemorySection {
-    pub fn header(&self) -> String {
-        format!(
-            "{} ({})",
-            self.title,
-            MemoryStatus::format_bytes(self.total)
-        )
-    }
-
-    pub fn usage_summary(&self) -> String {
-        if self.total == 0 {
-            return "—".into();
-        }
-        t!(
-            "memory.used_avail",
-            used = MemoryStatus::format_bytes(self.used),
-            avail = MemoryStatus::format_bytes(self.avail),
-        )
-        .to_string()
-    }
-
     pub fn unavailable(title: &str) -> Self {
         Self {
             title: title.into(),
@@ -43,12 +22,8 @@ impl MemorySection {
         }
     }
 
-    pub fn is_unavailable(&self) -> bool {
-        self.total == 0
-    }
-
     pub fn percent_label(&self) -> String {
-        if self.is_unavailable() {
+        if self.total == 0 {
             "—".into()
         } else {
             format!("{}%", self.used_percent.round() as u32)
@@ -73,30 +48,6 @@ impl SystemWorkingSet {
 
     pub fn percent_of_peak(&self) -> Option<f64> {
         (self.peak > 0).then(|| self.current as f64 / self.peak as f64 * 100.0)
-    }
-
-    pub fn header(&self) -> String {
-        t!(
-            "memory.system_working_set_peak",
-            peak = MemoryStatus::format_bytes(self.peak),
-        )
-        .to_string()
-    }
-
-    pub fn summary(&self) -> String {
-        t!(
-            "memory.current",
-            current = MemoryStatus::format_bytes(self.current),
-            percent = self.percent_value_label(),
-        )
-        .to_string()
-    }
-
-    /// 占峰值比例的数值部分（如 "42.8"），用于嵌入其他文案。
-    fn percent_value_label(&self) -> String {
-        self.percent_of_peak()
-            .map(|percent| format!("{percent:.1}"))
-            .unwrap_or_else(|| "—".into())
     }
 }
 
@@ -160,7 +111,6 @@ impl MemoryStatus {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::locale::with_locale;
 
     fn sample_section(used_percent: f32) -> MemorySection {
         MemorySection {
@@ -226,28 +176,5 @@ mod tests {
         assert_eq!(sample_section(45.4).percent_label(), "45%");
         assert_eq!(sample_section(45.6).percent_label(), "46%");
         assert_eq!(MemorySection::unavailable("物理内存").percent_label(), "—");
-    }
-
-    #[test]
-    fn usage_summary_formats_used_and_available_zh() {
-        with_locale("zh-CN", || {
-            let summary = sample_section(50.0).usage_summary();
-            assert!(summary.contains("已用 4.00 GB"));
-            assert!(summary.contains("可用 4.00 GB"));
-            assert_eq!(MemorySection::unavailable("物理内存").usage_summary(), "—");
-        });
-    }
-
-    #[test]
-    fn usage_summary_formats_used_and_available_en() {
-        with_locale("en", || {
-            let summary = sample_section(50.0).usage_summary();
-            assert!(summary.contains("Used 4.00 GB"));
-            assert!(summary.contains("Available 4.00 GB"));
-            assert_eq!(
-                MemorySection::unavailable("Physical Memory").usage_summary(),
-                "—"
-            );
-        });
     }
 }

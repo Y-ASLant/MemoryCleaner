@@ -3,7 +3,7 @@ use std::sync::{Mutex, OnceLock};
 use std::thread::JoinHandle;
 
 use anyhow::{Context, Result, bail};
-use gpui_kit::{Keystroke, OperatingSystem};
+
 use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::System::Threading::GetCurrentThreadId;
@@ -107,43 +107,6 @@ impl HotkeyBinding {
         parts.push(key.to_string());
         let chord = parts.join("+");
         Self::parse(&chord).map(|_| chord)
-    }
-
-    /// 将设置用组合（如 `Ctrl+Alt+C`）转为 GPUI `Keystroke`，供 `Kbd` 显示。
-    pub fn chord_to_keystroke(chord: &str) -> Option<Keystroke> {
-        let chord = chord.trim();
-        if chord.is_empty() {
-            return None;
-        }
-
-        let parts: Vec<&str> = chord
-            .split('+')
-            .map(str::trim)
-            .filter(|p| !p.is_empty())
-            .collect();
-        if parts.len() < 2 {
-            return None;
-        }
-
-        let (modifiers, key) = parts.split_at(parts.len() - 1);
-        let mut tokens = Vec::<String>::new();
-        for modifier in modifiers {
-            let token = match modifier.to_ascii_lowercase().as_str() {
-                "ctrl" | "control" => "ctrl",
-                "alt" => "alt",
-                "shift" => "shift",
-                "win" | "windows" => "win",
-                _ => return None,
-            };
-            tokens.push(token.into());
-        }
-
-        let key = key[0].trim().to_ascii_lowercase();
-        if key.len() != 1 {
-            return None;
-        }
-        tokens.push(key);
-        Keystroke::parse_with_os(&tokens.join("-"), OperatingSystem::Windows).ok()
     }
 }
 
@@ -457,17 +420,6 @@ mod tests {
         service.apply(&equivalent).expect("disabling must succeed");
         let _released = spawn_hotkey_worker(original_binding)
             .expect("disabling must release the original chord");
-    }
-
-    #[test]
-    fn chord_to_keystroke_parses_settings_chords() {
-        let keystroke = HotkeyBinding::chord_to_keystroke("Alt+Shift+C").expect("valid keystroke");
-        assert!(keystroke.modifiers.alt);
-        assert!(keystroke.modifiers.shift);
-        assert_eq!(keystroke.key, "c");
-
-        assert!(HotkeyBinding::chord_to_keystroke("Ctrl+5").is_some());
-        assert!(HotkeyBinding::chord_to_keystroke("invalid").is_none());
     }
 
     #[test]
