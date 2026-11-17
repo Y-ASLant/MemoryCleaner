@@ -47,7 +47,7 @@ fn main() {
         return;
     }
 
-    if let Err(e) = win32::taskbar_window::install(command_tx.clone()) {
+    if let Err(e) = win32::taskbar_window::install() {
         log_msg(&format!("[taskbar-window] install failed: {e:#}"));
     } else {
         win32::taskbar_window::set_enabled(settings.show_taskbar_window);

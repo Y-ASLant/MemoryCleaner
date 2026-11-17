@@ -10,7 +10,7 @@
 ### 新增
 
 - **托盘设置菜单**：右键菜单可切换清理区域、自动清理与阈值、开机自启、通知、调试日志、全局热键开关、任务栏窗口与语言；支持打开配置目录。左键托盘图标触发一键清理；托盘仍用应用图标（不绘制占用百分比）。
-- **任务栏窗口**：类似 TrafficMonitor，通知区左侧 2×2（↑/↓/CPU/RAM）；`SetParent` 嵌任务栏，失败则 `TOPMOST`；D2D 画进 DirectComposition 交换链后 `Present`，刷新不重建分层窗口。设置项 `show_taskbar_window`；左键触发清理。
+- **任务栏窗口**：类似 TrafficMonitor，通知区左侧 2×2（↑/↓/CPU/RAM）；`SetParent` 嵌任务栏，失败则 `TOPMOST`；D2D 画进 DirectComposition 交换链后 `Present`，刷新不重建分层窗口。设置项 `show_taskbar_window`。
 - **CPU 与网速监控**：托盘提示显示 CPU 占用与上下行网速。采样基于 `sysinfo`（约 1 秒刷新），环回/隧道接口不计入网速汇总。
 
 ### 变更
@@ -19,7 +19,7 @@
 - **依赖**：引入 `sysinfo` 0.40（仅 `system` + `network`）；移除 `gpui-kit` 与 `raw-window-handle`、`smol`。
 - **二次启动**：已运行实例收到信号后走托盘清理入口，不再尝试显示窗口。
 - **窗口相关设置**：`always_on_top` / `close_to_notification_area` 仍可从旧配置读入但界面不再提供；进程排除列表与热键组合请编辑 `%APPDATA%\MemoryCleaner\settings.toml`。
-- **任务栏窗口**：字号 13；两行按 ascent 收紧，按可见字面垂直居中；刷新前松开交换链后台缓冲再 Present，避免每秒闪一下。
+- **任务栏窗口**：字号 13；两行按可见字面垂直居中。刷新与 TrafficMonitor 相同：定时器只让窗口失效，绘制和 `Present(1, 0)`/`Commit` 只在 `WM_PAINT` 里做一次。
 
 ### 移除
 
@@ -230,7 +230,7 @@ Records Memory Cleaner releases. Format follows [Keep a Changelog](https://keepa
 ### Added
 
 - **Tray settings menu**: Right-click toggles cleanup areas, auto-cleanup and threshold, run at startup, notifications, debug logging, global hotkey, taskbar window, and language; open config folder. Left-click tray icon runs cleanup; tray keeps the app icon (no usage percent drawn on it).
-- **Taskbar window**: TrafficMonitor-style 2×2 strip (↑/↓/CPU/RAM) left of the tray; `SetParent` with `TOPMOST` fallback; D2D draws into a DirectComposition swap chain and `Present`s in place. Setting `show_taskbar_window`; left-click runs cleanup.
+- **Taskbar window**: TrafficMonitor-style 2×2 strip (↑/↓/CPU/RAM) left of the tray; `SetParent` with `TOPMOST` fallback; D2D draws into a DirectComposition swap chain and `Present`s in place. Setting `show_taskbar_window`.
 - **CPU and network rates**: Tray tooltip shows CPU usage and download/upload throughput. Sampling uses `sysinfo` (~1s); loopback/tunnel interfaces are excluded from network totals.
 
 ### Changed
@@ -239,7 +239,7 @@ Records Memory Cleaner releases. Format follows [Keep a Changelog](https://keepa
 - **Dependencies**: Add `sysinfo` 0.40 (`system` + `network` only); remove `gpui-kit`, `raw-window-handle`, and `smol`.
 - **Second launch**: A running instance receives the wake signal as the tray cleanup entry path; no window is shown.
 - **Window-related settings**: `always_on_top` / `close_to_notification_area` still load from older TOML but have no UI; process exclusions and hotkey chords are edited in `%APPDATA%\MemoryCleaner\settings.toml`.
-- **Taskbar window**: 13px type, rows tightened to the font ascent and centered on the visible glyphs; the swap-chain back buffer is released before Present so updates do not flash.
+- **Taskbar window**: 13px type, rows centered on the visible glyphs. Refresh matches TrafficMonitor: the timer only invalidates; drawing and `Present(1, 0)`/`Commit` happen once inside `WM_PAINT`.
 
 ### Removed
 

@@ -1,4 +1,4 @@
-//! TrafficMonitor 的不闪路径：D2D 画进合成交换链，`Present(0, 0)` 后 `Commit`。
+//! TrafficMonitor 的不闪路径：D2D 画进合成交换链，`Present(1, 0)` 后 `Commit`。
 //! 不调用 `UpdateLayeredWindow`。
 
 use anyhow::Context;
@@ -33,6 +33,7 @@ use windows::core::Interface;
 pub struct Comp {
     dcomp: IDCompositionDevice,
     _d3d: ID3D11Device,
+    _context3d: ID3D11DeviceContext,
     context2d: ID2D1DeviceContext,
     swap: IDXGISwapChain1,
     _target: IDCompositionTarget,
@@ -42,10 +43,10 @@ pub struct Comp {
     height: u32,
 }
 
-pub fn attach(hwnd: HWND, width: u32, height: u32) -> anyhow::Result<Comp> {
+pub fn attach(hwnd: HWND, width: u32, height: u32, topmost: bool) -> anyhow::Result<Comp> {
     let width = width.max(1);
     let height = height.max(1);
-    let (d3d, _context) = create_device()?;
+    let (d3d, context3d) = create_device()?;
     let dxgi = d3d.cast::<IDXGIDevice>().context("IDXGIDevice")?;
     let factory =
         unsafe { D2D1CreateFactory::<ID2D1Factory1>(D2D1_FACTORY_TYPE_SINGLE_THREADED, None) }
@@ -77,7 +78,8 @@ pub fn attach(hwnd: HWND, width: u32, height: u32) -> anyhow::Result<Comp> {
 
     let dcomp: IDCompositionDevice =
         unsafe { DCompositionCreateDevice(&dxgi) }.context("DCompositionCreateDevice")?;
-    let target = unsafe { dcomp.CreateTargetForHwnd(hwnd, true) }.context("CreateTargetForHwnd")?;
+    let target =
+        unsafe { dcomp.CreateTargetForHwnd(hwnd, topmost) }.context("CreateTargetForHwnd")?;
     let visual = unsafe { dcomp.CreateVisual() }.context("CreateVisual")?;
     unsafe { visual.SetContent(&swap) }.context("SetContent")?;
     unsafe { target.SetRoot(&visual) }.context("SetRoot")?;
@@ -86,6 +88,7 @@ pub fn attach(hwnd: HWND, width: u32, height: u32) -> anyhow::Result<Comp> {
     let mut comp = Comp {
         dcomp,
         _d3d: d3d,
+        _context3d: context3d,
         context2d,
         swap,
         _target: target,
@@ -111,19 +114,11 @@ impl Comp {
             self.bind_target()?;
         }
         self.draw(pixels, width, height)?;
-        // 翻转模型下后台缓冲 Present 后就换掉。不松开的话，下一帧 Clear 打在正在显示的缓冲上，每秒闪一下。
-        unsafe { self.context2d.SetTarget(None) };
-        self.target = None;
-        let presented = unsafe { self.swap.Present(0, DXGI_PRESENT(0)) };
+        // TrafficMonitor：目标不松开，Present(1, 0) 后 Commit。
+        let presented = unsafe { self.swap.Present(1, DXGI_PRESENT(0)) };
         if presented.is_err() {
             anyhow::bail!("Present: {presented}");
         }
-        unsafe { self.dcomp.Commit() }.context("Commit")?;
-        Ok(())
-    }
-
-    /// 任务栏把子窗口失效时，用上一帧重新挂上视觉，避免空画一帧。
-    pub fn recommit(&self) -> anyhow::Result<()> {
         unsafe { self.dcomp.Commit() }.context("Commit")?;
         Ok(())
     }

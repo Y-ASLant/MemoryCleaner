@@ -16,7 +16,7 @@ use windows::Win32::Graphics::Gdi::{
     CreateDIBSection, CreateFontW, DEFAULT_CHARSET, DEFAULT_PITCH, DIB_RGB_COLORS, DeleteDC,
     DeleteObject, FW_MEDIUM, GetDC, GetDeviceCaps, GetTextExtentPoint32W, GetTextMetricsW, HDC,
     HFONT, HGDIOBJ, LOGPIXELSY, OUT_DEFAULT_PRECIS, ReleaseDC, SRCCOPY, ScreenToClient,
-    SelectObject, SetBkMode, SetTextColor, TEXTMETRICW, TRANSPARENT, TextOutW, ValidateRect,
+    SelectObject, SetBkMode, SetTextColor, TEXTMETRICW, TRANSPARENT, TextOutW,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::System::Registry::{
@@ -29,14 +29,14 @@ use windows::Win32::UI::WindowsAndMessaging::{
     SWP_NOREDRAW, SWP_NOSENDCHANGING, SWP_NOZORDER, SetParent, SetWindowLongPtrW, SetWindowPos,
     ShowWindow, ULW_ALPHA, UpdateLayeredWindow, WM_DESTROY, WM_ERASEBKGND, WM_LBUTTONUP, WM_PAINT,
     WM_RBUTTONDOWN, WM_RBUTTONUP, WNDCLASSW, WS_CLIPSIBLINGS, WS_EX_LAYERED, WS_EX_NOACTIVATE,
-    WS_EX_NOREDIRECTIONBITMAP, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_POPUP,
+    WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_POPUP,
 };
 
 use windows::core::{PCWSTR, w};
 
 use crate::memory::MemorySection;
 use crate::system_metrics::CpuNetworkSnapshot;
-use crate::tray::TrayCommand;
+
 use crate::win32::wide_null;
 
 const CLASS_NAME: PCWSTR = w!("MemoryCleaner.TaskbarWindow");
@@ -59,13 +59,11 @@ const SLOT_RAM: &str = "RAM: 100%";
 
 thread_local! {
     static STATE: RefCell<Option<TaskbarWindowState>> = const { RefCell::new(None) };
-    static REPAINTING: Cell<bool> = const { Cell::new(false) };
     static PRESENTING: Cell<bool> = const { Cell::new(false) };
 }
 
 static CLASS_REGISTERED: OnceLock<()> = OnceLock::new();
 static FONT_LOADED: OnceLock<bool> = OnceLock::new();
-static CMD_TX: OnceLock<std::sync::mpsc::Sender<TrayCommand>> = OnceLock::new();
 
 struct TaskbarWindowState {
     hwnd: HWND,
@@ -102,8 +100,7 @@ fn cell_ram(ram: &str) -> String {
     format!("RAM: {ram}")
 }
 
-pub fn install(command_tx: std::sync::mpsc::Sender<TrayCommand>) -> anyhow::Result<()> {
-    let _ = CMD_TX.set(command_tx);
+pub fn install() -> anyhow::Result<()> {
     ensure_class()?;
     ensure_font_loaded();
 
@@ -134,19 +131,22 @@ pub fn install(command_tx: std::sync::mpsc::Sender<TrayCommand>) -> anyhow::Resu
     }?;
 
     let embedded = try_embed(hwnd);
-    let comp =
-        match crate::win32::taskbar_comp::attach(hwnd, width.max(1) as u32, height.max(1) as u32) {
-            Ok(comp) => {
-                // 合成视觉自己显示。留着分层样式会盖住它，或和 ULW 抢同一层。
-                set_ex_bit(hwnd, WS_EX_LAYERED.0, false);
-                set_ex_bit(hwnd, WS_EX_NOREDIRECTIONBITMAP.0, true);
-                Some(comp)
-            }
-            Err(err) => {
-                crate::log_msg(&format!("[taskbar-window] DComp init failed: {err:#}"));
-                None
-            }
-        };
+    let comp = match crate::win32::taskbar_comp::attach(
+        hwnd,
+        width.max(1) as u32,
+        height.max(1) as u32,
+        !embedded,
+    ) {
+        Ok(comp) => {
+            // 与 TrafficMonitor 的 DComp 路径相同：去掉分层样式，不设 NOREDIRECTIONBITMAP。
+            set_ex_bit(hwnd, WS_EX_LAYERED.0, false);
+            Some(comp)
+        }
+        Err(err) => {
+            crate::log_msg(&format!("[taskbar-window] DComp init failed: {err:#}"));
+            None
+        }
+    };
     STATE.with(|cell| {
         *cell.borrow_mut() = Some(TaskbarWindowState {
             hwnd,
@@ -170,10 +170,11 @@ pub fn install(command_tx: std::sync::mpsc::Sender<TrayCommand>) -> anyhow::Resu
 
     STATE.with(|cell| {
         if let Some(state) = cell.borrow_mut().as_mut() {
+            // 先摆位置。显示时 WM_PAINT 画并 Present，和 TrafficMonitor 一样。
+            relocate_and_paint(state, true);
             unsafe {
                 let _ = ShowWindow(state.hwnd, SW_SHOWNOACTIVATE);
             }
-            relocate_and_paint(state, true);
         }
     });
 
@@ -237,10 +238,13 @@ pub fn update(physical: &MemorySection, cpu_network: &CpuNetworkSnapshot) {
         let mut theme_changed = false;
         if state.theme_checked_at.elapsed() >= THEME_RECHECK {
             state.theme_checked_at = Instant::now();
-            let light_text = !taskbar_is_light();
-            if state.light_text != light_text {
-                state.light_text = light_text;
-                theme_changed = true;
+            // 屏幕 BitBlt 会让 DWM 重合成任务栏。主题只信注册表，读不到就保持当前字色。
+            if let Some(light) = system_uses_light_theme() {
+                let light_text = !light;
+                if state.light_text != light_text {
+                    state.light_text = light_text;
+                    theme_changed = true;
+                }
             }
         }
 
@@ -343,7 +347,9 @@ fn relocate_and_paint(state: &mut TaskbarWindowState, content_changed: bool) {
         state.height = height;
     }
 
-    present_frame(state);
+    unsafe {
+        let _ = windows::Win32::Graphics::Gdi::InvalidateRect(Some(state.hwnd), None, false);
+    }
 }
 
 fn ensure_embedded(state: &mut TaskbarWindowState) {
@@ -981,30 +987,23 @@ unsafe extern "system" fn wnd_proc(
 ) -> LRESULT {
     match msg {
         WM_PAINT => {
-            // BeginPaint 会让 DWM 给这个窗口合成一帧空表面。只校验脏区，并重新挂上上一帧。
+            // TrafficMonitor::OnPaint：本次绘制里只提交一帧。
             unsafe {
-                let _ = ValidateRect(Some(hwnd), None);
-            }
-            if !REPAINTING.get() && !PRESENTING.get() {
-                REPAINTING.set(true);
-                STATE.with(|cell| {
-                    if let Some(state) = cell.borrow_mut().as_mut()
-                        && let Some(comp) = state.comp.as_mut()
-                    {
-                        let _ = comp.recommit();
-                    }
-                });
-                REPAINTING.set(false);
+                let mut ps = windows::Win32::Graphics::Gdi::PAINTSTRUCT::default();
+                let _ = windows::Win32::Graphics::Gdi::BeginPaint(hwnd, &mut ps);
+                if !PRESENTING.get() {
+                    STATE.with(|cell| {
+                        if let Some(state) = cell.borrow_mut().as_mut() {
+                            present_frame(state);
+                        }
+                    });
+                }
+                let _ = windows::Win32::Graphics::Gdi::EndPaint(hwnd, &ps);
             }
             LRESULT(0)
         }
         WM_ERASEBKGND => LRESULT(1),
-        WM_LBUTTONUP => {
-            if let Some(tx) = CMD_TX.get() {
-                let _ = tx.send(TrayCommand::Optimize);
-            }
-            LRESULT(0)
-        }
+        WM_LBUTTONUP => LRESULT(0),
         WM_RBUTTONDOWN | WM_RBUTTONUP => LRESULT(0),
         WM_DESTROY => LRESULT(0),
         _ => unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) },
