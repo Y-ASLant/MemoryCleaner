@@ -47,7 +47,7 @@ const COL_GAP: i32 = 10;
 const LINE_GAP: i32 = 0;
 const GAP_FROM_NOTIFY: i32 = 6;
 const THEME_RECHECK: Duration = Duration::from_secs(5);
-const FONT_TTF: &[u8] = include_bytes!("../fonts/Lilex-Medium.ttf");
+const FONT_TTF: &[u8] = include_bytes!("../fonts/Lilex-Regular.ttf");
 const FONT_FACE: &str = "Lilex";
 const FONT_POINT_SIZE: i32 = 13;
 /// 列宽上限样例，避免网速/百分比位数变化改窗宽。
