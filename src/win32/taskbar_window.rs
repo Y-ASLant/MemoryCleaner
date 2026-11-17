@@ -473,10 +473,10 @@ fn font_disk_path() -> Option<String> {
     if let Ok(exe) = std::env::current_exe()
         && let Some(dir) = exe.parent()
     {
-        candidates.push(dir.join("fonts").join("Lilex-Medium.ttf"));
-        candidates.push(dir.join("Lilex-Medium.ttf"));
+        candidates.push(dir.join("fonts").join("Lilex-Regular.ttf"));
+        candidates.push(dir.join("Lilex-Regular.ttf"));
     }
-    candidates.push(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/fonts/Lilex-Medium.ttf"));
+    candidates.push(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/fonts/Lilex-Regular.ttf"));
     candidates
         .into_iter()
         .find(|p| p.is_file())

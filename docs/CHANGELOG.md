@@ -1,454 +1,59 @@
 # 更新日志
 
-本文件记录 Memory Cleaner Lite 的版本更新，格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
+本文件记录 **Memory Cleaner Lite** 的版本更新，格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
-**编写约定**（详见 `AGENTS.md` → Documentation & Changelog）：每个版本只记录相对上一 tag 的**最终差异**，不记录开发过程中的中间修改或逐步修复。
+与完整版 Memory Cleaner（master）独立；不收录 master 历史。
 
+**编写约定**（详见 `AGENTS.md`）：每个版本只记录相对上一 tag 的最终差异。
 
 ## [Unreleased]
 
 ### 新增
 
-- **托盘设置菜单**：右键菜单可切换清理区域、自动清理与阈值、开机自启、通知、调试日志、全局热键开关、任务栏窗口与语言；支持打开配置目录。左键托盘图标触发一键清理；托盘仍用应用图标（不绘制占用百分比）。
-- **任务栏窗口**：类似 TrafficMonitor，通知区左侧 2×2（↑/↓/CPU/RAM），字号 13、两行按可见字面垂直居中；`SetParent` 嵌任务栏，失败则 `TOPMOST`；位图光栅化后 `UpdateLayeredWindow` 原子提交整帧。设置项 `show_taskbar_window`。
-- **CPU 与网速监控**：托盘提示显示 CPU 占用与上下行网速。采样基于 `sysinfo`（约 1 秒刷新），环回/隧道接口不计入网速汇总。
-- **调试日志模块**（`src/log.rs`）：托盘「调试日志」默认关闭；开启后写入 exe 旁 `App.log`，**单个文件上限 2 MiB**（超出丢弃最旧行，不滚动多文件）。
+- **托盘设置菜单**：右键切换清理区域、自动清理与阈值、开机自启、通知、调试日志、全局热键开关、任务栏窗口与语言；打开配置目录。左键一键清理。
+- **任务栏窗口**：通知区左侧 2×2（↑/↓/CPU/RAM）；`SetParent` 嵌任务栏，失败则 `TOPMOST`；`UpdateLayeredWindow` 整帧提交。`show_taskbar_window`。
+- **CPU 与网速**：托盘提示与任务栏条；`sysinfo` 约 1s 采样；环回/隧道不计入网速。
+- **调试日志**：可选 `App.log`（exe 旁，单文件 ≤ 2 MiB）。
 
 ### 变更
 
-- **二次启动**：已运行实例收到信号后走托盘清理入口，不再尝试显示窗口。
-- **产品名与版本**：**Memory Cleaner Lite** `1.0.0`，与 master 完整版并行独立——二进制 `MemoryCleanerLite.exe`、配置 `%APPDATA%\MemoryCleanerLite`、独立互斥体/自启任务/AUMID。
-- **配置精简**：不再读写 `always_on_top` / `close_to_notification_area` / `cleanup_history`（旧 TOML 键加载时忽略，下次保存丢弃）。
-- **任务栏窗口闪烁**：`WS_POPUP` 嵌 `Shell_TrayWnd` 后 `IsChild` 恒 false，热路径误 `SetParent` 触发每秒 `WM_SHOWWINDOW` 显隐；改为 `GetParent == taskbar` 判定，失败不重嵌。
-
-### 移除
-
-- **主窗口与设置对话框**：含内存圆环、清理历史弹窗、进程选择器、热键录制 UI、桌面图标缓存刷新入口。
-- **无界面残留代码**：进程排除选择器/`kill`/`wait` API、清理历史持久化、仅兼容用的窗口设置字段。
-- **进程排除列表**：移除 `excluded_processes` 配置与按进程 EmptyWorkingSet 路径；工作集清理仅走系统 `EmptyWorkingSets`。
-
-
-
-## [1.2.1] - 2026-11-16
-
-### 新增
-
-- **系统工作集占比**：单行卡片当前大小后追加显示占峰值比例（如 `当前 625 MB · 46%`），替代原悬停查看方式。
-- **托盘菜单开关**：托盘菜单新增「开机自启」「自动清理」勾选项，可直接切换无需打开设置窗口。
-- **最低系统要求**：启动时通过 `RtlGetVersion` 校验系统 build ≥ 9200（Windows 8），Windows 7 及更早版本弹出提示后直接退出；Windows 8/8.1 沿用 Windows 10 直角主题。
-
-### 变更
-
-- **UI 依赖升级**：升级 `gpui-kit` 至 0.9.1，使用默认 GPUI 后端、组件与资源。
-- **工具链要求**：移除 `rust-version` 固定下限，改用最新稳定版 Rust（Edition 2024 不变）。
-- **Windows 10 悬浮提示**：标题栏、进程排除与清理按钮的普通悬浮提示遵循主题阴影开关，在 Windows 10 下保留直角与边框并关闭阴影；Windows 11 保留默认效果。文档明确当前组件库对话框、下拉菜单与图表悬浮卡片的阴影限制。
-- **内存监控动画**：物理内存与提交内存卡片的百分比、已用与可用容量直接显示最新采样值，圆环弧线仅在百分比变化时进行 220 毫秒的短过渡，完成后保持静止；从托盘恢复窗口时立即刷新并对齐当前数据，减少数字持续跳动与不必要的逐帧渲染。
-- **窗口底部边距**：清理按钮下方内边距调整为 2px，与四边视觉一致；窗口折叠高度为 322px、展开高度为 698px。
-- **应用设置细节**：版本信息改为「应用名 v版本号 · GitHub」行，版本号为普通文本、仓库链接使用 Link 组件；刷新桌面图标缓存的确认弹窗说明其修复图标显示异常的用途。
-
-### 移除
-
-- **系统工作集趋势图**：移除 30 秒折线图与采样历史队列，卡片改为单行纯文本显示；查询失败仍显示不可用。
-
-## [1.2.0] - 2026-10-09
-
-### 新增
-
-- **系统工作集监控**：在内存圆环下方新增系统工作集卡片，标题标注历史峰值，下方显示当前大小；统计口径参考 Mem Reduct，查询失败时不影响物理内存与提交内存指标。
-- **30 秒趋势图**：通过 gpui-kit Plot 显示最近 30 秒的系统工作集大小，时间刻度随连续采样滚动；悬停显示对应采样时的大小与占峰值比例。记录仅保存在内存中，隐藏到托盘时暂停采样，采样中断后重新开始；占峰值比例不用于判断内存压力或触发自动清理。
-
-### 变更
-
-- **托盘展示与动画**：提示新增系统工作集当前大小，仅在提示文字变化时更新原生托盘；清理动画复用预生成的图标帧，减少重复图像分配。
-- **主窗口布局**：适配新增趋势卡片，统一卡片行高与高度计算，保留底部清理按钮 6px 留白；窗口折叠高度为 450px、展开高度为 826px。桌面图标缓存刷新按钮改用显示器图标。
-
-## [1.1.2] - 2026-10-08
-
-### 变更
-
-- **清理接口**：修正 64 位 NT 内存结构的字段宽度与布局，并为接口输出提供可变缓冲区，改善系统文件缓存与合并页面操作的正确性。
-- **清理效果**：手动与自动清理均在执行前后即时采样；采样失败时显示不可用，不再使用过期的界面数据计算内存变化。内存清理与图标缓存刷新不再同时执行。
-- **已修改文件缓存**：只有所有目标卷刷写成功才将该区域计为成功；失败区域反馈到清理结果，具体错误保留在历史详情中。卷名称解析支持未对齐的 UTF-16 数据。
-- **清理历史**：保留数量由最近 5 条增加至 7 条，支持滚动查看错误详情，并兼容已有配置记录。
-- **内存监控**：将“虚拟内存”更名为“提交内存”，通过 `GetPerformanceInfo` 显示系统级提交量与提交上限。
-- **图标缓存刷新**：使用当前用户的正确托盘缓存注册表路径，记录访问失败；Explorer 未退出时跳过缓存删除，重启后等待桌面恢复再报告成功。
-- **配置保存**：保留 300 毫秒防抖，将写入移至后台串行执行；关闭或退出时作废待保存的旧快照并同步保存最新设置，保存失败在设置对话框中提示。
-- **依赖更新**：升级 `gpui-kit` 至 0.7.1、`tray-icon` 至 0.26.0、`rust-i18n` 至 4.2.4，并更新其他直接与传递依赖；适配新版窗口与组件接口，保留 Windows 10 方角主题。清理步骤使用区域标识分派，不再依赖翻译后的名称。
-- **构建与文档**：开发任务由 Makefile 迁移至 `.justfile`；主分支推送与拉取请求执行格式、Clippy、测试及构建检查，发布仍仅由版本标签触发。中英文文档同步默认清理位掩码 43、进程排除范围和清理效果说明。
-
-## [1.1.1] - 2026-09-17
-
-### 新增
-
-- **清理历史**：标题栏新增清理历史弹窗，并在配置中保留最近五次的触发原因、区域数量、执行结果和耗时。
-
-### 变更
-
-- **Release 构建**：`opt-level` 由 `s` 调整为 `z`，以减小发布二进制体积。
-- **清理效果**：清理通知与历史记录显示可用内存及物理内存压力的前后变化。
-- **依赖更新**：直接与传递 Rust 依赖更新至最新稳定兼容版本，包括 `gpui-kit` 0.6.6 与 `tray-icon` 0.25。
-
-## [1.1.0] - 2026-09-05
-
-相对 [1.0.7] 的最终变更如下。
-
-### 变更
-
-- **全局热键**：新组合键注册失败时保留原绑定和设置，并在设置界面显示错误；重复应用相同组合键不再重新注册。
-- **通知资源生命周期**：通知与快捷方式操作配对初始化和释放 COM，通知使用局部 WinRT 激活工厂，避免重复调用累积 COM 初始化状态。
-- **开机自启**：启动同步和设置更新改为后台执行；更新期间禁用开关，失败时保留原设置并提示错误；`schtasks` 子进程等待上限为 10 秒，超时后请求终止该子进程。
-- **工作集清理结果**：进程枚举、打开进程和清空工作集的异常失败现在会返回错误；所有目标均因权限不足而失败时不再报告成功。
-- **管理员提升**：UAC 重新启动改用 `ShellExecuteExW` 返回的确切子进程句柄确认创建成功，不再用同名进程判断。
-- **托盘显示同步**：内存轮询仍更新 Tooltip，但仅在语言或窗口可见性变化时写入原生菜单文本。
-
-### 移除
-
-- **注册表缓存清理**：移除不释放内存、只通过 `RegFlushKey` 强制注册表配置单元写盘的清理区域；旧设置中的对应位会在规范化时丢弃。
-
-## [1.0.7] - 2026-09-04
-
-相对 [1.0.6] 的最终变更如下。
-
-### 变更
-
-- **界面边距与卡片间距统一**：主窗口外围内边距、卡片间距、卡片标题与内容间隙及底部清理按钮间隙统一对齐为 6 px；修复展开状态下清理区域卡片与底部按钮之间的多余高度计算偏差，使折叠与展开状态下卡片到底部清理按钮的间距保持严格一致（均为 6 px）。
-- **UI 依赖迁移至 gpui-kit**：将原有的 `gpui` 与 `gpui-component` git 依赖统一迁移至 crates.io 发布的 `gpui-kit` 0.6；最低支持的 Rust 工具链升级至 1.97.1+（Edition 2024），并移除本地 `proc-macro-error2` patch 补丁。
-- **模块解耦与 Win32 资源 RAII**：将庞大的 `app.rs` 与 `settings_page.rs` 按职责拆分为子模块；新增 `src/win32/handle.rs` 提供 Win32 内核对象与注册表键的 RAII 封装，统一资源生命周期管理以防止句柄泄露；拆分独立 `elevation` 模块处理管理员提权检测与重新拉起。
-- **项目文档**：更新中英文 README 与开发者规范以反映模块化架构及 `gpui-kit` 依赖变更。
-
-
-## [1.0.6] - 2026-08-31
-
-相对 [1.0.5] 的最终变更如下。
-
-### 变更
-
-- **内存监控动画**：物理内存与虚拟内存卡片改为在每秒采样之间进行线性插值；新样本从当前显示位置连续重定向，圆环颜色与动画百分比同步，窗口隐藏时立即取消刷新任务。
-- **自动清理生命周期**：Windows 低内存监控现在严格跟随自动清理开关启停；阈值为 `0` 时不创建轮询任务，修改阈值会重置持续压力计数，重新启用时可正确检测当前低内存状态。
-- **调试日志**：日志保留扫描由每次写入改为至多每小时一次；合法时间戳日志继续保留 7 天，异常格式内容限制为最新 256 行且不超过 64 KiB，文件读写错误会输出到调试流。
-- **发布流程**：GitHub Actions 改为仅在推送 `v*` 标签时构建和发布；标签必须与 `Cargo.toml` 版本一致，GitHub Release 说明直接提取 `docs/CHANGELOG.md` 中该版本的中英文区域。
-- **项目文档**：中英文 README 补充自动清理、开机启动、进程排除、单实例唤醒、设置字段及相关模块说明。
-
-
-## [1.0.5] - 2026-08-30
-
-相对 [1.0.4] 的最终变更如下。
-
-### 新增
-
-- **自动清理策略**：自动清理支持 Windows 低内存通知和持续内存占用阈值两种触发方式；可在窗口行为设置中选择阈值。
-- **GitHub Actions**：新增仅由 `v*` 标签触发的 Windows 构建与发布流程；标签须匹配版本号，随后自动执行格式检查、Clippy、测试、release 构建，并创建附带 `MemoryCleanerLite.exe` 的 GitHub Release。
-
-### 变更
-
-- **阈值清理**：连续两次检测到内存占用超过阈值后即可首次清理；后续阈值清理保留 10 分钟冷却时间，避免持续压力下重复清理。
-- **已有实例唤醒**：再次启动程序时会通知已有实例显示主窗口；同一权限级别下无需额外 UAC 提示。
-- **开机启动**：改用以最高权限运行的登录计划任务，并在每次同步时刷新任务配置，确保程序更新或移动后仍使用当前可执行文件。
-- **启动可靠性**：计划任务查询会区分任务不存在与系统错误；单实例互斥体和唤醒监听器的创建失败会中止启动并记录错误。
-- **当前策略说明**：自动清理设置会明确显示当前启用的触发条件；阈值关闭时，说明仅由 Windows 低物理内存通知触发。
-- **选择器布局**：自动清理的阈值下拉选择器宽度与语言选择器统一，减少弹出菜单与触发控件的宽度差异。
-
-### 移除
-
-- **定时清理**：移除定时间隔设置与触发逻辑；旧配置中的间隔字段会被安全忽略并在下次保存时移除。
-
-
-## [1.0.4] - 2026-07-29
-
-相对 [1.0.3] 的最终变更如下。
-
-### 新增
-
-- **自动清理**：窗口行为设置中新增「自动清理」开关；启用后，程序通过 Windows 低物理内存通知触发清理，并在内存压力恢复前不会重复触发，避免轮询和频繁清理。
-- **展开/折叠动画**：清理区域设置面板展开与折叠时使用固定时长布局动画，并支持中途反向切换。
-
-### 变更
-
-- **虚拟内存显示**：主界面固定显示物理内存与虚拟内存两张卡片，移除隐藏虚拟内存的分支逻辑。
-- **动画调度**：连续动画改为通过 GPUI `window.request_animation_frame()` 请求下一帧，减少展开/折叠时的卡顿与逐帧感。
-- **布局高度计算**：展开窗口高度由设置面板的显式布局高度推导，移除硬编码展开高度，避免展开或折叠后内容被裁切。
-- **动画基础设施**：`src/anim.rs` 新增固定时长插值器，用于布局过渡；原有指数平滑动画继续用于内存数值、环形图和清理进度。
-- **Toast 快捷方式校验**：Windows Toast 初始化时会检查开始菜单快捷方式是否指向当前程序；路径不匹配时自动重建，避免移动程序后通知入口失效。
-- **文档配置表**：README 移除未实现的预留配置说明，保留当前实际支持的设置项。
-
-### 移除
-
-- **未实现的预留配置项**：移除 `show_virtual_memory`、托盘图标自定义预留字段，以及旧的自动优化间隔/阈值预留字段；已保存的未知 TOML 字段仍会被兼容忽略。
-
-## [1.0.3] - 2026-07-20
-
-相对 [1.0.2] 的最终变更如下。
-
-### 新增
-
-- **平滑动画**：内存使用率环形图、清理进度条、内存数值文字（已用/可用字节）在数据刷新时平滑过渡，而非直接跳变。动画采用指数衰减插值，~300ms 到达目标值的 95%。
-- **动画模块**：新增 `src/anim.rs`，`AnimatedValue` 插值器可供全 crate 复用。
-- **动画智能暂停**：窗口隐藏到托盘时动画循环完全停止（零 CPU），窗口恢复后自动重启。
-
-### 修复
-
-- **托盘菜单状态**：关闭窗口后右键托盘菜单正确显示「显示窗口」而非「隐藏窗口」；从托盘恢复窗口后正确显示「隐藏窗口」。
-- **窗口错误路径**：`activate_window` 和 `open_window` 失败时正确重置 `window_shown` 状态。
-- **优化完成后托盘同步**：内存清理完成后立即同步托盘提示文本，不再等待下次鼠标悬停。
-## [1.0.2] - 2026-07-19
-
-相对 [1.0.1] 的最终变更如下。
-
-### 新增
-
-- **开机自启**：设置中可开启「登录 Windows 后静默启动到系统托盘」，不显示主窗口（`src/win32/startup.rs`）。
-- **进程排除选择器**：列表项显示实例数与内存占用；无法读取内存时显示占位符。
-- **文档**：`README_EN.md`（英文说明）、`docs/API_COMPARISON_MEMREDUCT.md`（与 Mem Reduct 清理 API 对比）。
-
-### 变更
-
-- **已修改文件缓存**：由遍历 `A:`–`Z:` 固定磁盘盘符，改为通过 Mount Manager 枚举 `\??\Volume{GUID}` 并刷写；新增 `src/win32/volume.rs` 统一管理枚举、刷写与结果汇总；至少一个卷刷写成功即视为该步骤成功。
-- **清理进度文案**：已修改文件步骤由显示盘符（如 `C:`）改为显示 `Volume{GUID}`。
-- **进程排除交互**：从进程列表选择后直接加入排除列表，移除中间「待确认」状态。
-- **Release 构建**：`opt-level` 由 `z` 调整为 `s`。
-- **应用图标**：更新 `App.ico` / `App.png`。
-- **名称修正**：项目名称由 `Memory Cleanr` 修正为 `Memory Cleaner`，同步更新二进制名、包名、窗口标题、托盘快捷方式、互斥量等所有引用。
-
-## [1.0.1] - 2026-07-16
-
-相对 [1.0.0] 的主要变更：进程排除、全局清理热键（默认 Ctrl+Alt+C）与热键录制、优化完成 Toast、界面国际化、托盘清理动画、图标缓存刷新、调试日志、Windows 10 方形圆角主题等。详见 git history。
-
-## [1.0.0] - 2026-07-11
-
-首个公开发布：8 种内存清理区域、GPUI 界面、系统托盘、管理员提升、设置持久化。
+- **产品身份**：Memory Cleaner Lite `1.0.0`——`MemoryCleanerLite.exe`、`%APPDATA%\MemoryCleanerLite`、独立互斥体/自启任务/AUMID，可与完整版并行。
+- **托盘常驻**：无 GPUI/主窗口；主线程 Win32 消息泵 + 托盘菜单。
+- **工作集清理**：仅系统 `EmptyWorkingSets`（无进程排除列表）。
+- **配置**：不读写 master 遗留键（`always_on_top` / `close_to_notification_area` / `cleanup_history` / `excluded_processes` 等），加载忽略、保存丢弃。
+
+### 移除（相对完整版）
+
+- 主窗口、设置对话框、清理历史、进程排除 UI、热键录制 UI、桌面图标缓存刷新。
+- 按进程 EmptyWorkingSet 路径与 `win32/process` 模块。
 
 ---
 
 # Changelog
 
-Records Memory Cleaner Lite releases. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+**Memory Cleaner Lite** only. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-**Writing rules** (see `AGENTS.md` → Documentation & Changelog): each release entry covers **only the final diff** vs the previous tag — not intermediate commits or step-by-step fixes during development.
-
-
+Independent of full Memory Cleaner (master); master history is not kept here.
 
 ## [Unreleased]
 
 ### Added
 
-- **Tray settings menu**: Right-click toggles cleanup areas, auto-cleanup and threshold, run at startup, notifications, debug logging, global hotkey, taskbar window, and language; open config folder. Left-click tray icon runs cleanup; tray keeps the app icon (no usage percent drawn on it).
-- **Taskbar window**: TrafficMonitor-style 2×2 strip (↑/↓/CPU/RAM) left of the tray, 13px type with rows centered on the visible glyphs; `SetParent` with `TOPMOST` fallback; rasterizes to a bitmap and commits the whole frame atomically via `UpdateLayeredWindow`. Setting `show_taskbar_window`.
-- **CPU and network rates**: Tray tooltip shows CPU usage and download/upload throughput. Sampling uses `sysinfo` (~1s); loopback/tunnel interfaces are excluded from network totals.
-- **Debug log module** (`src/log.rs`): Tray "debug logging" off by default; when on, appends beside the exe as `App.log` with a **2 MiB single-file cap** (drops oldest lines; no multi-file rotation).
+- **Tray settings menu**: areas, auto-cleanup/threshold, startup, notifications, debug log, hotkey toggle, taskbar strip, language, open config folder. Left-click runs cleanup.
+- **Taskbar strip**: 2×2 ↑/↓/CPU/RAM; `SetParent` / `TOPMOST`; atomic `UpdateLayeredWindow`. `show_taskbar_window`.
+- **CPU and network**: tooltip + strip via `sysinfo` (~1s); loopback/tunnels excluded from rates.
+- **Debug log**: optional `App.log` beside exe (≤ 2 MiB single file).
 
 ### Changed
 
-- **Tray-only, no main window**: Removed the GPUI GUI; the app runs as a system-tray resident with a Win32 message pump on the main thread.
-- **Dependencies**: Add `sysinfo` 0.40 (`system` + `network` only); remove `gpui-kit`, `raw-window-handle`, and `smol`.
-- **Second launch**: A running instance receives the wake signal as the tray cleanup entry path; no window is shown.
-- **Product name and version**: **Memory Cleaner Lite** `1.0.0`, independent of full master — binary `MemoryCleanerLite.exe`, config `%APPDATA%\MemoryCleanerLite`, separate mutex / startup task / AUMID.
-- **Settings trim**: Stop reading/writing `always_on_top` / `close_to_notification_area` / `cleanup_history` (legacy TOML keys ignored on load, dropped on next save). Hotkey chord remains TOML-only.
-- **Taskbar strip flicker**: After `SetParent` of a `WS_POPUP` into `Shell_TrayWnd`, `IsChild` stays false and the hot path re-`SetParent`ed every second (`WM_SHOWWINDOW` hide/show). Now uses `GetParent == taskbar`; no re-embed when `GetParent` fails.
+- **Product identity**: Memory Cleaner Lite `1.0.0` — `MemoryCleanerLite.exe`, `%APPDATA%\MemoryCleanerLite`, separate mutex / startup task / AUMID; side-by-side with full edition.
+- **Tray-only**: no GPUI/main window; Win32 pump + tray menu.
+- **Working set**: system `EmptyWorkingSets` only (no process exclusion list).
+- **Settings**: master-only keys ignored on load and dropped on save.
 
-### Removed
+### Removed (vs full edition)
 
-- **Main window and settings dialogs**: Memory rings, cleanup history popup, process picker, hotkey recorder UI, and desktop icon-cache refresh entry.
-- **Orphan GUI leftovers**: Process-exclusion picker / kill / wait APIs, cleanup-history persistence, window-only settings fields kept only for old-config compat.
-- **Process exclusion list**: Removed `excluded_processes` and per-process EmptyWorkingSet path; Working Set cleanup uses system `EmptyWorkingSets` only.
+- Main window, settings dialogs, cleanup history, process-exclusion UI, hotkey recorder, icon-cache refresh.
+- Per-process EmptyWorkingSet path and `win32/process`.
 
-
-
-## [1.2.1] - 2026-11-16
-
-### Added
-- **System working-set percentage** — The single-line card now appends the percentage of peak after the current size (e.g. `625 MB · 46% of peak`), replacing the previous hover-tooltip readout.
-- **Tray menu toggles** — The tray menu adds "Run at Startup" and "Auto Cleanup" check items for direct toggling without opening the settings dialog.
-- **Minimum system requirement** — Startup now verifies a system build ≥ 9200 (Windows 8) via `RtlGetVersion`; Windows 7 and earlier show a message box and exit immediately. Windows 8/8.1 use the same square-corner theme as Windows 10.
-
-### Changed
-
-- **UI dependency upgrade** — Upgraded `gpui-kit` to 0.9.1, using the default GPUI backend, components, and assets.
-- **Toolchain policy** — Removed the `rust-version` pin; latest stable Rust is now expected (Edition 2024 unchanged).
-- **Windows 10 tooltips** — Ordinary title-bar, process-exclusion, and cleanup-button tooltips honor the theme shadow flag, retaining square corners and borders without shadows on Windows 10. Windows 11 keeps the default appearance. Documentation clarifies the current component library's shadow limitations for dialogs, dropdown menus, and chart hover cards.
-- **Memory-monitor animation** — Physical- and committed-memory cards show the latest sampled percentage and used/available capacity directly. Ring arcs use a short 220 ms transition only when the percentage changes, then remain still. Restoring the window from the tray immediately refreshes and aligns the display with current readings, reducing continuously changing numbers and unnecessary frame-by-frame rendering.
-- **Window bottom padding** — The cleanup button's bottom padding is now 2px to visually match the other edges; window heights are 322px collapsed and 698px expanded.
-- **Settings details** — The version line now reads "app name vX.Y.Z · GitHub", with the version as plain text and the repository as a Link; the refresh icon-cache confirmation dialog explains that it fixes abnormal icon display.
-
-### Removed
-
-- **System working-set trend chart** — Removed the 30-second line chart and its sampling-history queue; the card now shows a single line of text and still reports unavailable on query failure.
-
-## [1.2.0] - 2026-10-09
-
-### Added
-
-- **System working-set monitoring** — Added a card below the memory rings with the historical peak in its title and current size below it. Uses the same metric as Mem Reduct; a failed query does not affect physical or committed memory readings.
-- **30-second trend chart** — A gpui-kit Plot line chart shows the last 30 seconds of system working-set size, with elapsed-time labels that advance during continuous sampling. Hover values include each sample's size and percentage of its peak at the time of sampling. Samples remain in memory only, pause while hidden to the tray, and restart after a sampling interruption. Percentage of peak does not indicate memory pressure or trigger automatic cleanup.
-
-### Changed
-
-- **Tray display and animation** — The tooltip now includes current system working-set size and updates the native tray only when its text changes. Cleanup animation reuses prebuilt icon frames to reduce repeated image allocations.
-- **Main window layout** — Accommodated the trend card, unified card line heights and height calculations, and retained 6px of padding below the cleanup button. Window heights are 450px when collapsed and 826px when expanded. The desktop icon-cache refresh button now uses a monitor icon.
-
-## [1.1.2] - 2026-10-08
-
-### Changed
-
-- **Cleanup interfaces** — Corrected field widths and layouts of 64-bit NT memory structures and provided mutable output buffers, improving correctness of System File Cache and Combined Page List operations.
-- **Cleanup effects** — Both manual and automatic cleanup sample memory immediately before and after execution; failed samples appear as unavailable instead of using stale UI data to calculate changes. Memory cleanup and icon cache refresh no longer run concurrently.
-- **Modified File Cache** — A region is counted as successful only when every target volume flushes successfully; failed regions appear in cleanup results, with specific errors retained in history details. Volume-name parsing supports unaligned UTF-16 data.
-- **Cleanup History** — Increased retention from the latest 5 records to 7, added scrolling for error details, and preserved compatibility with existing configuration records.
-- **Memory monitoring** — Renamed “Virtual Memory” to “Committed Memory” and use `GetPerformanceInfo` to display system-wide commit usage and limit.
-- **Icon cache refresh** — Use the correct current-user tray registry cache path and report access failures; skip cache deletion if Explorer has not exited, and wait for desktop recovery before reporting a successful restart.
-- **Configuration saving** — Retained the 300 ms debounce and moved writes to serialized background work; closing or exiting invalidates pending old snapshots and synchronously saves the latest settings. Save failures appear in the settings dialog.
-- **Dependency updates** — Upgraded `gpui-kit` to 0.7.1, `tray-icon` to 0.26.0, and `rust-i18n` to 4.2.4, alongside other direct and transitive dependencies; adapted to updated window and component APIs while retaining Windows 10 square-corner styling. Cleanup dispatch uses region identifiers rather than translated names.
-- **Build and documentation** — Migrated development tasks from Makefile to `.justfile`; main-branch pushes and pull requests run formatting, Clippy, tests, and build checks, while publishing remains restricted to version tags. Chinese and English documentation reflects the default cleanup bitmask of 43, the scope of process exclusions, and cleanup-effect semantics.
-
-## [1.1.1] - 2026-09-17
-
-### Added
-
-- **Cleanup History** — Added a title-bar Cleanup History dialog. Configuration retains the latest five records with trigger, area count, outcome, and duration.
-
-### Changed
-
-- **Release build** — Changed `opt-level` from `s` to `z` to reduce the release binary size.
-- **Cleanup effects** — Cleanup notifications and history records now show available-memory and physical-memory-pressure changes.
-- **Dependency updates** — Direct and transitive Rust dependencies updated to the latest stable compatible releases, including `gpui-kit` 0.6.6 and `tray-icon` 0.25.
-
-## [1.1.0] - 2026-09-05
-
-Final changes since [1.0.7].
-
-### Changed
-
-- **Global hotkey** — Failed registrations retain the previous binding and settings and display an error. Reapplying the same shortcut no longer re-registers it.
-- **Notification resource lifecycle** — Notification and shortcut operations balance COM initialization and teardown; notifications use scoped WinRT activation factories to prevent repeated calls from accumulating COM initialization state.
-- **Run at startup** — Launch-time synchronization and setting updates run in the background. The switch is disabled while pending, and failed updates retain the previous setting and display an error. Each `schtasks` child wait is limited to 10 seconds, after which termination is requested.
-- **Working Set cleanup results** — Unexpected process-enumeration, process-open, and working-set-emptying failures now return errors. Cleanup no longer reports success when every target failed with access denied.
-- **Administrator elevation** — UAC relaunch now confirms creation through the exact child-process handle returned by `ShellExecuteExW`, rather than treating any same-name process as successful.
-- **Tray display synchronization** — Memory polling still refreshes the tooltip, while native menu text is updated only when the locale or window visibility changes.
-
-### Removed
-
-- **Registry Cache cleanup** — Removed the cleanup region that did not release memory and only forced registry hives to disk through `RegFlushKey`; normalization discards its legacy settings bit.
-
-## [1.0.7] - 2026-09-04
-
-Final changes since [1.0.6].
-
-### Changed
-
-- **Unified UI padding and card spacing** — Window content padding, inter-card gaps, card title-to-content spacing, and the cleanup-button gap are now strictly aligned to a unified 6 px grid. Corrected the expanded-height calculation to remove excess bottom gap, ensuring the space between the bottom card and the cleanup button remains exactly 6 px in both collapsed and expanded states.
-- **Migrated UI dependencies to gpui-kit** — Replaced direct git dependencies for `gpui` and `gpui-component` with the crates.io release `gpui-kit` 0.6. The minimum supported Rust toolchain is updated to 1.97.1+ (Edition 2024), and the local `proc-macro-error2` patch is removed.
-- **Modular architecture and Win32 RAII handles** — Split the monolithic `app.rs` and `settings_page.rs` into dedicated submodules by responsibility. Added `src/win32/handle.rs` with RAII wrappers for Win32 kernel handles and registry keys to guarantee leak-free resource cleanup across NT, process, and volume subsystems, and isolated UAC elevation handling into `src/win32/elevation.rs`.
-- **Project documentation** — Updated Chinese and English READMEs and repository guidelines to document the modularized codebase and `gpui-kit` dependency.
-
-
-## [1.0.6] - 2026-08-31
-
-Final changes since [1.0.5].
-
-### Changed
-
-- **Memory-monitor animation** — Physical- and virtual-memory cards now interpolate linearly across each one-second sample interval. New samples retarget from the displayed value, ring colors track the animated percentage, and hiding the window cancels the refresh task immediately.
-- **Automatic-cleanup lifecycle** — The Windows low-memory monitor now strictly follows the Automatic Cleanup switch. A zero threshold creates no polling task, threshold changes reset sustained-pressure counting, and re-enabling the feature correctly observes an active low-memory condition.
-- **Debug logging** — Retention scanning now runs at most hourly instead of on every write. Valid timestamped entries retain the seven-day policy, malformed content is capped at the newest 256 lines and 64 KiB, and file I/O failures are reported to the debug stream.
-- **Release workflow** — GitHub Actions now builds and publishes only for pushed `v*` tags, which must match the version in `Cargo.toml`; GitHub Release notes are extracted directly from that version's Chinese and English sections in `docs/CHANGELOG.md`.
-- **Project documentation** — The Chinese and English READMEs now cover automatic cleanup, startup, process exclusions, existing-instance activation, settings fields, and related modules.
-
-
-## [1.0.5] - 2026-08-30
-
-Final changes since [1.0.4].
-
-### Added
-
-- **Automatic-cleanup policies** — Automatic cleanup now supports Windows low-memory notifications and sustained memory-usage thresholds. The threshold is configurable in Window Behavior settings.
-- **GitHub Actions** — Added a Windows build-and-release workflow triggered only by `v*` tags. The tag must match the package version; it checks formatting, runs Clippy and tests, builds the release binary, and creates a GitHub Release with `MemoryCleanerLite.exe`.
-
-### Changed
-
-- **Threshold cleanup** — The first cleanup runs after two consecutive above-threshold checks; subsequent threshold cleanups retain a 10-minute cooldown to avoid repeated cleanup under sustained pressure.
-- **Existing-instance activation** — Launching the application again signals the existing instance to show its main window without an additional UAC prompt at the same integrity level.
-- **Startup** — Logon startup now uses a highest-privilege scheduled task and refreshes its configuration on every sync, so updates or moved installations continue to launch the current executable.
-- **Startup reliability** — Scheduled-task queries now distinguish a missing task from system errors; failures to create the single-instance mutex or wake listener abort startup and are logged.
-- **Current-policy explanation** — Automatic Cleanup now explicitly states the active triggers. When the threshold is off, it says that only Windows low-physical-memory notifications can trigger cleanup.
-- **Selector layout** — The automatic-cleanup threshold selector now matches the language selector width, reducing the width mismatch between the trigger control and its popup menu.
-
-### Removed
-
-- **Scheduled cleanup** — Removed the scheduled-interval setting and trigger. Legacy interval fields in saved configuration are safely ignored and removed on the next save.
-## [1.0.4] - 2026-07-29
-
-Final changes since [1.0.3].
-
-### Added
-
-- **Automatic cleanup** — Added an "Automatic Cleanup" switch in Window Behavior settings. When enabled, cleanup is triggered by Windows low-physical-memory notifications and is rearmed only after memory pressure recovers, avoiding polling and repeated cleanup loops.
-- **Expand/collapse animation** — The cleanup settings panel now uses a fixed-duration layout transition when expanding or collapsing, and supports reversing mid-animation.
-
-### Changed
-
-- **Virtual memory display** — The main window now always shows both physical-memory and virtual-memory cards, removing the hidden-virtual-memory rendering branch.
-- **Animation scheduling** — Continuous animations now request frames through GPUI `window.request_animation_frame()`, reducing stutter and frame-stepping during expand/collapse.
-- **Layout height calculation** — Expanded window height is derived from explicit settings-panel layout metrics instead of a hardcoded expanded height, preventing content clipping after expand/collapse.
-- **Animation foundation** — `src/anim.rs` now includes a fixed-duration interpolator for layout transitions; the existing exponential smoothing remains for memory values, usage rings, and cleanup progress.
-- **Toast shortcut validation** — Windows Toast initialization now verifies that the Start Menu shortcut points to the current executable and recreates it when the target path is stale.
-- **Documentation settings table** — README settings tables now list only currently supported settings and omit unused reserved options.
-
-### Removed
-
-- **Unused reserved settings** — Removed `show_virtual_memory`, reserved tray-icon customization fields, and legacy automatic-optimization interval/threshold placeholders; unknown TOML fields from older configs remain safely ignored.
-
-## [1.0.3] - 2026-07-20
-
-Final changes since [1.0.2].
-
-### Added
-
-- **Smooth animations** — Memory usage rings, cleanup progress bar, and memory text values (used/avail bytes) now transition smoothly between data refreshes instead of jumping. Uses exponential-decay interpolation, reaching 95% of target in ~300 ms.
-- **Animation module** — New `src/anim.rs` with reusable `AnimatedValue` interpolator for the entire crate.
-- **Smart animation pause** — Animation loop fully stops (zero CPU) when the window is hidden to tray; automatically restarts on restore.
-
-### Fixed
-
-- **Tray menu state** — After closing the window, the tray context menu correctly shows "Show Window" instead of "Hide Window"; after restoring from tray, it correctly shows "Hide Window".
-- **Window error paths** — `activate_window` and `open_window` failure paths now correctly reset `window_shown` state.
-- **Post-optimization tray sync** — Tray tooltip text updates immediately after cleanup completes, instead of waiting for the next mouse hover.
-## [1.0.2] - 2026-07-19
-
-Final changes since [1.0.1].
-
-### Added
-
-- **Run at startup** — New setting to launch silently into the system tray after Windows sign-in, without showing the main window (`src/win32/startup.rs`).
-- **Process exclusion picker** — List entries show instance count and memory usage; a placeholder when memory cannot be read.
-- **Documentation** — `README_EN.md` (English readme) and `docs/API_COMPARISON_MEMREDUCT.md` (cleanup API comparison with Mem Reduct).
-
-### Changed
-
-- **Modified file cache** — Volume discovery switched from iterating fixed drive letters `A:`–`Z:` to Mount Manager enumeration of `\??\Volume{GUID}` with flush via `NtCreateFile` / `NtFlushBuffersFile`; new `src/win32/volume.rs` centralizes enumeration, flush, and reporting; the step succeeds when at least one volume flushes successfully.
-- **Cleanup progress text** — Modified-file step now shows `Volume{GUID}` instead of drive letters (e.g. `C:`).
-- **Process exclusion UX** — Selecting a process from the list adds it to the exclusion list immediately; removed the intermediate pending-confirmation state.
-- **Release build** — `opt-level` changed from `z` to `s`.
-- **App icons** — Updated `App.ico` and `App.png`.
-- **Name correction** — Project name corrected from `Memory Cleanr` to `Memory Cleaner`; binary name, package name, window title, tray shortcut, mutex, and all other references updated accordingly.
-
-## [1.0.1] - 2026-07-16
-
-Since [1.0.0]: process exclusion, global cleanup hotkey (default Ctrl+Alt+C) with recording, post-optimization toast, UI i18n, tray spin animation during cleanup, icon cache refresh, debug logging, Windows 10 square-corner theme, and more. See git history.
-
-## [1.0.0] - 2026-07-11
-
-Initial public release: 8 memory cleanup regions, GPUI UI, system tray, administrator elevation, settings persistence.
-
-[Unreleased]: https://github.com/Y-ASLant/MemoryCleaner/compare/v1.2.1...HEAD
-[1.2.1]: https://github.com/Y-ASLant/MemoryCleaner/compare/v1.2.0...v1.2.1
-[1.2.0]: https://github.com/Y-ASLant/MemoryCleaner/compare/v1.1.2...v1.2.0
-[1.1.2]: https://github.com/Y-ASLant/MemoryCleaner/compare/v1.1.1...v1.1.2
-[1.1.1]: https://github.com/Y-ASLant/MemoryCleaner/compare/v1.1.0...v1.1.1
-[1.1.0]: https://github.com/Y-ASLant/MemoryCleaner/compare/v1.0.7...v1.1.0
-[1.0.7]: https://github.com/Y-ASLant/MemoryCleaner/compare/v1.0.6...v1.0.7
-[1.0.6]: https://github.com/Y-ASLant/MemoryCleaner/compare/v1.0.5...v1.0.6
-[1.0.5]: https://github.com/Y-ASLant/MemoryCleaner/compare/v1.0.4...v1.0.5
-[1.0.4]: https://github.com/Y-ASLant/MemoryCleaner/compare/v1.0.3...v1.0.4
-[1.0.3]: https://github.com/Y-ASLant/MemoryCleaner/compare/v1.0.2...v1.0.3
-[1.0.2]: https://github.com/Y-ASLant/MemoryCleaner/compare/v1.0.1...v1.0.2
-[1.0.1]: https://github.com/Y-ASLant/MemoryCleaner/releases/tag/v1.0.1
-[1.0.0]: https://github.com/Y-ASLant/MemoryCleaner/releases/tag/v1.0.0
+[Unreleased]: https://github.com/Y-ASLant/MemoryCleaner/compare/v1.0.0...HEAD
