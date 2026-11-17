@@ -16,7 +16,7 @@ use windows::Win32::Graphics::Gdi::{
     CreateDIBSection, CreateFontW, DEFAULT_CHARSET, DEFAULT_PITCH, DIB_RGB_COLORS, DeleteDC,
     DeleteObject, FW_MEDIUM, GetDC, GetDeviceCaps, GetTextExtentPoint32W, GetTextMetricsW, HDC,
     HFONT, HGDIOBJ, LOGPIXELSY, OUT_DEFAULT_PRECIS, ReleaseDC, SRCCOPY, ScreenToClient,
-    SelectObject, SetBkMode, SetTextColor, TEXTMETRICW, TRANSPARENT, TextOutW,
+    SelectObject, SetBkMode, SetTextColor, TEXTMETRICW, TRANSPARENT, TextOutW, ValidateRect,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::System::Registry::{
@@ -25,11 +25,11 @@ use windows::Win32::System::Registry::{
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, DestroyWindow, FindWindowExW, FindWindowW, GWL_EXSTYLE,
     GetWindowLongPtrW, GetWindowRect, HMENU, HWND_TOPMOST, IDC_ARROW, IsChild, LoadCursorW,
-    RegisterClassW, SW_HIDE, SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_NOREDRAW, SWP_NOZORDER,
-    SetParent, SetWindowLongPtrW, SetWindowPos, ShowWindow, ULW_ALPHA, UpdateLayeredWindow,
-    WM_DESTROY, WM_ERASEBKGND, WM_LBUTTONUP, WM_PAINT, WM_RBUTTONDOWN, WM_RBUTTONUP, WNDCLASSW,
-    WS_CLIPSIBLINGS, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_NOREDIRECTIONBITMAP, WS_EX_TOOLWINDOW,
-    WS_EX_TOPMOST, WS_POPUP,
+    RegisterClassW, SW_HIDE, SW_SHOWNOACTIVATE, SWP_DEFERERASE, SWP_NOACTIVATE, SWP_NOCOPYBITS,
+    SWP_NOREDRAW, SWP_NOSENDCHANGING, SWP_NOZORDER, SetParent, SetWindowLongPtrW, SetWindowPos,
+    ShowWindow, ULW_ALPHA, UpdateLayeredWindow, WM_DESTROY, WM_ERASEBKGND, WM_LBUTTONUP, WM_PAINT,
+    WM_RBUTTONDOWN, WM_RBUTTONUP, WNDCLASSW, WS_CLIPSIBLINGS, WS_EX_LAYERED, WS_EX_NOACTIVATE,
+    WS_EX_NOREDIRECTIONBITMAP, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_POPUP,
 };
 
 use windows::core::{PCWSTR, w};
@@ -314,14 +314,23 @@ fn relocate_and_paint(state: &mut TaskbarWindowState, content_changed: bool) {
                 pt.x,
                 pt.y,
                 None,
-                SWP_NOACTIVATE | SWP_NOZORDER | SWP_NOREDRAW,
+                SWP_NOACTIVATE
+                    | SWP_NOZORDER
+                    | SWP_NOREDRAW
+                    | SWP_NOCOPYBITS
+                    | SWP_DEFERERASE
+                    | SWP_NOSENDCHANGING,
             )
         } else {
             (
                 screen_x,
                 screen_y,
                 Some(HWND_TOPMOST),
-                SWP_NOACTIVATE | SWP_NOREDRAW,
+                SWP_NOACTIVATE
+                    | SWP_NOREDRAW
+                    | SWP_NOCOPYBITS
+                    | SWP_DEFERERASE
+                    | SWP_NOSENDCHANGING,
             )
         };
 
@@ -972,19 +981,17 @@ unsafe extern "system" fn wnd_proc(
 ) -> LRESULT {
     match msg {
         WM_PAINT => {
+            // BeginPaint 会让 DWM 给这个窗口合成一帧空表面。只校验脏区，并重新挂上上一帧。
             unsafe {
-                let mut ps = windows::Win32::Graphics::Gdi::PAINTSTRUCT::default();
-                let _ = windows::Win32::Graphics::Gdi::BeginPaint(hwnd, &mut ps);
-                let _ = windows::Win32::Graphics::Gdi::EndPaint(hwnd, &ps);
+                let _ = ValidateRect(Some(hwnd), None);
             }
-            // 任务栏重绘会清掉子窗口一帧。立刻再提交，不等下一秒。
-            if !REPAINTING.get() {
+            if !REPAINTING.get() && !PRESENTING.get() {
                 REPAINTING.set(true);
                 STATE.with(|cell| {
                     if let Some(state) = cell.borrow_mut().as_mut()
-                        && state.comp.is_some()
+                        && let Some(comp) = state.comp.as_mut()
                     {
-                        present_frame(state);
+                        let _ = comp.recommit();
                     }
                 });
                 REPAINTING.set(false);

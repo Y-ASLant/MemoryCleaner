@@ -122,6 +122,12 @@ impl Comp {
         Ok(())
     }
 
+    /// 任务栏把子窗口失效时，用上一帧重新挂上视觉，避免空画一帧。
+    pub fn recommit(&self) -> anyhow::Result<()> {
+        unsafe { self.dcomp.Commit() }.context("Commit")?;
+        Ok(())
+    }
+
     fn resize(&mut self, width: u32, height: u32) -> anyhow::Result<()> {
         self.target = None;
         unsafe { self.context2d.SetTarget(None) };
