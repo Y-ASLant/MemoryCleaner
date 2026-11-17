@@ -16,7 +16,7 @@ use crate::locale;
 use crate::memory::{MemorySection, MemoryStatus, SystemWorkingSet};
 use crate::messages::{build_cleanup_result_message, format_cleanup_effect};
 use crate::optimize::{self, MemoryAreas};
-use crate::settings::{CleanupHistoryEntry, CleanupHistorySource, Settings};
+use crate::settings::Settings;
 use crate::system_metrics::{CpuNetworkSnapshot, SystemMetricsSampler};
 use crate::tray::{self, TrayCommand};
 use crate::win32;
@@ -81,8 +81,8 @@ impl Runtime {
                 quarters,
                 generation,
             } => tray::apply_spin_frame(quarters, generation),
-            TrayCommand::OptimizeFinished(entry) => {
-                lock(runtime).on_optimize_finished(entry);
+            TrayCommand::OptimizeFinished => {
+                lock(runtime).on_optimize_finished();
             }
             other => lock(runtime).dispatch(other),
         }
@@ -90,7 +90,7 @@ impl Runtime {
 
     fn dispatch(&mut self, command: TrayCommand) {
         match command {
-            TrayCommand::Optimize => self.run_optimize(CleanupHistorySource::Manual),
+            TrayCommand::Optimize => self.run_optimize(),
             TrayCommand::RefreshTooltip => {
                 self.refresh_stats();
                 self.sync_tray_tooltip();
@@ -102,13 +102,13 @@ impl Runtime {
             TrayCommand::MenuAction(action) => self.handle_menu_action(&action),
             TrayCommand::Quit
             | TrayCommand::SetSpinFrame { .. }
-            | TrayCommand::OptimizeFinished(_) => {}
+            | TrayCommand::OptimizeFinished => {}
         }
     }
 
     fn handle_menu_action(&mut self, action: &str) {
         match action {
-            "optimize" => self.run_optimize(CleanupHistorySource::Manual),
+            "optimize" => self.run_optimize(),
             "quit" => {
                 self.shutdown();
                 tray::request_quit();
@@ -286,10 +286,10 @@ impl Runtime {
         }
         crate::log::write(&format!("[auto-cleanup] trigger: {}", source.log_label()));
         self.last_auto_cleanup = Some(Instant::now());
-        self.run_optimize(source.into());
+        self.run_optimize();
     }
 
-    fn run_optimize(&mut self, source: CleanupHistorySource) {
+    fn run_optimize(&mut self) {
         if self.is_optimizing {
             return;
         }
@@ -302,8 +302,6 @@ impl Runtime {
             }
         };
 
-        let selected_areas = areas.bits();
-        let started_at = Instant::now();
         let notify = self.settings.show_optimization_notifications;
         let command_tx = self.command_tx.clone();
         self.is_optimizing = true;
@@ -322,7 +320,6 @@ impl Runtime {
                 let memory_before = MemoryStatus::query().ok();
                 let mut completed = Vec::new();
                 let mut errors = Vec::new();
-                let mut failure_details = Vec::new();
 
                 for step in steps {
                     let name = step.label;
@@ -332,7 +329,7 @@ impl Runtime {
                             crate::log::write(&format!("[optimize] {name} succeeded"));
                         }
                         Err(error) => {
-                            failure_details.push(format!("{name}: {error:#}"));
+                            crate::log::write(&format!("[optimize] {name} failed: {error:#}"));
                             errors.push(name);
                         }
                     }
@@ -363,33 +360,17 @@ impl Runtime {
                     build_cleanup_result_message(&completed_refs, &errors_refs, &effect_detail);
                 crate::log::write(&format!("[optimize] result: {status}"));
 
-                let mut history_entry = CleanupHistoryEntry::new(
-                    source,
-                    selected_areas,
-                    completed.len() as u32,
-                    errors.len() as u32,
-                    started_at.elapsed().as_millis() as u64,
-                    memory_load_before,
-                    memory_load_after,
-                    avail_before,
-                    avail_after,
-                );
-                history_entry.failure_details = failure_details;
-                history_entry.memory_sample_available = memory_sample_available;
-
                 if notify {
                     let _ = win32::notification::show(&t!("notification.optimize_title"), &status);
                 }
 
                 tray::stop_spin();
-                let _ = command_tx.send(TrayCommand::OptimizeFinished(history_entry));
+                let _ = command_tx.send(TrayCommand::OptimizeFinished);
             });
     }
 
-    fn on_optimize_finished(&mut self, entry: CleanupHistoryEntry) {
+    fn on_optimize_finished(&mut self) {
         self.is_optimizing = false;
-        self.settings.record_cleanup(entry);
-        self.persist_settings();
         self.refresh_stats();
         self.sync_tray_tooltip();
         self.sync_taskbar_window();

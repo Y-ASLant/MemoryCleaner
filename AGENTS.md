@@ -38,7 +38,6 @@ main.rs → OS gate → wake-signal → ensure_elevated() → wake-signal retry
 - **Tray command channel:** One `mpsc` carries tray clicks/menu, hotkeys, single-instance wake, low-memory, spin frames, and optimize finished into the main `run_loop`.
 - **Automatic cleanup:** Low-memory `MemoryNotificationMonitor` + threshold poll thread; both honor `auto_cleanup_enabled`. Threshold `0` disables threshold triggers.
 - **Settings via tray:** Cleanup area checks (standby variants mutually exclusive), auto-cleanup, threshold presets, run at startup, notifications, debug log, hotkey enable, taskbar window, language, open config folder. **Process exclusion list** and **hotkey chord string** are TOML-only (no GUI picker/recorder).
-- **Obsolete UI-only fields:** `always_on_top`, `close_to_notification_area` still deserialize for compat; unused at runtime.
 - **Hotkey:** Transactional rebind in `win32::hotkey` (`RegisterHotKey` worker thread). Enable/disable from tray; chord edit via `settings.toml`.
 - **Startup:** Task Scheduler logon task `/RL HIGHEST`; always tray-only (no “launch hidden window”).
 - **COM lifetime:** `ComApartment::run` for toast/startup paths; release COM objects before leaving the apartment.

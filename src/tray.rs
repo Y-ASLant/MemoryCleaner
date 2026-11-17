@@ -12,7 +12,7 @@ use tray_icon::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIc
 
 use crate::memory::{MemorySection, SystemWorkingSet};
 use crate::optimize::MemoryAreas;
-use crate::settings::{CleanupHistoryEntry, Settings};
+use crate::settings::Settings;
 use crate::system_metrics::CpuNetworkSnapshot;
 
 const TRAY_ICON_SIZE: u32 = 32;
@@ -56,7 +56,7 @@ pub enum TrayCommand {
     LowMemory,
     MenuAction(String),
     SetSpinFrame { quarters: u32, generation: u32 },
-    OptimizeFinished(CleanupHistoryEntry),
+    OptimizeFinished,
     Quit,
 }
 

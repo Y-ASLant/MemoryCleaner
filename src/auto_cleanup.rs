@@ -27,15 +27,6 @@ impl AutoCleanupSource {
     }
 }
 
-impl From<AutoCleanupSource> for crate::settings::CleanupHistorySource {
-    fn from(value: AutoCleanupSource) -> Self {
-        match value {
-            AutoCleanupSource::LowMemoryNotification => Self::LowMemoryNotification,
-            AutoCleanupSource::Threshold => Self::Threshold,
-        }
-    }
-}
-
 /// 本轮轮询是否应触发阈值清理。
 pub fn threshold_trigger_due(above_threshold_ticks: u32, cooldown_elapsed: bool) -> bool {
     above_threshold_ticks >= AUTO_CLEANUP_SUSTAINED_TICKS && cooldown_elapsed

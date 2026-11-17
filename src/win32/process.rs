@@ -1,6 +1,4 @@
-use std::collections::HashMap;
 use std::mem::MaybeUninit;
-use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
 use windows::Win32::Foundation::{
@@ -9,71 +7,12 @@ use windows::Win32::Foundation::{
 use windows::Win32::System::Diagnostics::ToolHelp::{
     CreateToolhelp32Snapshot, PROCESSENTRY32W, Process32FirstW, Process32NextW, TH32CS_SNAPPROCESS,
 };
-use windows::Win32::System::ProcessStatus::{
-    GetProcessMemoryInfo, K32EmptyWorkingSet, PROCESS_MEMORY_COUNTERS,
-};
+use windows::Win32::System::ProcessStatus::K32EmptyWorkingSet;
 use windows::Win32::System::Threading::{
-    OpenProcess, PROCESS_QUERY_INFORMATION, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SET_QUOTA,
-    PROCESS_TERMINATE, TerminateProcess,
+    OpenProcess, PROCESS_QUERY_INFORMATION, PROCESS_SET_QUOTA,
 };
 
-use crate::memory::MemoryStatus;
 use crate::win32::handle::OwnedWin32Handle;
-
-/// 排除列表下拉用的运行中进程条目。
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ProcessPickerEntry {
-    pub name: String,
-    pub instance_count: u32,
-    pub working_set_bytes: u64,
-    /// 能读出工作集大小的实例数。
-    pub memory_readable_count: u32,
-}
-#[derive(Default)]
-struct ProcessAggregate {
-    instance_count: u32,
-    working_set_bytes: u64,
-    memory_readable_count: u32,
-}
-
-impl ProcessPickerEntry {
-    pub fn memory_display(&self) -> Option<String> {
-        if self.memory_readable_count == 0 {
-            None
-        } else {
-            Some(MemoryStatus::format_bytes(self.working_set_bytes))
-        }
-    }
-}
-
-/// 不应出现在排除选择器中的进程。
-fn is_picker_hidden_process(name: &str) -> bool {
-    matches!(name, "[systemprocess]" | "systemidleprocess")
-}
-
-fn query_process_working_set_bytes(pid: u32) -> Option<u64> {
-    unsafe {
-        let access = PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_QUERY_INFORMATION;
-        let handle = match OpenProcess(access, false, pid) {
-            Ok(handle) => OwnedWin32Handle::from_raw(handle),
-            Err(_) => return None,
-        };
-
-        let mut counters = PROCESS_MEMORY_COUNTERS::default();
-        let ok = GetProcessMemoryInfo(
-            handle.raw(),
-            &mut counters,
-            size_of::<PROCESS_MEMORY_COUNTERS>() as u32,
-        )
-        .is_ok();
-
-        if ok {
-            Some(counters.WorkingSetSize as u64)
-        } else {
-            None
-        }
-    }
-}
 
 /// 规范化进程名供排除匹配：小写、去空白、去 `.exe`。
 pub fn normalize_process_name(name: &str) -> String {
@@ -91,12 +30,6 @@ fn normalize_process_chars(chars: impl Iterator<Item = char>, capacity: usize) -
         normalized.truncate(normalized.len() - 4);
     }
     normalized
-}
-
-fn exe_name_matches(entry: &PROCESSENTRY32W, target: &[u16]) -> bool {
-    let name = &entry.szExeFile;
-    let len = name.iter().position(|&c| c == 0).unwrap_or(name.len());
-    name[..len] == target[..]
 }
 
 fn exe_base_name_from_entry(entry: &PROCESSENTRY32W) -> String {
@@ -138,52 +71,6 @@ where
         }
     }
     Ok(())
-}
-
-pub fn is_process_excluded(process_name: &str, excluded: &[String]) -> bool {
-    let normalized = normalize_process_name(process_name);
-    excluded.iter().any(|name| name == &normalized)
-}
-
-/// 排除选择器用的去重运行进程列表，不含系统/隐藏项。
-pub fn list_processes_for_exclusion_picker(
-    self_base: &str,
-    excluded: &[String],
-) -> Vec<ProcessPickerEntry> {
-    let self_normalized = normalize_process_name(self_base);
-    let mut by_name: HashMap<String, ProcessAggregate> = HashMap::new();
-
-    let _ = with_process_snapshot(|entry| {
-        let name = exe_base_name_from_entry(entry);
-        if name.is_empty()
-            || name == self_normalized
-            || is_picker_hidden_process(&name)
-            || excluded.iter().any(|ex| ex == &name)
-        {
-            return false;
-        }
-
-        let working_set = query_process_working_set_bytes(entry.th32ProcessID);
-        let aggregate = by_name.entry(name).or_default();
-        aggregate.instance_count += 1;
-        if let Some(bytes) = working_set {
-            aggregate.memory_readable_count += 1;
-            aggregate.working_set_bytes = aggregate.working_set_bytes.saturating_add(bytes);
-        }
-        false
-    });
-
-    let mut entries: Vec<_> = by_name
-        .into_iter()
-        .map(|(name, aggregate)| ProcessPickerEntry {
-            name,
-            instance_count: aggregate.instance_count,
-            working_set_bytes: aggregate.working_set_bytes,
-            memory_readable_count: aggregate.memory_readable_count,
-        })
-        .collect();
-    entries.sort_by(|a, b| a.name.cmp(&b.name));
-    entries
 }
 
 fn complete_working_set_cleanup(
@@ -256,54 +143,6 @@ pub fn empty_working_sets_except(excluded: &[String]) -> Result<()> {
     complete_working_set_cleanup(succeeded, access_denied, errors)
 }
 
-/// 若存在给定可执行名的进程则返回 true。
-pub fn is_process_running(exe_name: &str) -> bool {
-    let target: Vec<u16> = exe_name.encode_utf16().collect();
-    let mut found = false;
-    let _ = with_process_snapshot(|entry| {
-        if exe_name_matches(entry, &target) {
-            found = true;
-            return true;
-        }
-        false
-    });
-    found
-}
-
-/// 终止所有可执行名匹配 `exe_name` 的运行进程。
-pub fn kill_process_by_name(exe_name: &str) -> Result<u32> {
-    let target: Vec<u16> = exe_name.encode_utf16().collect();
-    let mut killed = 0u32;
-
-    with_process_snapshot(|entry| {
-        if !exe_name_matches(entry, &target) {
-            return false;
-        }
-        let pid = entry.th32ProcessID;
-        if let Ok(handle) = unsafe { OpenProcess(PROCESS_TERMINATE, false, pid) } {
-            let handle = unsafe { OwnedWin32Handle::from_raw(handle) };
-            if unsafe { TerminateProcess(handle.raw(), 1) }.is_ok() {
-                killed += 1;
-            }
-        }
-        false
-    })?;
-
-    Ok(killed)
-}
-
-/// 等到无该名进程在跑，或超时。
-pub fn wait_for_process_exit(exe_name: &str, timeout_ms: u32) -> bool {
-    let steps = timeout_ms / 100;
-    for _ in 0..steps {
-        if !is_process_running(exe_name) {
-            return true;
-        }
-        std::thread::sleep(Duration::from_millis(100));
-    }
-    !is_process_running(exe_name)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -312,42 +151,6 @@ mod tests {
     fn normalize_process_name_strips_exe_and_whitespace() {
         assert_eq!(normalize_process_name(" Chrome.EXE "), "chrome");
         assert_eq!(normalize_process_name("firefox"), "firefox");
-    }
-
-    #[test]
-    fn is_process_excluded_matches_case_insensitive_base_names() {
-        let excluded = vec!["chrome".to_string()];
-        assert!(is_process_excluded("Chrome.exe", &excluded));
-        assert!(!is_process_excluded("firefox", &excluded));
-    }
-
-    #[test]
-    fn is_picker_hidden_process_matches_system_entries() {
-        assert!(is_picker_hidden_process("[systemprocess]"));
-        assert!(is_picker_hidden_process("systemidleprocess"));
-        assert!(!is_picker_hidden_process("chrome"));
-    }
-
-    #[test]
-    fn process_picker_entry_memory_display() {
-        let unknown = ProcessPickerEntry {
-            name: "lsass".to_string(),
-            instance_count: 1,
-            working_set_bytes: 0,
-            memory_readable_count: 0,
-        };
-        assert_eq!(unknown.memory_display(), None);
-
-        let readable = ProcessPickerEntry {
-            name: "chrome".to_string(),
-            instance_count: 2,
-            working_set_bytes: 512 * 1024 * 1024,
-            memory_readable_count: 2,
-        };
-        assert_eq!(
-            readable.memory_display(),
-            Some(MemoryStatus::format_bytes(readable.working_set_bytes))
-        );
     }
 
     #[test]

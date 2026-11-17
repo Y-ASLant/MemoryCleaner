@@ -37,8 +37,6 @@ fn settings_save_and_load_roundtrip_in_temp_config_dir() {
         fs::create_dir_all(app_data.join("MemoryCleaner")).expect("create config dir");
 
         let settings = Settings {
-            always_on_top: true,
-            close_to_notification_area: false,
             memory_areas: MemoryAreas::WORKING_SET.bits(),
             language: "zh-CN".into(),
             debug_logging: true,
@@ -49,8 +47,6 @@ fn settings_save_and_load_roundtrip_in_temp_config_dir() {
         settings.save();
 
         let loaded = Settings::load();
-        assert!(loaded.always_on_top);
-        assert!(!loaded.close_to_notification_area);
         assert_eq!(loaded.memory_areas, MemoryAreas::WORKING_SET.bits());
         assert_eq!(loaded.language, "zh-CN");
         assert!(loaded.debug_logging);
@@ -85,10 +81,10 @@ fn settings_save_replaces_existing_file() {
     with_temp_appdata(|_| {
         Settings::default().save();
         let updated = Settings {
-            always_on_top: true,
+            debug_logging: true,
             ..Settings::default()
         };
         updated.save();
-        assert!(Settings::load().always_on_top);
+        assert!(Settings::load().debug_logging);
     });
 }

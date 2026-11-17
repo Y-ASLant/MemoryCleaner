@@ -1,7 +1,6 @@
 use crate::optimize::MemoryAreas;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 #[cfg(windows)]
 use std::os::windows::ffi::OsStrExt;
@@ -12,79 +11,12 @@ use windows::Win32::Storage::FileSystem::{MOVEFILE_REPLACE_EXISTING, MoveFileExW
 use windows::core::PCWSTR;
 
 const REMOVED_REGISTRY_CACHE_BIT: u32 = 1 << 7;
-pub const MAX_CLEANUP_HISTORY_ENTRIES: usize = 7;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum CleanupHistorySource {
-    Manual,
-    LowMemoryNotification,
-    Threshold,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct CleanupHistoryEntry {
-    pub completed_at_unix_secs: u64,
-    pub source: CleanupHistorySource,
-    pub selected_areas: u32,
-    pub completed_count: u32,
-    pub failed_count: u32,
-    pub duration_millis: u64,
-    pub memory_load_before: u32,
-    pub memory_load_after: u32,
-    pub available_before: u64,
-    pub available_after: u64,
-    #[serde(default)]
-    pub failure_details: Vec<String>,
-    #[serde(default = "default_memory_sample_available")]
-    pub memory_sample_available: bool,
-}
-
-fn default_memory_sample_available() -> bool {
-    true
-}
-
-impl CleanupHistoryEntry {
-    // 字段是一次清理结果的扁平快照；构建器只会换个参数名。
-    #[expect(clippy::too_many_arguments)]
-    pub fn new(
-        source: CleanupHistorySource,
-        selected_areas: u32,
-        completed_count: u32,
-        failed_count: u32,
-        duration_millis: u64,
-        memory_load_before: u32,
-        memory_load_after: u32,
-        available_before: u64,
-        available_after: u64,
-    ) -> Self {
-        Self {
-            completed_at_unix_secs: SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_secs(),
-            source,
-            selected_areas,
-            completed_count,
-            failed_count,
-            duration_millis,
-            memory_load_before,
-            memory_load_after,
-            available_before,
-            available_after,
-            failure_details: Vec::new(),
-            memory_sample_available: true,
-        }
-    }
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
-    pub always_on_top: bool,
     /// 经最高权限登录任务静默启动到通知区域。
     pub run_at_startup: bool,
-    pub close_to_notification_area: bool,
     pub memory_areas: u32,
     /// 内存清理完成时弹出 Windows 通知。
     pub show_optimization_notifications: bool,
@@ -105,16 +37,12 @@ pub struct Settings {
     pub auto_cleanup_threshold: u32,
     /// 在系统任务栏显示占用信息窗口（TrafficMonitor 同类嵌入/贴靠）。
     pub show_taskbar_window: bool,
-    /// 最近清理结果，最新一条在末尾。
-    pub cleanup_history: Vec<CleanupHistoryEntry>,
 }
 
 impl Default for Settings {
     fn default() -> Self {
         Self {
-            always_on_top: false,
             run_at_startup: false,
-            close_to_notification_area: true,
             show_optimization_notifications: true,
             memory_areas: MemoryAreas::DEFAULT.bits(),
             language: "auto".into(),
@@ -125,7 +53,6 @@ impl Default for Settings {
             auto_cleanup_enabled: false,
             auto_cleanup_threshold: 0,
             show_taskbar_window: true,
-            cleanup_history: Vec::new(),
         }
     }
 }
@@ -195,7 +122,6 @@ impl Settings {
         self.normalize_cleanup_hotkey();
         self.normalize_excluded_processes();
         self.normalize_auto_cleanup();
-        self.normalize_cleanup_history();
     }
 
     fn normalize_language(&mut self) {
@@ -207,13 +133,6 @@ impl Settings {
     /// 将自动清理阈值钳到合法占用百分比范围。
     fn normalize_auto_cleanup(&mut self) {
         self.auto_cleanup_threshold = self.auto_cleanup_threshold.min(100);
-    }
-
-    fn normalize_cleanup_history(&mut self) {
-        if self.cleanup_history.len() > MAX_CLEANUP_HISTORY_ENTRIES {
-            let retained_from = self.cleanup_history.len() - MAX_CLEANUP_HISTORY_ENTRIES;
-            self.cleanup_history.drain(..retained_from);
-        }
     }
 
     fn normalize_cleanup_hotkey(&mut self) {
@@ -287,11 +206,6 @@ impl Settings {
         areas
     }
 
-    pub fn record_cleanup(&mut self, entry: CleanupHistoryEntry) {
-        self.cleanup_history.push(entry);
-        self.normalize_cleanup_history();
-    }
-
     /// 返回供 `rust_i18n::set_locale` 使用的有效语言字符串。
     pub fn effective_locale(&self) -> &'static str {
         match self.language.as_str() {
@@ -308,43 +222,8 @@ mod tests {
     use crate::optimize::MemoryAreas;
 
     #[test]
-    fn legacy_history_loads_without_new_fields() {
-        let settings = Settings::from_toml(
-            r#"
-[[cleanup_history]]
-completed_at_unix_secs = 1
-source = "manual"
-selected_areas = 43
-completed_count = 4
-failed_count = 0
-duration_millis = 1
-memory_load_before = 50
-memory_load_after = 49
-available_before = 1
-available_after = 2
-"#,
-        );
-        assert!(settings.cleanup_history[0].failure_details.is_empty());
-        assert!(settings.cleanup_history[0].memory_sample_available);
-    }
-
-    #[test]
-    fn history_preserves_failure_details_and_missing_samples() {
-        let mut entry =
-            CleanupHistoryEntry::new(CleanupHistorySource::Manual, 64, 0, 1, 1, 0, 0, 0, 0);
-        entry
-            .failure_details
-            .push("Volume{x}: access denied".into());
-        entry.memory_sample_available = false;
-        let restored: CleanupHistoryEntry =
-            toml::from_str(&toml::to_string(&entry).unwrap()).unwrap();
-        assert_eq!(entry, restored);
-    }
-
-    #[test]
     fn default_settings_match_documented_values() {
         let settings = Settings::default();
-        assert!(settings.close_to_notification_area);
         assert!(!settings.run_at_startup);
         assert!(settings.show_optimization_notifications);
         assert_eq!(settings.memory_areas, MemoryAreas::DEFAULT.bits());
@@ -362,7 +241,6 @@ available_after = 2
     #[test]
     fn toml_roundtrip_preserves_fields() {
         let original = Settings {
-            always_on_top: true,
             debug_logging: true,
             language: "en".into(),
             memory_areas: MemoryAreas::WORKING_SET.bits(),
@@ -370,7 +248,6 @@ available_after = 2
             ..Default::default()
         };
         let restored: Settings = toml::from_str(&toml::to_string(&original).unwrap()).unwrap();
-        assert!(restored.always_on_top);
         assert!(restored.debug_logging);
         assert_eq!(restored.language, "en");
         assert_eq!(restored.memory_areas, MemoryAreas::WORKING_SET.bits());
@@ -378,47 +255,40 @@ available_after = 2
     }
 
     #[test]
-    fn legacy_scheduled_cleanup_field_is_ignored() {
+    fn legacy_fields_are_ignored_on_load() {
         let settings = Settings::from_toml(
-            "auto_cleanup_enabled = true\nauto_cleanup_threshold = 90\nauto_cleanup_interval_minutes = 30",
+            r#"
+always_on_top = true
+close_to_notification_area = false
+auto_cleanup_enabled = true
+auto_cleanup_threshold = 90
+auto_cleanup_interval_minutes = 30
+[[cleanup_history]]
+completed_at_unix_secs = 1
+source = "manual"
+selected_areas = 43
+completed_count = 4
+failed_count = 0
+duration_millis = 1
+memory_load_before = 50
+memory_load_after = 49
+available_before = 1
+available_after = 2
+"#,
         );
         assert!(settings.auto_cleanup_enabled);
         assert_eq!(settings.auto_cleanup_threshold, 90);
-        assert!(
-            !toml::to_string(&settings)
-                .expect("settings serialize")
-                .contains("auto_cleanup_interval_minutes")
-        );
+        let serialized = toml::to_string(&settings).expect("settings serialize");
+        assert!(!serialized.contains("always_on_top"));
+        assert!(!serialized.contains("close_to_notification_area"));
+        assert!(!serialized.contains("cleanup_history"));
+        assert!(!serialized.contains("auto_cleanup_interval_minutes"));
     }
 
     #[test]
     fn auto_cleanup_threshold_is_clamped_to_100() {
         let settings = Settings::from_toml("auto_cleanup_threshold = 150");
         assert_eq!(settings.auto_cleanup_threshold, 100);
-    }
-
-    #[test]
-    fn cleanup_history_retains_the_newest_entries() {
-        let mut settings = Settings::default();
-        for timestamp in 0..=MAX_CLEANUP_HISTORY_ENTRIES as u64 {
-            settings.record_cleanup(CleanupHistoryEntry {
-                completed_at_unix_secs: timestamp,
-                source: CleanupHistorySource::Manual,
-                selected_areas: MemoryAreas::WORKING_SET.bits(),
-                completed_count: 1,
-                failed_count: 0,
-                duration_millis: 1,
-                memory_load_before: 50,
-                memory_load_after: 49,
-                available_before: 1,
-                available_after: 2,
-                failure_details: Vec::new(),
-                memory_sample_available: true,
-            });
-        }
-
-        assert_eq!(settings.cleanup_history.len(), MAX_CLEANUP_HISTORY_ENTRIES);
-        assert_eq!(settings.cleanup_history[0].completed_at_unix_secs, 1);
     }
 
     #[test]

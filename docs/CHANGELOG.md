@@ -19,12 +19,13 @@
 - **托盘常驻、无主窗口**：移除 GPUI 图形界面与主窗口；应用仅以系统托盘形式运行，主线程泵送 Win32 消息。
 - **依赖**：引入 `sysinfo` 0.40（仅 `system` + `network`）；移除 `gpui-kit` 与 `raw-window-handle`、`smol`。
 - **二次启动**：已运行实例收到信号后走托盘清理入口，不再尝试显示窗口。
-- **窗口相关设置**：`always_on_top` / `close_to_notification_area` 仍可从旧配置读入但界面不再提供；进程排除列表与热键组合请编辑 `%APPDATA%\MemoryCleaner\settings.toml`。
+- **配置精简**：不再读写 `always_on_top` / `close_to_notification_area` / `cleanup_history`（旧 TOML 键加载时忽略，下次保存丢弃）。
 - **任务栏窗口闪烁**：`WS_POPUP` 嵌 `Shell_TrayWnd` 后 `IsChild` 恒 false，热路径误 `SetParent` 触发每秒 `WM_SHOWWINDOW` 显隐；改为 `GetParent == taskbar` 判定，失败不重嵌。
 
 ### 移除
 
 - **主窗口与设置对话框**：含内存圆环、清理历史弹窗、进程选择器、热键录制 UI、桌面图标缓存刷新入口。
+- **无界面残留代码**：进程排除选择器/`kill`/`wait` API、清理历史持久化、仅兼容用的窗口设置字段。
 
 
 
@@ -240,12 +241,13 @@ Records Memory Cleaner releases. Format follows [Keep a Changelog](https://keepa
 - **Tray-only, no main window**: Removed the GPUI GUI; the app runs as a system-tray resident with a Win32 message pump on the main thread.
 - **Dependencies**: Add `sysinfo` 0.40 (`system` + `network` only); remove `gpui-kit`, `raw-window-handle`, and `smol`.
 - **Second launch**: A running instance receives the wake signal as the tray cleanup entry path; no window is shown.
-- **Window-related settings**: `always_on_top` / `close_to_notification_area` still load from older TOML but have no UI; process exclusions and hotkey chords are edited in `%APPDATA%\MemoryCleaner\settings.toml`.
+- **Settings trim**: Stop reading/writing `always_on_top` / `close_to_notification_area` / `cleanup_history` (legacy TOML keys ignored on load, dropped on next save). Process exclusions and hotkey chords remain TOML-only in `%APPDATA%\MemoryCleaner\settings.toml`.
 - **Taskbar strip flicker**: After `SetParent` of a `WS_POPUP` into `Shell_TrayWnd`, `IsChild` stays false and the hot path re-`SetParent`ed every second (`WM_SHOWWINDOW` hide/show). Now uses `GetParent == taskbar`; no re-embed when `GetParent` fails.
 
 ### Removed
 
 - **Main window and settings dialogs**: Memory rings, cleanup history popup, process picker, hotkey recorder UI, and desktop icon-cache refresh entry.
+- **Orphan GUI leftovers**: Process-exclusion picker / kill / wait APIs, cleanup-history persistence, window-only settings fields kept only for old-config compat.
 
 ## [1.2.1] - 2026-11-16
 
