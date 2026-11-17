@@ -251,9 +251,8 @@ impl Runtime {
                 self.virtual_mem = MemorySection::unavailable(&t!("memory.virtual"));
             }
         }
-        if self.metrics_sampler.refresh() {
-            self.cpu_network = self.metrics_sampler.snapshot();
-        }
+        let _ = self.metrics_sampler.refresh();
+        self.cpu_network = self.metrics_sampler.snapshot();
     }
 
     fn sync_tray_tooltip(&self) {
@@ -269,12 +268,7 @@ impl Runtime {
         if !self.settings.show_taskbar_window {
             return;
         }
-        win32::taskbar_window::update(
-            &self.physical,
-            &self.virtual_mem,
-            self.system_working_set.as_ref(),
-            &self.cpu_network,
-        );
+        win32::taskbar_window::update(&self.physical, &self.cpu_network);
     }
 
     fn sync_tray(&self) {
@@ -483,6 +477,11 @@ fn spawn_metrics_loop(command_tx: Sender<TrayCommand>) {
     let _ = thread::Builder::new()
         .name("metrics".into())
         .spawn(move || {
+            // 首包尽快：基线后短等再采一次真实差分。
+            thread::sleep(Duration::from_millis(200));
+            if command_tx.send(TrayCommand::RefreshTooltip).is_err() {
+                return;
+            }
             loop {
                 thread::sleep(METRICS_INTERVAL);
                 if command_tx.send(TrayCommand::RefreshTooltip).is_err() {

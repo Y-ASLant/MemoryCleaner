@@ -24,23 +24,26 @@ main.rs → OS gate → wake-signal → ensure_elevated() → wake-signal retry
  ├─ settings.rs (%APPDATA%\MemoryCleaner\settings.toml)
  ├─ privileges.rs
  ├─ messages.rs / version.rs
+ ├─ fonts/ (Lilex Medium embedded for taskbar strip)
  └─ win32/ (elevation, hotkey, memory_notification, notification, nt, os,
-           process, single_instance, startup, volume, handle, com)
+           process, single_instance, startup, volume, handle, com,
+           taskbar_window)
 ```
 
 - **Entry flow:** `main.rs` → minimum-OS gate (`win32::os::is_supported`, build ≥ 9200 = Windows 8) → wake existing instance (before elevation) → `ensure_elevated()` → wake retry → single-instance mutex + event watcher → `locale::apply` → `notification::init` → hotkey sender → `tray::install` on main thread → `Runtime::start` → `tray::run_loop` (commands + Win32 messages).
-- **No GPUI / no main window:** Tray icon + menu only. `TrayIcon` / muda items are **not `Send`**; state lives in `thread_local!` on the main thread. Background work posts `TrayCommand`s; only the main loop calls tray APIs.
+- **No GPUI / no main window:** Tray icon + menu + optional taskbar metrics strip. `TrayIcon` / muda items are **not `Send`**; state lives in `thread_local!` on the main thread. Background work posts `TrayCommand`s; only the main loop calls tray APIs.
 - **i18n:** `rust-i18n` with `locales/zh-CN.yml` (`_version: 2`, zh-CN + en). `settings.language` is `auto` | `zh-CN` | `en`; `auto` uses `GetUserDefaultUILanguage`. Language menu updates locale and tray labels immediately.
 - **Native layer:** `src/win32/` wraps Win32/NT APIs; `src/optimize.rs` runs cleanup steps on a worker thread.
 - **Console suppression:** `#![windows_subsystem = "windows"]`; diagnostics via `OutputDebugStringA` / optional `App.log`.
 - **Tray command channel:** One `mpsc` carries tray clicks/menu, hotkeys, single-instance wake, low-memory, spin frames, and optimize finished into the main `run_loop`.
 - **Automatic cleanup:** Low-memory `MemoryNotificationMonitor` + threshold poll thread; both honor `auto_cleanup_enabled`. Threshold `0` disables threshold triggers.
-- **Settings via tray:** Cleanup area checks (standby variants mutually exclusive), auto-cleanup, threshold presets, run at startup, notifications, debug log, hotkey enable, language, open config folder. **Process exclusion list** and **hotkey chord string** are TOML-only (no GUI picker/recorder).
+- **Settings via tray:** Cleanup area checks (standby variants mutually exclusive), auto-cleanup, threshold presets, run at startup, notifications, debug log, hotkey enable, taskbar window, language, open config folder. **Process exclusion list** and **hotkey chord string** are TOML-only (no GUI picker/recorder).
 - **Obsolete UI-only fields:** `always_on_top`, `close_to_notification_area` still deserialize for compat; unused at runtime.
 - **Hotkey:** Transactional rebind in `win32::hotkey` (`RegisterHotKey` worker thread). Enable/disable from tray; chord edit via `settings.toml`.
 - **Startup:** Task Scheduler logon task `/RL HIGHEST`; always tray-only (no “launch hidden window”).
 - **COM lifetime:** `ComApartment::run` for toast/startup paths; release COM objects before leaving the apartment.
-- **Second instance:** Wake event → `TrayCommand::ActivateWindow` → same path as left-click cleanup (no window).
+- **Second instance:** Wake event → `TrayCommand::Optimize`（与左键清理相同，无窗口）。
+- **Taskbar strip:** `win32/taskbar_window.rs` — prefer `SetParent(Shell_TrayWnd)`, else `TOPMOST` overlay; Lilex Medium 12pt; metrics ~1s; `run_loop` coalesces stacked `RefreshTooltip`.
 
 ## Key Directories
 
@@ -86,6 +89,7 @@ just clean
 | `src/main.rs` | Entry: elevation, single-instance, tray, message loop |
 | `src/runtime.rs` | Settings, optimize, auto-cleanup, metrics command handlers |
 | `src/tray.rs` | Tray icon, settings menu, spin, main-thread message pump |
+| `src/win32/taskbar_window.rs` | Taskbar metrics strip (embed / TOPMOST) |
 | `src/optimize.rs` | Cleanup orchestration |
 | `src/settings.rs` | TOML schema / persistence |
 | `src/win32/hotkey.rs` | Global cleanup hotkey |

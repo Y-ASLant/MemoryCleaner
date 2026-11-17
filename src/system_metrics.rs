@@ -92,6 +92,7 @@ impl SystemMetricsSampler {
     }
 
     /// 刷新 CPU/网速。有展示变化时返回 `true`。
+    /// 首次调用只打基线并给出 `0` 占位（避免一直 `—`）；第二次起为真实差分。
     pub fn refresh(&mut self) -> bool {
         let previous = self.snapshot;
         let now = Instant::now();
@@ -117,19 +118,23 @@ impl SystemMetricsSampler {
             }
         }
 
-        self.last_at = Some(now);
-
-        // 首次间隔后才有有效差分；过短间隔不更新速率，避免噪声。
         if !self.primed {
-            if elapsed >= 0.2 {
-                self.primed = true;
-            } else {
-                return false;
-            }
+            self.primed = true;
+            self.last_at = Some(now);
+            // 基线：立刻可显示，避免启动后长时间 `—`。
+            self.snapshot = CpuNetworkSnapshot {
+                cpu_percent: self.system.as_ref().map(|s| s.global_cpu_usage()),
+                download_bps: Some(0.0),
+                upload_bps: Some(0.0),
+            };
+            return snapshot_changed(previous, self.snapshot);
         }
 
+        self.last_at = Some(now);
+
         let cpu_percent = self.system.as_ref().map(|s| s.global_cpu_usage());
-        let (download_bps, upload_bps) = if elapsed > f64::EPSILON {
+        // 间隔过短则保留上次速率，只更新 CPU。
+        let (download_bps, upload_bps) = if elapsed >= 0.15 {
             (
                 Some(download_bytes as f64 / elapsed),
                 Some(upload_bytes as f64 / elapsed),

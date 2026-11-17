@@ -10,7 +10,7 @@
 ### 新增
 
 - **托盘设置菜单**：右键菜单可切换清理区域、自动清理与阈值、开机自启、通知、调试日志、全局热键开关、任务栏窗口与语言；支持打开配置目录。左键托盘图标触发一键清理；托盘仍用应用图标（不绘制占用百分比）。
-- **任务栏窗口**：类似 TrafficMonitor，在通知区左侧显示物理/提交内存、CPU 与网速；色键透明背景 + 描边文字。提权下用 `TOPMOST` 贴靠（非 `SetParent`）。设置项 `show_taskbar_window`；左键触发清理。
+- **任务栏窗口**：类似 TrafficMonitor，通知区左侧 2×2（↑/↓/CPU/RAM）；`SetParent` 嵌任务栏，失败则 `TOPMOST`；`UpdateLayeredWindow` 逐像素透明 + 持久 DIB 缓冲。设置项 `show_taskbar_window`；左键触发清理。
 - **CPU 与网速监控**：托盘提示显示 CPU 占用与上下行网速。采样基于 `sysinfo`（约 1 秒刷新），环回/隧道接口不计入网速汇总。
 
 ### 变更
@@ -229,7 +229,7 @@ Records Memory Cleaner releases. Format follows [Keep a Changelog](https://keepa
 ### Added
 
 - **Tray settings menu**: Right-click toggles cleanup areas, auto-cleanup and threshold, run at startup, notifications, debug logging, global hotkey, taskbar window, and language; open config folder. Left-click tray icon runs cleanup; tray keeps the app icon (no usage percent drawn on it).
-- **Taskbar window**: TrafficMonitor-style strip left of the notification area (physical/commit, CPU, network) with color-key transparency and outlined text. Elevated process uses a `TOPMOST` overlay (not `SetParent`); `show_taskbar_window`. Left-click runs cleanup.
+- **Taskbar window**: TrafficMonitor-style 2×2 strip (↑/↓/CPU/RAM) left of the tray; `SetParent` with `TOPMOST` fallback; per-pixel `UpdateLayeredWindow` with a reused DIB buffer. Setting `show_taskbar_window`; left-click runs cleanup.
 - **CPU and network rates**: Tray tooltip shows CPU usage and download/upload throughput. Sampling uses `sysinfo` (~1s); loopback/tunnel interfaces are excluded from network totals.
 
 ### Changed

@@ -1,39 +1,40 @@
 //! 任务栏信息窗口（TrafficMonitor 同类）。
 //!
-//! 优先 `SetParent` 嵌进 `Shell_TrayWnd`（与 TM 相同，管理员下通常可用）；
-//! 失败再退回 `TOPMOST` 浮层。绘制：`UpdateLayeredWindow` 逐像素 alpha。
+//! 优先 `SetParent` 嵌进 `Shell_TrayWnd`；失败再 `TOPMOST`。
+//! 绘制：`UpdateLayeredWindow` 逐像素 alpha；持久 DIB 缓冲，尺寸不变时不重建（减闪）。
 //! 仅主线程调用。
 
 use std::cell::RefCell;
 use std::path::PathBuf;
 use std::sync::OnceLock;
+use std::time::{Duration, Instant};
 
 use windows::Win32::Foundation::{COLORREF, HWND, LPARAM, LRESULT, POINT, RECT, SIZE, WPARAM};
 use windows::Win32::Graphics::Gdi::{
-    AC_SRC_ALPHA, AC_SRC_OVER, AddFontMemResourceEx, ANTIALIASED_QUALITY, BITMAPINFO,
-    BITMAPINFOHEADER, BLENDFUNCTION, BI_RGB, BitBlt, CLIP_DEFAULT_PRECIS, CreateCompatibleDC,
-    CreateDIBSection, CreateFontW, DIB_RGB_COLORS, DEFAULT_CHARSET, DEFAULT_PITCH, DeleteDC,
+    AC_SRC_ALPHA, AC_SRC_OVER, ANTIALIASED_QUALITY, AddFontMemResourceEx, BI_RGB, BITMAPINFO,
+    BITMAPINFOHEADER, BLENDFUNCTION, BitBlt, CLIP_DEFAULT_PRECIS, CreateCompatibleDC,
+    CreateDIBSection, CreateFontW, DEFAULT_CHARSET, DEFAULT_PITCH, DIB_RGB_COLORS, DeleteDC,
     DeleteObject, FW_MEDIUM, GetDC, GetDeviceCaps, GetTextExtentPoint32W, HDC, HFONT, HGDIOBJ,
-    LOGPIXELSY, OUT_DEFAULT_PRECIS, ReleaseDC, SRCCOPY, SelectObject, SetBkMode, SetTextColor,
-    TextOutW, TRANSPARENT,
+    LOGPIXELSY, OUT_DEFAULT_PRECIS, ReleaseDC, SRCCOPY, ScreenToClient, SelectObject, SetBkMode,
+    SetTextColor, TRANSPARENT, TextOutW,
 };
+use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::System::Registry::{
     HKEY, HKEY_CURRENT_USER, KEY_READ, REG_DWORD, RegOpenKeyExW, RegQueryValueExW,
 };
-use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::WindowsAndMessaging::{
-    CreateWindowExW, DefWindowProcW, DestroyWindow, FindWindowExW, FindWindowW, GetWindowLongPtrW,
-    GetWindowRect, HWND_TOPMOST, IsChild, IsWindow, IsWindowVisible, LoadCursorW, RegisterClassW,
-    SetParent, SetWindowLongPtrW, SetWindowPos, ShowWindow, UpdateLayeredWindow, CS_HREDRAW,
-    CS_VREDRAW, GWL_EXSTYLE, GWLP_USERDATA, HMENU, IDC_ARROW, SWP_NOACTIVATE, SWP_NOZORDER,
-    SWP_SHOWWINDOW, SW_HIDE, SW_SHOWNOACTIVATE, ULW_ALPHA, WM_DESTROY, WM_ERASEBKGND, WM_LBUTTONUP,
-    WM_PAINT, WM_RBUTTONDOWN, WM_RBUTTONUP, WNDCLASSW, WS_CLIPSIBLINGS, WS_EX_LAYERED,
-    WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_POPUP,
+    CreateWindowExW, DefWindowProcW, DestroyWindow, FindWindowExW, FindWindowW, GWL_EXSTYLE,
+    GetWindowLongPtrW, GetWindowRect, HMENU, HWND_TOPMOST, IDC_ARROW, IsChild, IsWindowVisible,
+    LoadCursorW, RegisterClassW, SW_HIDE, SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_NOREDRAW,
+    SWP_NOZORDER, SetParent, SetWindowLongPtrW, SetWindowPos, ShowWindow, ULW_ALPHA,
+    UpdateLayeredWindow, WM_DESTROY, WM_ERASEBKGND, WM_LBUTTONUP, WM_PAINT, WM_RBUTTONDOWN,
+    WM_RBUTTONUP, WNDCLASSW, WS_CLIPSIBLINGS, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
+    WS_EX_TOPMOST, WS_POPUP,
 };
-use windows::Win32::Graphics::Gdi::ScreenToClient;
+
 use windows::core::{PCWSTR, w};
 
-use crate::memory::{MemorySection, SystemWorkingSet};
+use crate::memory::MemorySection;
 use crate::system_metrics::CpuNetworkSnapshot;
 use crate::tray::TrayCommand;
 use crate::win32::wide_null;
@@ -46,9 +47,15 @@ const LINE_GAP: i32 = 1;
 const GAP_FROM_NOTIFY: i32 = 6;
 /// 任务栏亮度 ≥ 此值 → 黑字，否则白字。
 const LIGHT_TASKBAR_LUMA: u32 = 140;
+const THEME_RECHECK: Duration = Duration::from_secs(5);
 const FONT_TTF: &[u8] = include_bytes!("../fonts/Lilex-Medium.ttf");
 const FONT_FACE: &str = "Lilex";
 const FONT_POINT_SIZE: i32 = 12;
+/// 列宽上限样例，避免网速/百分比位数变化改窗宽。
+const SLOT_UP: &str = "↑: 999.99 MB/s";
+const SLOT_DOWN: &str = "↓: 999.99 MB/s";
+const SLOT_CPU: &str = "CPU: 100%";
+const SLOT_RAM: &str = "RAM: 100%";
 
 thread_local! {
     static STATE: RefCell<Option<TaskbarWindowState>> = const { RefCell::new(None) };
@@ -63,7 +70,6 @@ struct TaskbarWindowState {
     enabled: bool,
     /// 已 SetParent 到任务栏（TM 路径）。
     embedded: bool,
-    /// 左列上行 / 左列下行 / 右列上行 / 右列下行（TrafficMonitor 2×2）
     up: String,
     down: String,
     cpu: String,
@@ -76,6 +82,28 @@ struct TaskbarWindowState {
     dpi: i32,
     /// `true` = 白字（深色栏）；`false` = 黑字（浅色栏）
     light_text: bool,
+    /// 主题缓存时刻，避免每秒读主题抖动导致反色闪。
+    theme_checked_at: Instant,
+    /// 持久分层缓冲：同尺寸复用，避免每帧 CreateDIBSection。
+    layer: Option<LayerBuffer>,
+}
+
+struct LayerBuffer {
+    mem_dc: HDC,
+    dib: HGDIOBJ,
+    bits: *mut u32,
+    w: i32,
+    h: i32,
+}
+
+impl LayerBuffer {
+    fn destroy(self) {
+        unsafe {
+            let _ = SelectObject(self.mem_dc, HGDIOBJ::default());
+            let _ = DeleteObject(self.dib);
+            let _ = DeleteDC(self.mem_dc);
+        }
+    }
 }
 
 fn cell_up(up: &str) -> String {
@@ -123,10 +151,6 @@ pub fn install(command_tx: std::sync::mpsc::Sender<TrayCommand>) -> anyhow::Resu
         )
     }?;
 
-    unsafe {
-        SetWindowLongPtrW(hwnd, GWLP_USERDATA, 1);
-    }
-
     let embedded = try_embed(hwnd);
 
     STATE.with(|cell| {
@@ -145,6 +169,8 @@ pub fn install(command_tx: std::sync::mpsc::Sender<TrayCommand>) -> anyhow::Resu
             font,
             dpi,
             light_text: !taskbar_is_light(),
+            theme_checked_at: Instant::now(),
+            layer: None,
         });
     });
 
@@ -178,11 +204,7 @@ pub fn set_enabled(enabled: bool) {
         unsafe {
             let _ = ShowWindow(
                 state.hwnd,
-                if enabled {
-                    SW_SHOWNOACTIVATE
-                } else {
-                    SW_HIDE
-                },
+                if enabled { SW_SHOWNOACTIVATE } else { SW_HIDE },
             );
         }
         if enabled {
@@ -191,25 +213,13 @@ pub fn set_enabled(enabled: bool) {
     });
 }
 
-pub fn is_enabled() -> bool {
-    STATE.with(|cell| cell.borrow().as_ref().is_some_and(|s| s.enabled))
-}
-
-pub fn update(
-    physical: &MemorySection,
-    _virtual_mem: &MemorySection,
-    _system_working_set: Option<&SystemWorkingSet>,
-    cpu_network: &CpuNetworkSnapshot,
-) {
+pub fn update(physical: &MemorySection, cpu_network: &CpuNetworkSnapshot) {
     STATE.with(|cell| {
         let mut guard = cell.borrow_mut();
         let Some(state) = guard.as_mut() else {
             return;
         };
         if !state.enabled {
-            return;
-        }
-        if !unsafe { IsWindow(Some(state.hwnd)).as_bool() } {
             return;
         }
 
@@ -230,10 +240,14 @@ pub fn update(
         let cpu = cell_cpu(&cpu_network.cpu_label());
         let ram = cell_ram(&physical.percent_label());
 
-        let light_text = !taskbar_is_light();
-        let theme_changed = state.light_text != light_text;
-        if theme_changed {
-            state.light_text = light_text;
+        let mut theme_changed = false;
+        if state.theme_checked_at.elapsed() >= THEME_RECHECK {
+            state.theme_checked_at = Instant::now();
+            let light_text = !taskbar_is_light();
+            if state.light_text != light_text {
+                state.light_text = light_text;
+                theme_changed = true;
+            }
         }
 
         let text_changed =
@@ -251,7 +265,6 @@ pub fn update(
             }
         }
 
-        // 仅文本/主题变化才 force 重绘；几何不变时禁止空转 SetWindowPos（会闪）。
         relocate_and_paint(state, text_changed || theme_changed);
 
         if !unsafe { IsWindowVisible(state.hwnd).as_bool() } {
@@ -265,7 +278,10 @@ pub fn update(
 
 pub fn shutdown() {
     STATE.with(|cell| {
-        if let Some(state) = cell.borrow_mut().take() {
+        if let Some(mut state) = cell.borrow_mut().take() {
+            if let Some(layer) = state.layer.take() {
+                layer.destroy();
+            }
             unsafe {
                 let _ = DestroyWindow(state.hwnd);
                 let _ = DeleteObject(state.font.into());
@@ -274,7 +290,7 @@ pub fn shutdown() {
     });
 }
 
-/// 几何不变且内容未变 → 什么都不做。改尺寸的 SetWindowPos 会清空分层位图，必须紧跟 present。
+/// 几何不变且内容未变 → 什么都不做。
 fn relocate_and_paint(state: &mut TaskbarWindowState, content_changed: bool) {
     ensure_embedded(state);
 
@@ -284,8 +300,8 @@ fn relocate_and_paint(state: &mut TaskbarWindowState, content_changed: bool) {
         return;
     };
 
-    let geometry_changed = state.pos_x != screen_x
-        || state.pos_y != screen_y
+    let geometry_changed = (state.pos_x - screen_x).abs() > 1
+        || (state.pos_y - screen_y).abs() > 1
         || state.width != width
         || state.height != height;
 
@@ -304,13 +320,18 @@ fn relocate_and_paint(state: &mut TaskbarWindowState, content_changed: bool) {
                     let _ = ScreenToClient(taskbar, &mut pt);
                 }
             }
-            (pt.x, pt.y, None, SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_NOZORDER)
+            (
+                pt.x,
+                pt.y,
+                None,
+                SWP_NOACTIVATE | SWP_NOZORDER | SWP_NOREDRAW,
+            )
         } else {
             (
                 screen_x,
                 screen_y,
                 Some(HWND_TOPMOST),
-                SWP_NOACTIVATE | SWP_SHOWWINDOW,
+                SWP_NOACTIVATE | SWP_NOREDRAW,
             )
         };
 
@@ -328,16 +349,19 @@ fn relocate_and_paint(state: &mut TaskbarWindowState, content_changed: bool) {
 
 fn ensure_embedded(state: &mut TaskbarWindowState) {
     let Some(taskbar) = find_taskbar() else {
-        state.embedded = false;
         return;
     };
     if unsafe { IsChild(taskbar, state.hwnd).as_bool() } {
         state.embedded = true;
         return;
     }
+    // 未嵌入：不再每秒 SetParent（失败路径会闪）。仅「曾经嵌入又丢了」才立即重试。
+    if !state.embedded {
+        return;
+    }
     if try_embed(state.hwnd) {
         state.embedded = true;
-        crate::log_msg("[taskbar-window] SetParent embed ok");
+        crate::log_msg("[taskbar-window] SetParent re-embed ok");
     } else {
         state.embedded = false;
         apply_topmost_exstyle(state.hwnd, true);
@@ -465,10 +489,10 @@ fn font_disk_path() -> Option<String> {
     if let Ok(exe) = std::env::current_exe()
         && let Some(dir) = exe.parent()
     {
-        candidates.push(dir.join("fonts").join("Lilex-Regular.ttf"));
-        candidates.push(dir.join("Lilex-Regular.ttf"));
+        candidates.push(dir.join("fonts").join("Lilex-Medium.ttf"));
+        candidates.push(dir.join("Lilex-Medium.ttf"));
     }
-    candidates.push(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/fonts/Lilex-Regular.ttf"));
+    candidates.push(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/fonts/Lilex-Medium.ttf"));
     candidates
         .into_iter()
         .find(|p| p.is_file())
@@ -481,7 +505,7 @@ fn ensure_class() -> anyhow::Result<()> {
     }
     let hinstance = unsafe { GetModuleHandleW(None)? };
     let class = WNDCLASSW {
-        style: CS_HREDRAW | CS_VREDRAW,
+        style: Default::default(),
         lpfnWndProc: Some(wnd_proc),
         hInstance: hinstance.into(),
         hCursor: unsafe { LoadCursorW(None, IDC_ARROW)? },
@@ -670,12 +694,6 @@ fn measure_grid(
     cpu: &str,
     ram: &str,
 ) -> anyhow::Result<(i32, i32)> {
-    // 用上限样例锁列宽，避免网速/百分比位数变化导致每秒改窗宽闪烁。
-    const UP_SLOT: &str = "↑: 999.99 MB/s";
-    const DOWN_SLOT: &str = "↓: 999.99 MB/s";
-    const CPU_SLOT: &str = "CPU: 100%";
-    const RAM_SLOT: &str = "RAM: 100%";
-
     unsafe {
         let screen = GetDC(None);
         if screen.is_invalid() {
@@ -686,10 +704,10 @@ fn measure_grid(
         let (w_down, h_down) = text_extent(screen, down);
         let (w_cpu, h_cpu) = text_extent(screen, cpu);
         let (w_ram, h_ram) = text_extent(screen, ram);
-        let (w_up_slot, _) = text_extent(screen, UP_SLOT);
-        let (w_down_slot, _) = text_extent(screen, DOWN_SLOT);
-        let (w_cpu_slot, _) = text_extent(screen, CPU_SLOT);
-        let (w_ram_slot, _) = text_extent(screen, RAM_SLOT);
+        let (w_up_slot, _) = text_extent(screen, SLOT_UP);
+        let (w_down_slot, _) = text_extent(screen, SLOT_DOWN);
+        let (w_cpu_slot, _) = text_extent(screen, SLOT_CPU);
+        let (w_ram_slot, _) = text_extent(screen, SLOT_RAM);
         let _ = SelectObject(screen, old);
         let _ = ReleaseDC(None, screen);
 
@@ -718,19 +736,24 @@ fn premult_bgra(r: u32, g: u32, b: u32, a: u32) -> u32 {
     (a << 24) | (r << 16) | (g << 8) | b
 }
 
-/// 抬高半透明描边覆盖度，字看起来更实。
 fn deepen_coverage(a: u32) -> u32 {
     let a = a.min(255);
     if a < 2 {
         return 0;
     }
-    // 分母越小越实（256 全量 · 365 当前 · 512 更淡）
     (a + (a * (255 - a)) / 365).min(255)
 }
 
-fn present(state: &TaskbarWindowState) -> anyhow::Result<()> {
-    let w = state.width.max(1);
-    let h = state.height.max(1);
+fn ensure_layer(state: &mut TaskbarWindowState, w: i32, h: i32) -> anyhow::Result<bool> {
+    if let Some(layer) = state.layer.as_ref()
+        && layer.w == w
+        && layer.h == h
+    {
+        return Ok(false);
+    }
+    if let Some(old) = state.layer.take() {
+        old.destroy();
+    }
 
     unsafe {
         let screen = GetDC(None);
@@ -742,7 +765,6 @@ fn present(state: &TaskbarWindowState) -> anyhow::Result<()> {
             let _ = ReleaseDC(None, screen);
             anyhow::bail!("CreateCompatibleDC failed");
         }
-
         let bmi = BITMAPINFO {
             bmiHeader: BITMAPINFOHEADER {
                 biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
@@ -757,42 +779,70 @@ fn present(state: &TaskbarWindowState) -> anyhow::Result<()> {
         };
         let mut bits: *mut core::ffi::c_void = std::ptr::null_mut();
         let dib = CreateDIBSection(Some(mem_dc), &bmi, DIB_RGB_COLORS, &mut bits, None, 0);
+        let _ = ReleaseDC(None, screen);
         if dib.is_err() || bits.is_null() {
             let _ = DeleteDC(mem_dc);
-            let _ = ReleaseDC(None, screen);
             anyhow::bail!("CreateDIBSection failed");
         }
         let dib = dib?;
-        let old_bmp = SelectObject(mem_dc, dib.into());
-        let old_font = SelectObject(mem_dc, state.font.into());
+        let _ = SelectObject(mem_dc, dib.into());
+        state.layer = Some(LayerBuffer {
+            mem_dc,
+            dib: HGDIOBJ(dib.0),
+            bits: bits.cast(),
+            w,
+            h,
+        });
+    }
+    Ok(true)
+}
 
-        let px = std::slice::from_raw_parts_mut(bits as *mut u32, (w * h) as usize);
-        let light_text = state.light_text;
+/// 持久 DIB 上绘制，再 `UpdateLayeredWindow` 一次提交（尺寸不变不传 pptSize）。
+fn present(state: &mut TaskbarWindowState) -> anyhow::Result<()> {
+    let w = state.width.max(1);
+    let h = state.height.max(1);
+    let _size_changed = ensure_layer(state, w, h)?;
+    let light_text = state.light_text;
+    let font = state.font;
+    let up = state.up.clone();
+    let down = state.down.clone();
+    let cpu = state.cpu.clone();
+    let ram = state.ram.clone();
+    let hwnd = state.hwnd;
 
-        // 白字：黑底画白；黑字：白底画黑（覆盖度才能从亮度还原）。
+    let layer = state
+        .layer
+        .as_mut()
+        .ok_or_else(|| anyhow::anyhow!("layer missing"))?;
+
+    unsafe {
+        let old_font = SelectObject(layer.mem_dc, font.into());
+        let px = std::slice::from_raw_parts_mut(layer.bits, (w * h) as usize);
+
         if light_text {
             px.fill(0);
-            let _ = SetTextColor(mem_dc, COLORREF(0x00FF_FFFF));
+            let _ = SetTextColor(layer.mem_dc, COLORREF(0x00FF_FFFF));
         } else {
             px.fill(0x00FF_FFFF);
-            let _ = SetTextColor(mem_dc, COLORREF(0x0000_0000));
+            let _ = SetTextColor(layer.mem_dc, COLORREF(0x0000_0000));
         }
+        let _ = SetBkMode(layer.mem_dc, TRANSPARENT);
 
-        let _ = SetBkMode(mem_dc, TRANSPARENT);
-
-        let (_, line_h) = text_extent(mem_dc, &state.up);
-        let (w_up, _) = text_extent(mem_dc, &state.up);
-        let (w_down, _) = text_extent(mem_dc, &state.down);
-        let left_w = w_up.max(w_down);
+        let (_, line_h) = text_extent(layer.mem_dc, &up);
+        let (w_up, _) = text_extent(layer.mem_dc, &up);
+        let (w_down, _) = text_extent(layer.mem_dc, &down);
+        let (w_up_slot, _) = text_extent(layer.mem_dc, SLOT_UP);
+        let (w_down_slot, _) = text_extent(layer.mem_dc, SLOT_DOWN);
+        let left_w = w_up.max(w_down).max(w_up_slot).max(w_down_slot);
         let x_left = PAD_X;
         let x_right = PAD_X + left_w + COL_GAP;
         let y0 = PAD_Y;
         let y1 = PAD_Y + line_h + LINE_GAP;
 
-        draw_line(mem_dc, &state.up, x_left, y0);
-        draw_line(mem_dc, &state.cpu, x_right, y0);
-        draw_line(mem_dc, &state.down, x_left, y1);
-        draw_line(mem_dc, &state.ram, x_right, y1);
+        draw_line(layer.mem_dc, &up, x_left, y0);
+        draw_line(layer.mem_dc, &cpu, x_right, y0);
+        draw_line(layer.mem_dc, &down, x_left, y1);
+        draw_line(layer.mem_dc, &ram, x_right, y1);
 
         for pixel in px.iter_mut() {
             let v = *pixel;
@@ -804,7 +854,6 @@ fn present(state: &TaskbarWindowState) -> anyhow::Result<()> {
             } else {
                 255 - (r * 30 + g * 59 + b * 11) / 100
             };
-            // 抬中段覆盖度，抗锯齿边更实、字更“深”。
             let a = deepen_coverage(raw);
             *pixel = if a < 2 {
                 0
@@ -823,23 +872,19 @@ fn present(state: &TaskbarWindowState) -> anyhow::Result<()> {
             SourceConstantAlpha: 255,
             AlphaFormat: AC_SRC_ALPHA as u8,
         };
+        // 必须始终传 pptSize：部分系统在 size=None 时不刷新像素，会卡在首帧 "—"。
         let _ = UpdateLayeredWindow(
-            state.hwnd,
+            hwnd,
             None,
             None,
             Some(&size),
-            Some(mem_dc),
+            Some(layer.mem_dc),
             Some(&src),
             COLORREF(0),
             Some(&blend),
             ULW_ALPHA,
         );
-
-        let _ = SelectObject(mem_dc, old_font);
-        let _ = SelectObject(mem_dc, old_bmp);
-        let _ = DeleteObject(HGDIOBJ(dib.0));
-        let _ = DeleteDC(mem_dc);
-        let _ = ReleaseDC(None, screen);
+        let _ = SelectObject(layer.mem_dc, old_font);
     }
     Ok(())
 }
@@ -865,6 +910,11 @@ unsafe extern "system" fn wnd_proc(
             unsafe {
                 let mut ps = windows::Win32::Graphics::Gdi::PAINTSTRUCT::default();
                 let _ = windows::Win32::Graphics::Gdi::BeginPaint(hwnd, &mut ps);
+                STATE.with(|cell| {
+                    if let Some(state) = cell.borrow_mut().as_mut() {
+                        let _ = present(state);
+                    }
+                });
                 let _ = windows::Win32::Graphics::Gdi::EndPaint(hwnd, &ps);
             }
             LRESULT(0)
@@ -876,14 +926,8 @@ unsafe extern "system" fn wnd_proc(
             }
             LRESULT(0)
         }
-        // 吞掉右键，避免 DefWindowProc/系统菜单干扰任务栏托盘。
         WM_RBUTTONDOWN | WM_RBUTTONUP => LRESULT(0),
-        WM_DESTROY => {
-            unsafe {
-                SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
-            }
-            LRESULT(0)
-        }
+        WM_DESTROY => LRESULT(0),
         _ => unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) },
     }
 }
@@ -896,14 +940,8 @@ mod tests {
     fn measure_size_positive() {
         ensure_font_loaded();
         let font = create_font(96).expect("font");
-        let (w, h) = measure_grid(
-            font,
-            "↑: 1.0 KB/s",
-            "↓: 2.0 KB/s",
-            "CPU: 10%",
-            "RAM: 50%",
-        )
-        .expect("extent");
+        let (w, h) = measure_grid(font, "↑: 1.0 KB/s", "↓: 2.0 KB/s", "CPU: 10%", "RAM: 50%")
+            .expect("extent");
         unsafe {
             let _ = DeleteObject(font.into());
         }

@@ -505,12 +505,20 @@ where
     };
 
     loop {
+        // 菜单模态期间 metrics 会堆积；合并 RefreshTooltip，松手后只刷一次。
+        let mut refresh = false;
         while let Ok(command) = command_rx.try_recv() {
-            let quit = matches!(command, TrayCommand::Quit);
-            on_command(command);
-            if quit {
-                return;
+            match command {
+                TrayCommand::RefreshTooltip => refresh = true,
+                TrayCommand::Quit => {
+                    on_command(command);
+                    return;
+                }
+                other => on_command(other),
             }
+        }
+        if refresh {
+            on_command(TrayCommand::RefreshTooltip);
         }
 
         let mut had_message = false;
