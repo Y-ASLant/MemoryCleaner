@@ -6,7 +6,7 @@
 
 Windows 托盘常驻内存清理工具（Rust）。监控物理/提交内存与 CPU、网速，通过 NT 内存管理 API 请求回收。设置在**托盘右键菜单**完成。多数清理操作需要管理员权限。MIT。
 
-与完整版 **Memory Cleaner** 独立：二进制 `MemoryCleanerLite.exe`，配置 `%APPDATA%\MemoryCleanerLite\`，可并行安装运行。
+二进制 `MemoryCleanerLite.exe`，配置 `%APPDATA%\MemoryCleanerLite\`。
 
 ## 功能
 
@@ -43,7 +43,7 @@ cargo run --release
 | `auto_cleanup_threshold` | u32 | `0` | 物理内存占用阈值；`0` 仅低内存通知 |
 | `show_taskbar_window` | bool | `true` | 任务栏指标条 |
 
-旧键（如 `always_on_top`、`excluded_processes`）加载时忽略，保存时丢弃。
+未识别的配置键加载时忽略，保存时丢弃。
 
 ## 开发
 

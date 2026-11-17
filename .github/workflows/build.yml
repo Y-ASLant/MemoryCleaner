@@ -2,10 +2,10 @@ name: Build
 
 on:
   push:
-    branches: [main]
+    branches: [Lite]
     tags: ["v*"]
   pull_request:
-    branches: [main]
+    branches: [Lite]
 
 permissions:
   contents: read
@@ -30,7 +30,7 @@ jobs:
         run: |
           $version = (cargo metadata --no-deps --format-version 1 | ConvertFrom-Json).packages[0].version
           $tag = $env:GITHUB_REF_NAME
-          # Lite tags: v1.0.0 or v1.0.0-lite (avoids colliding with full-edition tags).
+          # Accepts v1.0.0 or v1.0.0-lite tag suffix.
           if ($tag -ne "v$version" -and $tag -ne "v$version-lite") {
             throw "Tag $tag does not match package version v$version or v$version-lite"
           }

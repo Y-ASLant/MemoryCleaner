@@ -37,7 +37,7 @@ main.rs → OS gate → wake-signal → ensure_elevated() → wake-signal retry
 - **Console suppression:** `#![windows_subsystem = "windows"]`; diagnostics via `OutputDebugStringA` / optional `App.log`.
 - **Tray command channel:** One `mpsc` carries tray clicks/menu, hotkeys, single-instance wake, low-memory, spin frames, and optimize finished into the main `run_loop`.
 - **Automatic cleanup:** Low-memory `MemoryNotificationMonitor` + threshold poll thread; both honor `auto_cleanup_enabled`. Threshold `0` disables threshold triggers.
-- **Settings via tray:** Cleanup area checks (standby variants mutually exclusive), auto-cleanup, threshold presets, run at startup, notifications, debug log, hotkey enable, taskbar window, language, open config folder. **Hotkey chord string** is TOML-only (no GUI recorder). Independent of full Memory Cleaner (separate exe, config dir, mutex, startup task).
+- **Settings via tray:** Cleanup area checks (standby variants mutually exclusive), auto-cleanup, threshold presets, run at startup, notifications, debug log, hotkey enable, taskbar window, language, open config folder. **Hotkey chord string** is TOML-only (no GUI recorder).
 - **Hotkey:** Transactional rebind in `win32::hotkey` (`RegisterHotKey` worker thread). Enable/disable from tray; chord edit via `settings.toml`.
 - **Startup:** Task Scheduler logon task `/RL HIGHEST`; always tray-only (no “launch hidden window”).
 - **COM lifetime:** `ComApartment::run` for toast/startup paths; release COM objects before leaving the apartment.
@@ -67,7 +67,7 @@ cargo run --release
 just clean
 ```
 
-**CI:** `.github/workflows/build.yml` on PRs/pushes to `main` and `v*` tags. Tags publish release when version matches `Cargo.toml`; notes from `docs/CHANGELOG.md`.
+**CI:** `.github/workflows/build.yml` on PRs/pushes to `Lite` and `v*` tags. Tags publish release when version matches `Cargo.toml`; notes from `docs/CHANGELOG.md`.
 
 **Tests:** `cargo test` — unit tests in `src/` + `tests/settings_persistence.rs`.
 

@@ -6,7 +6,7 @@
 
 Windows tray-resident memory cleaner (Rust). Monitors physical/commit memory plus CPU and network, and requests reclamation via NT memory-management APIs. Settings live in the **tray context menu**. Most cleanup steps need administrator rights. MIT.
 
-Independent from full **Memory Cleaner**: binary `MemoryCleanerLite.exe`, config `%APPDATA%\MemoryCleanerLite\`, can run side by side.
+Binary `MemoryCleanerLite.exe`, config `%APPDATA%\MemoryCleanerLite\`.
 
 ## Features
 
@@ -43,7 +43,7 @@ Artifact: `target/release/MemoryCleanerLite.exe`
 | `auto_cleanup_threshold` | u32 | `0` | Physical usage %; `0` = low-memory notify only |
 | `show_taskbar_window` | bool | `true` | Taskbar metrics strip |
 
-Legacy keys (`always_on_top`, `excluded_processes`, …) are ignored on load and dropped on save.
+Unrecognized keys are ignored on load and dropped on save.
 
 ## Development
 
