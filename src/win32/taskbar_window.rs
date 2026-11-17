@@ -5,14 +5,12 @@
 //! 不用 DirectComposition 合成交换链：那条路径要等 `Present` 翻转，被任务栏重绘打断时会露出半帧。
 //! 仅主线程调用。
 
-use std::cell::{Cell, RefCell};
+use std::cell::RefCell;
 use std::path::PathBuf;
-use std::sync::{LazyLock, OnceLock};
+use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 
-use windows::Win32::Foundation::{
-    COLORREF, GetLastError, HWND, LPARAM, LRESULT, POINT, RECT, SIZE, WPARAM,
-};
+use windows::Win32::Foundation::{COLORREF, HWND, LPARAM, LRESULT, POINT, RECT, SIZE, WPARAM};
 use windows::Win32::Graphics::Gdi::{
     AC_SRC_ALPHA, AC_SRC_OVER, ANTIALIASED_QUALITY, AddFontMemResourceEx, BI_RGB, BITMAPINFO,
     BITMAPINFOHEADER, BLENDFUNCTION, BitBlt, CLIP_DEFAULT_PRECIS, CreateCompatibleDC,
@@ -30,10 +28,9 @@ use windows::Win32::UI::WindowsAndMessaging::{
     GetParent, GetWindowLongPtrW, GetWindowRect, HMENU, HWND_TOPMOST, IDC_ARROW, LoadCursorW,
     RegisterClassW, SW_HIDE, SW_SHOWNOACTIVATE, SWP_DEFERERASE, SWP_NOACTIVATE, SWP_NOCOPYBITS,
     SWP_NOREDRAW, SWP_NOSENDCHANGING, SWP_NOZORDER, SetParent, SetWindowLongPtrW, SetWindowPos,
-    ShowWindow, ULW_ALPHA, UpdateLayeredWindow, WINDOWPOS, WM_DESTROY, WM_DISPLAYCHANGE,
-    WM_ERASEBKGND, WM_LBUTTONUP, WM_MOVE, WM_NCPAINT, WM_PAINT, WM_RBUTTONDOWN, WM_RBUTTONUP,
-    WM_SHOWWINDOW, WM_SIZE, WM_WINDOWPOSCHANGED, WNDCLASSW, WS_CLIPSIBLINGS, WS_EX_LAYERED,
-    WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_POPUP,
+    ShowWindow, ULW_ALPHA, UpdateLayeredWindow, WM_DESTROY, WM_ERASEBKGND, WM_LBUTTONUP, WM_PAINT,
+    WM_RBUTTONDOWN, WM_RBUTTONUP, WNDCLASSW, WS_CLIPSIBLINGS, WS_EX_LAYERED, WS_EX_NOACTIVATE,
+    WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_POPUP,
 };
 
 use windows::core::{PCWSTR, w};
@@ -63,19 +60,10 @@ const SLOT_RAM: &str = "RAM: 100%";
 
 thread_local! {
     static STATE: RefCell<Option<TaskbarWindowState>> = const { RefCell::new(None) };
-    static LAST_ULW_AT: Cell<Option<Instant>> = const { Cell::new(None) };
 }
 
 static CLASS_REGISTERED: OnceLock<()> = OnceLock::new();
 static FONT_LOADED: OnceLock<bool> = OnceLock::new();
-
-static FLICKER_T0: LazyLock<Instant> = LazyLock::new(Instant::now);
-
-/// 闪烁诊断：始终 `OutputDebugString`；托盘开「调试日志」时再写入 `App.log`。
-fn flicker_log(msg: impl AsRef<str>) {
-    let ms = FLICKER_T0.elapsed().as_millis();
-    crate::log_msg(&format!("[taskbar-flicker] t={ms}ms {}", msg.as_ref()));
-}
 
 struct TaskbarWindowState {
     hwnd: HWND,
@@ -164,10 +152,6 @@ pub fn install() -> anyhow::Result<()> {
 
     STATE.with(|cell| {
         if let Some(state) = cell.borrow_mut().as_mut() {
-            flicker_log(format!(
-                "show before first ulw embed={} size={}x{} light_text={}",
-                state.embedded, state.width, state.height, state.light_text
-            ));
             unsafe {
                 let _ = ShowWindow(state.hwnd, SW_SHOWNOACTIVATE);
             }
@@ -192,9 +176,7 @@ pub fn set_enabled(enabled: bool) {
         let Some(state) = guard.as_mut() else {
             return;
         };
-        let prev = state.enabled;
         state.enabled = enabled;
-        flicker_log(format!("set_enabled {prev}->{enabled}"));
         unsafe {
             let _ = ShowWindow(
                 state.hwnd,
@@ -226,7 +208,6 @@ pub fn update(physical: &MemorySection, cpu_network: &CpuNetworkSnapshot) {
             unsafe {
                 let _ = DeleteObject(state.font.into());
             }
-            flicker_log(format!("dpi {}->{}", state.dpi, dpi));
             state.font = font;
             state.dpi = dpi;
             dpi_changed = true;
@@ -244,10 +225,6 @@ pub fn update(physical: &MemorySection, cpu_network: &CpuNetworkSnapshot) {
             if let Some(light) = system_uses_light_theme() {
                 let light_text = !light;
                 if state.light_text != light_text {
-                    flicker_log(format!(
-                        "theme light_text {}->{}",
-                        state.light_text, light_text
-                    ));
                     state.light_text = light_text;
                     theme_changed = true;
                 }
@@ -256,9 +233,6 @@ pub fn update(physical: &MemorySection, cpu_network: &CpuNetworkSnapshot) {
 
         let text_changed =
             state.up != up || state.down != down || state.cpu != cpu || state.ram != ram;
-        let mut measure_applied = false;
-        let mut measure_clamped = false;
-        let mut measured = (state.width, state.height);
         if text_changed {
             state.up = up;
             state.down = down;
@@ -267,37 +241,15 @@ pub fn update(physical: &MemorySection, cpu_network: &CpuNetworkSnapshot) {
             if let Ok((w, h)) =
                 measure_grid(state.font, &state.up, &state.down, &state.cpu, &state.ram)
             {
-                measured = (w, h);
-                // 1px 测量抖动会 ResizeBuffers / SetWindowPos，偶发闪一下。
+                // 1px 测量抖动会 SetWindowPos，偶发闪一下。
                 if state.pos_x == i32::MIN
                     || (state.width - w).abs() > 2
                     || (state.height - h).abs() > 2
                 {
                     state.width = w;
                     state.height = h;
-                    measure_applied = true;
-                } else if state.width != w || state.height != h {
-                    measure_clamped = true;
                 }
             }
-        }
-
-        if text_changed || theme_changed || dpi_changed || measure_applied || measure_clamped {
-            flicker_log(format!(
-                "update text={text_changed} theme={theme_changed} dpi={dpi_changed} \
-                 measure={measure_applied} clamp={measure_clamped} \
-                 measured={}x{} applied={}x{} light_text={} \
-                 \"{}\" | \"{}\" | \"{}\" | \"{}\"",
-                measured.0,
-                measured.1,
-                state.width,
-                state.height,
-                state.light_text,
-                state.up,
-                state.down,
-                state.cpu,
-                state.ram
-            ));
         }
 
         relocate_and_paint(state, text_changed || theme_changed || dpi_changed);
@@ -322,10 +274,6 @@ fn relocate_and_paint(state: &mut TaskbarWindowState, content_changed: bool) {
     let Some((screen_x, screen_y, width, height)) =
         compute_screen_placement(state.width, state.height)
     else {
-        flicker_log(format!(
-            "place fail content={content_changed} size={}x{} embed={}",
-            state.width, state.height, state.embedded
-        ));
         return;
     };
 
@@ -336,11 +284,6 @@ fn relocate_and_paint(state: &mut TaskbarWindowState, content_changed: bool) {
     let geometry_changed = dx.abs() > 8 || dy.abs() > 8 || dw.abs() > 2 || dh.abs() > 2;
 
     if !geometry_changed && !content_changed {
-        flicker_log(format!(
-            "skip content=0 geo=0 dx={dx} dy={dy} dw={dw} dh={dh} \
-             pos={}x{} size={}x{} embed={}",
-            state.pos_x, state.pos_y, state.width, state.height, state.embedded
-        ));
         return;
     }
 
@@ -379,23 +322,7 @@ fn relocate_and_paint(state: &mut TaskbarWindowState, content_changed: bool) {
             )
         };
 
-        let ok =
-            unsafe { SetWindowPos(state.hwnd, insert_after, x, y, width, height, flags).is_ok() };
-        flicker_log(format!(
-            "swp ok={ok} content={content_changed} embed={} \
-             from={}x{} {}x{} -> to={}x{} {}x{} client={}x{}",
-            state.embedded,
-            state.pos_x,
-            state.pos_y,
-            state.width,
-            state.height,
-            screen_x,
-            screen_y,
-            width,
-            height,
-            x,
-            y
-        ));
+        let _ = unsafe { SetWindowPos(state.hwnd, insert_after, x, y, width, height, flags) };
         state.pos_x = screen_x;
         state.pos_y = screen_y;
         state.width = width;
@@ -408,41 +335,31 @@ fn relocate_and_paint(state: &mut TaskbarWindowState, content_changed: bool) {
 fn ensure_embedded(state: &mut TaskbarWindowState) {
     let Some(taskbar) = find_taskbar() else {
         if state.embedded {
-            flicker_log("embed lost: Shell_TrayWnd missing");
             state.embedded = false;
         }
         return;
     };
 
-    // WS_POPUP + SetParent 后 IsChild 常年 false（App.log：每秒 re-SetParent →
-    // WM_SHOWWINDOW 0→1，整秒闪一次）。以 GetParent == taskbar 为准。
+    // WS_POPUP + SetParent 后 IsChild 常年 false；误用会每秒 re-SetParent → 闪。
+    // 以 GetParent == taskbar 为准。GetParent 失败不等于丢嵌，不在热路径重嵌。
     let parent = unsafe { GetParent(state.hwnd).ok() };
     if parent == Some(taskbar) {
         state.embedded = true;
         return;
     }
-
-    // 未嵌入过：不在热路径上抢 SetParent。
     if !state.embedded {
         return;
     }
-
-    // GetParent 失败不等于丢嵌（跨进程常见）；只有父窗口明确不是任务栏才重嵌。
-    let Some(parent) = parent else {
+    let Some(_parent) = parent else {
         return;
     };
 
-    flicker_log(format!(
-        "embed parent mismatch parent={parent:?} taskbar={taskbar:?}, re-SetParent"
-    ));
     if try_embed(state.hwnd) {
         state.embedded = true;
-        flicker_log("embed re-SetParent ok");
         crate::log_msg("[taskbar-window] SetParent re-embed ok");
     } else {
         state.embedded = false;
         apply_topmost_exstyle(state.hwnd, true);
-        flicker_log("embed re-SetParent failed -> TOPMOST");
     }
 }
 
@@ -841,23 +758,17 @@ fn present_frame(state: &TaskbarWindowState) {
 }
 
 fn present_layered(state: &TaskbarWindowState) {
-    let start = Instant::now();
     let pixels = rasterize(state);
     let w = state.width.max(1);
     let h = state.height.max(1);
-    let opaque = pixels.iter().filter(|p| (*p >> 24) != 0).count();
-    let since_prev_ms =
-        LAST_ULW_AT.with(|cell| cell.get().map(|t| t.elapsed().as_millis()).unwrap_or(0));
     unsafe {
         let screen = GetDC(None);
         if screen.is_invalid() {
-            flicker_log("ulw abort GetDC failed");
             return;
         }
         let mem = CreateCompatibleDC(Some(screen));
         let _ = ReleaseDC(None, screen);
         if mem.is_invalid() {
-            flicker_log("ulw abort CreateCompatibleDC failed");
             return;
         }
         let bmi = BITMAPINFO {
@@ -876,7 +787,6 @@ fn present_layered(state: &TaskbarWindowState) {
         let dib = CreateDIBSection(Some(mem), &bmi, DIB_RGB_COLORS, &mut bits, None, 0);
         if dib.is_err() || bits.is_null() {
             let _ = DeleteDC(mem);
-            flicker_log("ulw abort CreateDIBSection failed");
             return;
         }
         let dib = dib.unwrap_or_default();
@@ -892,7 +802,7 @@ fn present_layered(state: &TaskbarWindowState) {
             SourceConstantAlpha: 255,
             AlphaFormat: AC_SRC_ALPHA as u8,
         };
-        let ok = UpdateLayeredWindow(
+        let _ = UpdateLayeredWindow(
             state.hwnd,
             None,
             None,
@@ -902,27 +812,9 @@ fn present_layered(state: &TaskbarWindowState) {
             COLORREF(0),
             Some(&blend),
             ULW_ALPHA,
-        )
-        .is_ok();
-        let err = if ok { 0 } else { GetLastError().0 };
+        );
         let _ = DeleteObject(HGDIOBJ(dib.0));
         let _ = DeleteDC(mem);
-        LAST_ULW_AT.with(|cell| cell.set(Some(Instant::now())));
-        flicker_log(format!(
-            "ulw ok={ok} err={err} cost_ms={} since_prev_ms={since_prev_ms} \
-             size={w}x{h} opaque={opaque}/{} embed={} light_text={} \
-             pos={}x{} \"{}\" | \"{}\" | \"{}\" | \"{}\"",
-            start.elapsed().as_millis(),
-            pixels.len(),
-            state.embedded,
-            state.light_text,
-            state.pos_x,
-            state.pos_y,
-            state.up,
-            state.down,
-            state.cpu,
-            state.ram
-        ));
     }
 }
 
@@ -1047,67 +939,15 @@ unsafe extern "system" fn wnd_proc(
     match msg {
         WM_PAINT => {
             // 分层窗口的像素来自 UpdateLayeredWindow，不是这块 GDI 表面；这里只消掉脏区。
-            flicker_log("msg WM_PAINT");
             unsafe {
                 let _ = windows::Win32::Graphics::Gdi::ValidateRect(Some(hwnd), None);
             }
             LRESULT(0)
         }
-        WM_ERASEBKGND => {
-            flicker_log("msg WM_ERASEBKGND");
-            LRESULT(1)
-        }
-        WM_NCPAINT => {
-            flicker_log("msg WM_NCPAINT");
-            unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
-        }
-        WM_SHOWWINDOW => {
-            flicker_log(format!("msg WM_SHOWWINDOW wparam={}", wparam.0));
-            unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
-        }
-        WM_SIZE => {
-            flicker_log(format!(
-                "msg WM_SIZE type={} cx={} cy={}",
-                wparam.0,
-                lparam.0 as u16,
-                (lparam.0 >> 16) as u16
-            ));
-            unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
-        }
-        WM_MOVE => {
-            flicker_log(format!(
-                "msg WM_MOVE x={} y={}",
-                lparam.0 as i16,
-                (lparam.0 >> 16) as i16
-            ));
-            unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
-        }
-        WM_WINDOWPOSCHANGED => {
-            let detail = unsafe {
-                let wp = lparam.0 as *const WINDOWPOS;
-                if wp.is_null() {
-                    "null".into()
-                } else {
-                    let wp = &*wp;
-                    format!(
-                        "x={} y={} cx={} cy={} flags=0x{:x}",
-                        wp.x, wp.y, wp.cx, wp.cy, wp.flags.0
-                    )
-                }
-            };
-            flicker_log(format!("msg WM_WINDOWPOSCHANGED {detail}"));
-            unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
-        }
-        WM_DISPLAYCHANGE => {
-            flicker_log(format!("msg WM_DISPLAYCHANGE wparam={}", wparam.0));
-            unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
-        }
+        WM_ERASEBKGND => LRESULT(1),
         WM_LBUTTONUP => LRESULT(0),
         WM_RBUTTONDOWN | WM_RBUTTONUP => LRESULT(0),
-        WM_DESTROY => {
-            flicker_log("msg WM_DESTROY");
-            LRESULT(0)
-        }
+        WM_DESTROY => LRESULT(0),
         _ => unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) },
     }
 }

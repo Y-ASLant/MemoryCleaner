@@ -12,6 +12,7 @@
 - **托盘设置菜单**：右键菜单可切换清理区域、自动清理与阈值、开机自启、通知、调试日志、全局热键开关、任务栏窗口与语言；支持打开配置目录。左键托盘图标触发一键清理；托盘仍用应用图标（不绘制占用百分比）。
 - **任务栏窗口**：类似 TrafficMonitor，通知区左侧 2×2（↑/↓/CPU/RAM），字号 13、两行按可见字面垂直居中；`SetParent` 嵌任务栏，失败则 `TOPMOST`；位图光栅化后 `UpdateLayeredWindow` 原子提交整帧。设置项 `show_taskbar_window`。
 - **CPU 与网速监控**：托盘提示显示 CPU 占用与上下行网速。采样基于 `sysinfo`（约 1 秒刷新），环回/隧道接口不计入网速汇总。
+- **调试日志模块**（`src/log.rs`）：托盘「调试日志」默认关闭；开启后写入 exe 旁 `App.log`，**单个文件上限 2 MiB**（超出丢弃最旧行，不滚动多文件）。
 
 ### 变更
 
@@ -19,6 +20,7 @@
 - **依赖**：引入 `sysinfo` 0.40（仅 `system` + `network`）；移除 `gpui-kit` 与 `raw-window-handle`、`smol`。
 - **二次启动**：已运行实例收到信号后走托盘清理入口，不再尝试显示窗口。
 - **窗口相关设置**：`always_on_top` / `close_to_notification_area` 仍可从旧配置读入但界面不再提供；进程排除列表与热键组合请编辑 `%APPDATA%\MemoryCleaner\settings.toml`。
+- **任务栏窗口闪烁**：`WS_POPUP` 嵌 `Shell_TrayWnd` 后 `IsChild` 恒 false，热路径误 `SetParent` 触发每秒 `WM_SHOWWINDOW` 显隐；改为 `GetParent == taskbar` 判定，失败不重嵌。
 
 ### 移除
 
@@ -231,6 +233,7 @@ Records Memory Cleaner releases. Format follows [Keep a Changelog](https://keepa
 - **Tray settings menu**: Right-click toggles cleanup areas, auto-cleanup and threshold, run at startup, notifications, debug logging, global hotkey, taskbar window, and language; open config folder. Left-click tray icon runs cleanup; tray keeps the app icon (no usage percent drawn on it).
 - **Taskbar window**: TrafficMonitor-style 2×2 strip (↑/↓/CPU/RAM) left of the tray, 13px type with rows centered on the visible glyphs; `SetParent` with `TOPMOST` fallback; rasterizes to a bitmap and commits the whole frame atomically via `UpdateLayeredWindow`. Setting `show_taskbar_window`.
 - **CPU and network rates**: Tray tooltip shows CPU usage and download/upload throughput. Sampling uses `sysinfo` (~1s); loopback/tunnel interfaces are excluded from network totals.
+- **Debug log module** (`src/log.rs`): Tray "debug logging" off by default; when on, appends beside the exe as `App.log` with a **2 MiB single-file cap** (drops oldest lines; no multi-file rotation).
 
 ### Changed
 
@@ -238,6 +241,7 @@ Records Memory Cleaner releases. Format follows [Keep a Changelog](https://keepa
 - **Dependencies**: Add `sysinfo` 0.40 (`system` + `network` only); remove `gpui-kit`, `raw-window-handle`, and `smol`.
 - **Second launch**: A running instance receives the wake signal as the tray cleanup entry path; no window is shown.
 - **Window-related settings**: `always_on_top` / `close_to_notification_area` still load from older TOML but have no UI; process exclusions and hotkey chords are edited in `%APPDATA%\MemoryCleaner\settings.toml`.
+- **Taskbar strip flicker**: After `SetParent` of a `WS_POPUP` into `Shell_TrayWnd`, `IsChild` stays false and the hot path re-`SetParent`ed every second (`WM_SHOWWINDOW` hide/show). Now uses `GetParent == taskbar`; no re-embed when `GetParent` fails.
 
 ### Removed
 

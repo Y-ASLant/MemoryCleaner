@@ -1,3 +1,9 @@
+//! 诊断日志模块。
+//!
+//! - `log_msg`：始终写 Windows 调试流（DebugView）与 stderr
+//! - `write`：仅在托盘「调试日志」开启时追加 `App.log`（默认关闭）
+//! - 单个 `App.log` 上限 [`MAX_LOG_FILE_BYTES`]（2 MiB），超出丢弃最旧行
+
 use std::fs::OpenOptions;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
@@ -11,6 +17,8 @@ static LOG_STATE: Mutex<LogState> = Mutex::new(LogState { last_purge: 0 });
 
 /// 丢弃时间戳 `[unix_secs.millis]` 早于此保留期的日志行。
 pub const LOG_RETENTION_SECS: u64 = 7 * 24 * 60 * 60;
+/// 单个 `App.log` 文件字节上限；超出后保留尾部新内容。
+pub const MAX_LOG_FILE_BYTES: usize = 2 * 1024 * 1024;
 const LOG_PURGE_INTERVAL_SECS: u64 = 60 * 60;
 const MAX_UNTIMESTAMPED_LOG_LINES: usize = 256;
 const MAX_UNTIMESTAMPED_LOG_BYTES: usize = 64 * 1024;
@@ -34,6 +42,7 @@ fn write_debug_output(msg: &str) {
 
 /// 向 Windows 调试流写诊断信息（可用 DebugView 查看）；
 /// 若已附着 stderr，同时写入 stderr。
+/// 文件落盘仍受 `set_debug_enabled` 控制（默认关闭）。
 pub fn log_msg(msg: &str) {
     write_debug_output(msg);
     write(msg);
@@ -61,6 +70,20 @@ pub(crate) fn parse_line_timestamp(line: &str) -> Option<u64> {
     inner.split('.').next()?.parse().ok()
 }
 
+/// 保留不超过 `max_bytes` 的尾部内容，并尽量对齐到行首。
+pub(crate) fn trim_to_max_bytes(content: &str, max_bytes: usize) -> &str {
+    if content.len() <= max_bytes {
+        return content;
+    }
+    let mut start = content.len() - max_bytes;
+    if start > 0 && content.as_bytes()[start - 1] != b'\n' {
+        // 起点落在行中：丢弃半行，从下一完整行开始。
+        if let Some(rel) = content[start..].find('\n') {
+            start += rel + 1;
+        }
+    }
+    &content[start..]
+}
 fn retained_log_content(content: &str, now: u64) -> Option<String> {
     let lines: Vec<&str> = content.split_inclusive('\n').collect();
     let mut keep_untimestamped = vec![false; lines.len()];
@@ -97,6 +120,12 @@ fn retained_log_content(content: &str, now: u64) -> Option<String> {
         }
     }
 
+    let sized = trim_to_max_bytes(&kept, MAX_LOG_FILE_BYTES);
+    if sized.len() != kept.len() {
+        changed = true;
+        kept = sized.to_owned();
+    }
+
     changed.then_some(kept)
 }
 
@@ -116,6 +145,33 @@ fn purge_stale_entries(path: &Path, now: u64) -> io::Result<()> {
             Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
             Err(error) => Err(error),
         };
+    }
+
+    let mut file = OpenOptions::new().write(true).truncate(true).open(path)?;
+    file.write_all(kept.as_bytes())
+}
+
+fn enforce_size_limit(path: &Path) -> io::Result<()> {
+    let len = match std::fs::metadata(path) {
+        Ok(meta) => meta.len() as usize,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error),
+    };
+    if len <= MAX_LOG_FILE_BYTES {
+        return Ok(());
+    }
+
+    let content = std::fs::read_to_string(path)?;
+    let kept = trim_to_max_bytes(&content, MAX_LOG_FILE_BYTES);
+    if kept.is_empty() {
+        return match std::fs::remove_file(path) {
+            Ok(()) => Ok(()),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+            Err(error) => Err(error),
+        };
+    }
+    if kept.len() == content.len() {
+        return Ok(());
     }
 
     let mut file = OpenOptions::new().write(true).truncate(true).open(path)?;
@@ -145,7 +201,7 @@ fn report_log_file_error(error: &io::Error) {
     }
 }
 
-/// 调试日志开启时，向 `App.log` 追加一行。
+/// 调试日志开启时，向 `App.log` 追加一行（默认关闭；单文件 ≤ 2 MiB）。
 pub fn write(msg: &str) {
     if !DEBUG_ENABLED.load(Ordering::Relaxed) {
         return;
@@ -169,6 +225,9 @@ pub fn write(msg: &str) {
 
     let line = format!("[{timestamp}] {msg}\n");
     if let Err(error) = append_log_line(&path, line.as_bytes()) {
+        report_log_file_error(&error);
+        succeeded = false;
+    } else if let Err(error) = enforce_size_limit(&path) {
         report_log_file_error(&error);
         succeeded = false;
     }
@@ -222,6 +281,14 @@ mod tests {
         let content = "x".repeat(MAX_UNTIMESTAMPED_LOG_BYTES + 1);
         let retained = retained_log_content(&content, 1).expect("content should be bounded");
         assert!(retained.is_empty());
+    }
+
+    #[test]
+    fn trim_to_max_bytes_keeps_tail_on_line_boundary() {
+        let content = "aaaa\nbbbb\ncccc\n";
+        assert_eq!(trim_to_max_bytes(content, content.len()), content);
+        assert_eq!(trim_to_max_bytes(content, 10), "bbbb\ncccc\n");
+        assert_eq!(trim_to_max_bytes(content, 5), "cccc\n");
     }
 
     #[test]

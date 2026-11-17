@@ -80,7 +80,7 @@ just clean
 - Settings: atomic TOML write under `%APPDATA%\MemoryCleaner\settings.toml`.
 - `MemoryAreas` bitflags in `optimize.rs`.
 - Embedded `App.ico` (`winres`) / `App.png` (`include_bytes!` in tray).
-- Debug logging: `log_msg` → OutputDebugString; `log::write` → `App.log` when enabled.
+- Debug logging: `log_msg` → OutputDebugString; `log::write` → `App.log` when enabled (default off; single file ≤ 2 MiB).
 
 ## Important Files
 
