@@ -13,11 +13,11 @@ use std::time::{Duration, Instant};
 use windows::Win32::Foundation::{COLORREF, HWND, LPARAM, LRESULT, POINT, RECT, SIZE, WPARAM};
 use windows::Win32::Graphics::Gdi::{
     AC_SRC_ALPHA, AC_SRC_OVER, ANTIALIASED_QUALITY, AddFontMemResourceEx, BI_RGB, BITMAPINFO,
-    BITMAPINFOHEADER, BLENDFUNCTION, BitBlt, CLIP_DEFAULT_PRECIS, CreateCompatibleDC,
-    CreateDIBSection, CreateFontW, DEFAULT_CHARSET, DEFAULT_PITCH, DIB_RGB_COLORS, DeleteDC,
-    DeleteObject, FW_MEDIUM, GetDC, GetDeviceCaps, GetTextExtentPoint32W, GetTextMetricsW, HDC,
-    HFONT, HGDIOBJ, LOGPIXELSY, OUT_DEFAULT_PRECIS, ReleaseDC, SRCCOPY, ScreenToClient,
-    SelectObject, SetBkMode, SetTextColor, TEXTMETRICW, TRANSPARENT, TextOutW,
+    BITMAPINFOHEADER, BLENDFUNCTION, CLIP_DEFAULT_PRECIS, CreateCompatibleDC, CreateDIBSection,
+    CreateFontW, DEFAULT_CHARSET, DEFAULT_PITCH, DIB_RGB_COLORS, DeleteDC, DeleteObject, FW_MEDIUM,
+    GetDC, GetDeviceCaps, GetTextExtentPoint32W, GetTextMetricsW, HDC, HFONT, HGDIOBJ, LOGPIXELSY,
+    OUT_DEFAULT_PRECIS, ReleaseDC, ScreenToClient, SelectObject, SetBkMode, SetTextColor,
+    TEXTMETRICW, TRANSPARENT, TextOutW,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::System::Registry::{
@@ -46,8 +46,6 @@ const PAD_Y: i32 = 2;
 const COL_GAP: i32 = 10;
 const LINE_GAP: i32 = 0;
 const GAP_FROM_NOTIFY: i32 = 6;
-/// 任务栏亮度 ≥ 此值 → 黑字，否则白字。
-const LIGHT_TASKBAR_LUMA: u32 = 140;
 const THEME_RECHECK: Duration = Duration::from_secs(5);
 const FONT_TTF: &[u8] = include_bytes!("../fonts/Lilex-Medium.ttf");
 const FONT_FACE: &str = "Lilex";
@@ -145,7 +143,7 @@ pub fn install() -> anyhow::Result<()> {
             pos_y: i32::MIN,
             font,
             dpi,
-            light_text: !taskbar_is_light(),
+            light_text: !system_uses_light_theme().unwrap_or(false),
             theme_checked_at: Instant::now(),
         });
     });
@@ -221,7 +219,7 @@ pub fn update(physical: &MemorySection, cpu_network: &CpuNetworkSnapshot) {
         let mut theme_changed = false;
         if state.theme_checked_at.elapsed() >= THEME_RECHECK {
             state.theme_checked_at = Instant::now();
-            // 屏幕 BitBlt 会让 DWM 重合成任务栏。主题只信注册表，读不到就保持当前字色。
+            // 读不到主题注册表时保持当前字色。
             if let Some(light) = system_uses_light_theme() {
                 let light_text = !light;
                 if state.light_text != light_text {
@@ -329,37 +327,31 @@ fn relocate_and_paint(state: &mut TaskbarWindowState, content_changed: bool) {
         state.height = height;
     }
 
-    present_frame(state);
+    present_layered(state);
 }
 
 fn ensure_embedded(state: &mut TaskbarWindowState) {
     let Some(taskbar) = find_taskbar() else {
-        if state.embedded {
-            state.embedded = false;
-        }
+        state.embedded = false;
         return;
     };
 
     // WS_POPUP + SetParent 后 IsChild 常年 false；误用会每秒 re-SetParent → 闪。
     // 以 GetParent == taskbar 为准。GetParent 失败不等于丢嵌，不在热路径重嵌。
-    let parent = unsafe { GetParent(state.hwnd).ok() };
-    if parent == Some(taskbar) {
-        state.embedded = true;
-        return;
-    }
-    if !state.embedded {
-        return;
-    }
-    let Some(_parent) = parent else {
-        return;
-    };
-
-    if try_embed(state.hwnd) {
-        state.embedded = true;
-        crate::log_msg("[taskbar-window] SetParent re-embed ok");
-    } else {
-        state.embedded = false;
-        apply_topmost_exstyle(state.hwnd, true);
+    match unsafe { GetParent(state.hwnd).ok() } {
+        Some(parent) if parent == taskbar => {
+            state.embedded = true;
+        }
+        Some(_) if state.embedded => {
+            if try_embed(state.hwnd) {
+                state.embedded = true;
+                crate::log_msg("[taskbar-window] SetParent re-embed ok");
+            } else {
+                state.embedded = false;
+                apply_topmost_exstyle(state.hwnd, true);
+            }
+        }
+        _ => {}
     }
 }
 
@@ -542,16 +534,7 @@ fn window_dpi(hwnd: HWND) -> i32 {
     }
 }
 
-/// 浅色任务栏 → true（应用黑字）。Win11 合成栏上窗口 DC 的 GetPixel 常为 0，不可靠。
-fn taskbar_is_light() -> bool {
-    if let Some(light) = system_uses_light_theme() {
-        return light;
-    }
-    screen_taskbar_luma()
-        .map(|luma| luma >= LIGHT_TASKBAR_LUMA)
-        .unwrap_or(false)
-}
-
+/// 浅色任务栏主题（黑字）。只信注册表；不采屏幕（BitBlt 会触发 DWM 重合成）。
 fn system_uses_light_theme() -> Option<bool> {
     let subkey = wide_null(r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");
     let mut key = HKEY::default();
@@ -587,71 +570,6 @@ fn system_uses_light_theme() -> Option<bool> {
     }
     let value = u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
     Some(value != 0)
-}
-
-/// 从屏幕 DC `BitBlt` 采样任务栏左侧（避开右侧托盘浮层）。
-fn screen_taskbar_luma() -> Option<u32> {
-    let taskbar = find_taskbar()?;
-    let mut bar = RECT::default();
-    unsafe { GetWindowRect(taskbar, &mut bar) }.ok()?;
-    let y = bar.top + (bar.bottom - bar.top).max(1) / 2;
-    let xs = [
-        bar.left + 40,
-        bar.left + (bar.right - bar.left).max(1) / 5,
-        bar.left + (bar.right - bar.left).max(1) / 3,
-    ];
-
-    unsafe {
-        let screen = GetDC(None);
-        if screen.is_invalid() {
-            return None;
-        }
-        let mem = CreateCompatibleDC(Some(screen));
-        if mem.is_invalid() {
-            let _ = ReleaseDC(None, screen);
-            return None;
-        }
-        let bmi = BITMAPINFO {
-            bmiHeader: BITMAPINFOHEADER {
-                biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
-                biWidth: 1,
-                biHeight: 1,
-                biPlanes: 1,
-                biBitCount: 32,
-                biCompression: BI_RGB.0,
-                ..Default::default()
-            },
-            ..Default::default()
-        };
-        let mut bits: *mut core::ffi::c_void = std::ptr::null_mut();
-        let dib = CreateDIBSection(Some(mem), &bmi, DIB_RGB_COLORS, &mut bits, None, 0);
-        if dib.is_err() || bits.is_null() {
-            let _ = DeleteDC(mem);
-            let _ = ReleaseDC(None, screen);
-            return None;
-        }
-        let dib = dib.ok()?;
-        let old = SelectObject(mem, dib.into());
-        let px = &mut *(bits as *mut u32);
-        let mut sum = 0u32;
-        let mut n = 0u32;
-        for x in xs {
-            if BitBlt(mem, 0, 0, 1, 1, Some(screen), x, y, SRCCOPY).is_err() {
-                continue;
-            }
-            let v = *px;
-            let b = v & 0xFF;
-            let g = (v >> 8) & 0xFF;
-            let r = (v >> 16) & 0xFF;
-            sum += (r * 299 + g * 587 + b * 114) / 1000;
-            n += 1;
-        }
-        let _ = SelectObject(mem, old);
-        let _ = DeleteObject(HGDIOBJ(dib.0));
-        let _ = DeleteDC(mem);
-        let _ = ReleaseDC(None, screen);
-        sum.checked_div(n)
-    }
 }
 
 fn create_font(dpi: i32) -> anyhow::Result<HFONT> {
@@ -751,10 +669,6 @@ fn text_extent(hdc: HDC, text: &str) -> (i32, i32) {
         let _ = GetTextExtentPoint32W(hdc, &wide, &mut size);
     }
     (size.cx, size.cy)
-}
-
-fn present_frame(state: &TaskbarWindowState) {
-    present_layered(state);
 }
 
 fn present_layered(state: &TaskbarWindowState) {

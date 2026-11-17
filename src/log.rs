@@ -84,6 +84,7 @@ pub(crate) fn trim_to_max_bytes(content: &str, max_bytes: usize) -> &str {
     }
     &content[start..]
 }
+
 fn retained_log_content(content: &str, now: u64) -> Option<String> {
     let lines: Vec<&str> = content.split_inclusive('\n').collect();
     let mut keep_untimestamped = vec![false; lines.len()];
@@ -129,6 +130,22 @@ fn retained_log_content(content: &str, now: u64) -> Option<String> {
     changed.then_some(kept)
 }
 
+fn remove_log_file(path: &Path) -> io::Result<()> {
+    match std::fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error),
+    }
+}
+
+fn rewrite_log_file(path: &Path, content: &str) -> io::Result<()> {
+    if content.is_empty() {
+        return remove_log_file(path);
+    }
+    let mut file = OpenOptions::new().write(true).truncate(true).open(path)?;
+    file.write_all(content.as_bytes())
+}
+
 fn purge_stale_entries(path: &Path, now: u64) -> io::Result<()> {
     let content = match std::fs::read_to_string(path) {
         Ok(content) => content,
@@ -138,17 +155,7 @@ fn purge_stale_entries(path: &Path, now: u64) -> io::Result<()> {
     let Some(kept) = retained_log_content(&content, now) else {
         return Ok(());
     };
-
-    if kept.is_empty() {
-        return match std::fs::remove_file(path) {
-            Ok(()) => Ok(()),
-            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
-            Err(error) => Err(error),
-        };
-    }
-
-    let mut file = OpenOptions::new().write(true).truncate(true).open(path)?;
-    file.write_all(kept.as_bytes())
+    rewrite_log_file(path, &kept)
 }
 
 fn enforce_size_limit(path: &Path) -> io::Result<()> {
@@ -163,19 +170,10 @@ fn enforce_size_limit(path: &Path) -> io::Result<()> {
 
     let content = std::fs::read_to_string(path)?;
     let kept = trim_to_max_bytes(&content, MAX_LOG_FILE_BYTES);
-    if kept.is_empty() {
-        return match std::fs::remove_file(path) {
-            Ok(()) => Ok(()),
-            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
-            Err(error) => Err(error),
-        };
-    }
     if kept.len() == content.len() {
         return Ok(());
     }
-
-    let mut file = OpenOptions::new().write(true).truncate(true).open(path)?;
-    file.write_all(kept.as_bytes())
+    rewrite_log_file(path, kept)
 }
 
 fn timestamp() -> (String, u64) {
