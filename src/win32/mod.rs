@@ -6,7 +6,6 @@ pub mod memory_notification;
 pub mod notification;
 pub mod nt;
 pub mod os;
-pub mod process;
 pub mod single_instance;
 pub mod startup;
 pub mod taskbar_window;

@@ -294,7 +294,7 @@ impl Runtime {
             return;
         }
         let areas = self.settings.memory_areas();
-        let steps = match optimize::step_plan(areas, &self.settings.excluded_processes) {
+        let steps = match optimize::step_plan(areas) {
             Ok(steps) if !steps.is_empty() => steps,
             _ => {
                 crate::log_msg(&t!("tooltip.select_areas"));

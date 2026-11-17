@@ -28,8 +28,6 @@ pub struct Settings {
     pub cleanup_hotkey_enabled: bool,
     /// 热键组合，如 `Ctrl+Alt+C`。空字符串表示不注册。
     pub cleanup_hotkey: String,
-    /// 工作集清理排除的进程基名（小写、无 `.exe`）。
-    pub excluded_processes: Vec<String>,
     /// Windows 报告物理内存不足时启用清理。
     pub auto_cleanup_enabled: bool,
     /// 触发自动清理的物理内存占用百分比（0–100）。
@@ -49,7 +47,6 @@ impl Default for Settings {
             debug_logging: false,
             cleanup_hotkey_enabled: true,
             cleanup_hotkey: crate::win32::hotkey::HotkeyBinding::DEFAULT_CLEANUP.into(),
-            excluded_processes: Vec::new(),
             auto_cleanup_enabled: false,
             auto_cleanup_threshold: 0,
             show_taskbar_window: true,
@@ -120,10 +117,8 @@ impl Settings {
         self.normalize_memory_areas();
         self.normalize_language();
         self.normalize_cleanup_hotkey();
-        self.normalize_excluded_processes();
         self.normalize_auto_cleanup();
     }
-
     fn normalize_language(&mut self) {
         if !matches!(self.language.as_str(), "auto" | "zh-CN" | "en") {
             self.language = "auto".into();
@@ -152,18 +147,6 @@ impl Settings {
         {
             self.memory_areas &= !MemoryAreas::STANDBY_LIST_LOW_PRIORITY.bits();
         }
-    }
-
-    fn normalize_excluded_processes(&mut self) {
-        let mut normalized: Vec<String> = self
-            .excluded_processes
-            .iter()
-            .map(|name| crate::win32::process::normalize_process_name(name))
-            .filter(|name| !name.is_empty())
-            .collect();
-        normalized.sort();
-        normalized.dedup();
-        self.excluded_processes = normalized;
     }
 
     #[cfg(test)]
@@ -341,15 +324,5 @@ available_after = 2
         let settings = Settings::from_toml(&format!("memory_areas = {stored}"));
         assert_eq!(settings.memory_areas, stored);
         assert_eq!(settings.memory_areas(), MemoryAreas::WORKING_SET);
-    }
-
-    #[test]
-    fn normalize_excluded_processes_dedupes_and_strips_exe() {
-        let settings =
-            Settings::from_toml(r#"excluded_processes = ["Chrome.exe", "chrome", "  Firefox  "]"#);
-        assert_eq!(
-            settings.excluded_processes,
-            vec!["chrome".to_string(), "firefox".to_string()]
-        );
     }
 }

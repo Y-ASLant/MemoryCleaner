@@ -1,15 +1,15 @@
 [package]
 name = "memory-cleaner"
-version = "1.2.1"
+version = "1.0.0"
 edition = "2024"
-description = "Memory Cleaner"
+description = "Memory Cleaner Lite"
 license = "MIT"
 repository = "https://github.com/Y-ASLant/MemoryCleaner"
 
 [package.metadata.winres]
 OriginalFilename = "MemoryCleaner.exe"
-FileDescription = "Memory Cleaner"
-ProductName = "Memory Cleaner"
+FileDescription = "Memory Cleaner Lite"
+ProductName = "Memory Cleaner Lite"
 InternalName = "MemoryCleaner"
 
 [[bin]]

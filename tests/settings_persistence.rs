@@ -40,7 +40,6 @@ fn settings_save_and_load_roundtrip_in_temp_config_dir() {
             memory_areas: MemoryAreas::WORKING_SET.bits(),
             language: "zh-CN".into(),
             debug_logging: true,
-            excluded_processes: vec!["chrome".into()],
             auto_cleanup_enabled: true,
             ..Settings::default()
         };
@@ -50,7 +49,6 @@ fn settings_save_and_load_roundtrip_in_temp_config_dir() {
         assert_eq!(loaded.memory_areas, MemoryAreas::WORKING_SET.bits());
         assert_eq!(loaded.language, "zh-CN");
         assert!(loaded.debug_logging);
-        assert_eq!(loaded.excluded_processes, vec!["chrome".to_string()]);
         assert!(loaded.auto_cleanup_enabled);
     });
 }

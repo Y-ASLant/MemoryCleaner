@@ -19,7 +19,6 @@ A Windows memory optimization tool built with Rust + GPUI. Real-time memory moni
 - **System Notifications** — Windows Toast popups on cleanup start and completion (can be disabled in the Window Behavior dialog)
 - **System Tray** — Right-click menu (Optimize Memory, Show/Hide Window, Run at Startup, Automatic Cleanup, Exit); left-click shows/activates the main window; **spin animation** during cleanup (rotates 90° every 96ms to indicate activity)
 - **Window Behavior** — Title bar gear menu: Always on Top, Close to Tray, Run at Startup, Debug Logging, Optimization Notifications, Global Hotkey, Language, Automatic Cleanup threshold
-- **Process Exclusions** — Select running processes to exclude; Working Set cleanup skips excluded process base names
 - **Desktop Icon Cache Refresh** — Title bar refresh button; terminates and restarts Explorer to clear `IconCache.db` and related caches
 - **Custom Title Bar** — Settings, icon cache refresh, expand/collapse, minimize, close (no maximize button)
 - **Configuration Persistence** — `%APPDATA%\MemoryCleaner\settings.toml`, auto-created on first run
@@ -113,7 +112,7 @@ Buttons, GroupBox cards, switches, checkboxes, dialogs, settings panels, etc. al
 >
 > **Disk impact:** Of the 7 cleanup regions, only "Modified Files" and "Modified Pages" involve disk writes; the remaining 5 (Working Set, System File Cache, Standby List, Standby List Low Priority, Merged Pages) are pure RAM operations. See FAQ below.
 
-Process exclusions apply only to Working Set cleanup; file-cache and page-list operations affect the whole system. If any volume flush fails, Modified Files is counted as a failed region and details are retained in cleanup history.
+If any volume flush fails, Modified Files is counted as a failed region.
 
 Default enabled regions: Working Set, System File Cache, Standby List, Merged Pages (bitmask `43`). Modified Pages and Modified Files are disabled by default as they involve disk writes.
 
@@ -132,7 +131,6 @@ Config file: `%APPDATA%\MemoryCleaner\settings.toml`. Changes are saved in the b
 | `show_optimization_notifications` | bool | `true` | Show Windows Toast on cleanup start/completion |
 | `cleanup_hotkey_enabled` | bool | `true` | Enable global cleanup hotkey |
 | `cleanup_hotkey` | string | `"Ctrl+Alt+C"` | Hotkey combo (`Ctrl`/`Alt`/`Shift`/`Win` + letter or digit) |
-| `excluded_processes` | array | `[]` | Process base names excluded from Working Set cleanup (lowercase, without `.exe`) |
 | `auto_cleanup_enabled` | bool | `false` | Enable automatic cleanup |
 | `auto_cleanup_threshold` | u32 | `0` | Physical-memory usage threshold percent; `0` disables threshold trigger, so automatic cleanup only reacts to low-memory notifications when enabled |
 | `cleanup_history` | array | `[]` | Latest 7 cleanup outcome records, automatically maintained by the app |
@@ -190,7 +188,6 @@ src/
 │   ├── notification.rs  # Windows Toast and Start Menu shortcut
 │   ├── nt.rs            # NtSetSystemInformation and NT primitives
 │   ├── os.rs            # Minimum-OS gate, Win11 build detection, GetUserDefaultUILanguage
-│   ├── process.rs       # Process enumeration/termination (Explorer restart)
 │   ├── single_instance.rs
 │   ├── startup.rs       # Highest-privilege logon startup via Task Scheduler
 │   ├── volume.rs        # Mount Manager volume enumeration and modified-file-cache flushing

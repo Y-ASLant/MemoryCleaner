@@ -18,10 +18,11 @@ pub fn reject_unsupported() {
     use windows::Win32::UI::WindowsAndMessaging::{MB_ICONERROR, MB_OK, MessageBoxW};
     use windows::core::PCWSTR;
 
-    let message = crate::win32::wide_null(
-        "Memory Cleaner 需要 Windows 8 或更高版本。\r\nMemory Cleaner requires Windows 8 or later.",
-    );
-    let caption = crate::win32::wide_null("Memory Cleaner");
+    let name = crate::version::APP_NAME;
+    let message = crate::win32::wide_null(&format!(
+        "{name} 需要 Windows 8 或更高版本。\r\n{name} requires Windows 8 or later."
+    ));
+    let caption = crate::win32::wide_null(name);
     unsafe {
         MessageBoxW(
             Some(HWND::default()),

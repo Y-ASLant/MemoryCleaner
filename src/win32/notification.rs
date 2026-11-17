@@ -178,7 +178,7 @@ fn start_menu_shortcut_path() -> Result<PathBuf> {
     let base = OsString::from_wide(&appdata[..len as usize]);
     Ok(PathBuf::from(base)
         .join(r"Microsoft\Windows\Start Menu\Programs")
-        .join("Memory Cleaner.lnk"))
+        .join(format!("{}.lnk", crate::version::APP_NAME)))
 }
 
 fn escape_xml(text: &str) -> String {

@@ -19,7 +19,6 @@ Windows 内存清理工具，基于 Rust + GPUI 构建。提供实时内存监�
 - **系统通知** — 清理开始与完成时弹出 Windows Toast（可在窗口行为对话框中关闭）
 - **系统托盘** — 右键菜单（优化内存、显示/隐藏窗口、开机自启、自动清理、退出）；左键单击显示/激活主窗口；**执行内存清理时**托盘图标旋转动画（每 96ms 转 90°，表示进行中）
 - **窗口行为** — 标题栏齿轮菜单：置顶、关闭时隐藏到托盘、开机自启、调试日志、优化通知、全局热键、语言、自动清理阈值
-- **进程排除** — 可从运行中进程列表选择要排除的进程，Working Set 清理时跳过这些进程
 - **桌面图标缓存刷新** — 标题栏刷新按钮；结束并重启 Explorer 以清理 `IconCache.db` 等缓存
 - **自定义标题栏** — 设置、图标缓存、展开/收起、最小化、关闭（无最大化按钮）
 - **配置持久化** — `%APPDATA%\MemoryCleaner\settings.toml`，首次运行自动创建
@@ -113,7 +112,7 @@ cargo run --release
 >
 > **磁盘影响：** 7 个清理区域中，仅「已修改文件」「已修改页面」涉及磁盘写入；其余 5 项（工作集、系统文件缓存、待机列表、待机列表低优先级、合并页面）均为纯 RAM 操作，不写磁盘。详见下方 FAQ。
 
-进程排除仅适用于工作集清理；系统文件缓存和页面列表清理仍作用于整个系统。已修改文件刷写中任何卷失败，都会在结果中计为失败区域，并在清理历史中保留详情。
+已修改文件刷写中任何卷失败，都会在结果中计为失败区域。
 
 默认启用的区域：工作集、系统文件缓存、待机列表、合并页面（位掩码 `43`）。已修改页面和已修改文件因涉及磁盘写入，默认不启用。
 
@@ -132,7 +131,6 @@ cargo run --release
 | `show_optimization_notifications` | bool | `true` | 清理开始/完成时弹出 Windows Toast |
 | `cleanup_hotkey_enabled` | bool | `true` | 启用全局清理热键 |
 | `cleanup_hotkey` | string | `"Ctrl+Alt+C"` | 热键组合（`Ctrl`/`Alt`/`Shift`/`Win` + 字母或数字） |
-| `excluded_processes` | array | `[]` | 工作集清理排除的进程基础名（小写、无 `.exe`） |
 | `auto_cleanup_enabled` | bool | `false` | 启用自动清理 |
 | `auto_cleanup_threshold` | u32 | `0` | 物理内存占用阈值百分比；`0` 表示关闭阈值触发，启用自动清理时仅由低内存通知触发 |
 | `cleanup_history` | array | `[]` | 最近 7 条清理结果记录，由程序自动维护 |
@@ -189,8 +187,6 @@ src/
 │   ├── memory_notification.rs # Windows 低/高内存资源通知监听
 │   ├── notification.rs  # Windows Toast 与开始菜单快捷方式
 │   ├── nt.rs            # NtSetSystemInformation 等 NT 原语
-│   ├── os.rs            # 最低系统版本门槛、Win11 build 检测、GetUserDefaultUILanguage
-│   ├── process.rs       # 进程枚举/结束（Explorer 重启）
 │   ├── single_instance.rs
 │   ├── startup.rs       # 通过 Task Scheduler 实现最高权限登录自启
 │   ├── volume.rs        # Mount Manager 卷枚举与已修改文件缓存刷写

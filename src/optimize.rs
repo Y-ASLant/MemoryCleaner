@@ -68,7 +68,7 @@ const OPTIMIZE_STEPS: &[MemoryAreas] = &[
     MemoryAreas::MODIFIED_FILE_CACHE,
 ];
 
-pub fn step_plan(areas: MemoryAreas, excluded_processes: &[String]) -> Result<StepPlan> {
+pub fn step_plan(areas: MemoryAreas) -> Result<StepPlan> {
     if areas.is_empty() {
         bail!("no memory areas selected");
     }
@@ -80,10 +80,7 @@ pub fn step_plan(areas: MemoryAreas, excluded_processes: &[String]) -> Result<St
         .map(|area| {
             let label = area.label();
             let run: OptimizeStepFn = match area {
-                MemoryAreas::WORKING_SET => {
-                    let excluded = excluded_processes.to_vec();
-                    Box::new(move || optimize_working_set(&excluded))
-                }
+                MemoryAreas::WORKING_SET => Box::new(optimize_working_set),
                 MemoryAreas::SYSTEM_FILE_CACHE => Box::new(optimize_system_file_cache),
                 MemoryAreas::MODIFIED_PAGE_LIST => Box::new(optimize_modified_page_list),
                 MemoryAreas::STANDBY_LIST => Box::new(|| optimize_standby_list(false)),
@@ -111,19 +108,12 @@ fn purge_memory_list(command: SystemMemoryListCommand, privilege: &str, what: &s
     Ok(())
 }
 
-fn optimize_working_set(excluded: &[String]) -> Result<()> {
-    if excluded.is_empty() {
-        purge_memory_list(
-            SystemMemoryListCommand::EmptyWorkingSets,
-            "SeProfileSingleProcessPrivilege",
-            "Working Set",
-        )
-    } else {
-        enable_privilege("SeDebugPrivilege")
-            .context("Working Set (per-process) requires SeDebugPrivilege")?;
-        crate::win32::process::empty_working_sets_except(excluded)
-            .context("Working Set per-process cleanup failed")
-    }
+fn optimize_working_set() -> Result<()> {
+    purge_memory_list(
+        SystemMemoryListCommand::EmptyWorkingSets,
+        "SeProfileSingleProcessPrivilege",
+        "Working Set",
+    )
 }
 
 fn optimize_system_file_cache() -> Result<()> {
@@ -202,14 +192,14 @@ mod tests {
 
     #[test]
     fn step_plan_rejects_empty_selection() {
-        assert!(step_plan(MemoryAreas::empty(), &[]).is_err());
+        assert!(step_plan(MemoryAreas::empty()).is_err());
     }
 
     #[test]
     fn step_plan_preserves_optimize_order_zh() {
         with_locale("zh-CN", || {
             let areas = MemoryAreas::MODIFIED_FILE_CACHE | MemoryAreas::WORKING_SET;
-            let plan = step_plan(areas, &[]).expect("plan");
+            let plan = step_plan(areas).expect("plan");
             let labels: Vec<_> = plan.into_iter().map(|step| step.label).collect();
             assert_eq!(labels, vec!["工作集", "已修改文件"]);
         });
@@ -219,7 +209,7 @@ mod tests {
     fn step_plan_preserves_optimize_order_en() {
         with_locale("en", || {
             let areas = MemoryAreas::MODIFIED_FILE_CACHE | MemoryAreas::WORKING_SET;
-            let plan = step_plan(areas, &[]).expect("plan");
+            let plan = step_plan(areas).expect("plan");
             let labels: Vec<_> = plan.into_iter().map(|step| step.label).collect();
             assert_eq!(labels, vec!["Working Set", "Modified File Cache"]);
         });

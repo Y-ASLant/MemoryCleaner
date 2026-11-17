@@ -1,6 +1,6 @@
 # 更新日志
 
-本文件记录 Memory Cleaner 的版本更新，格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
+本文件记录 Memory Cleaner Lite 的版本更新，格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
 **编写约定**（详见 `AGENTS.md` → Documentation & Changelog）：每个版本只记录相对上一 tag 的**最终差异**，不记录开发过程中的中间修改或逐步修复。
 
@@ -16,9 +16,8 @@
 
 ### 变更
 
-- **托盘常驻、无主窗口**：移除 GPUI 图形界面与主窗口；应用仅以系统托盘形式运行，主线程泵送 Win32 消息。
-- **依赖**：引入 `sysinfo` 0.40（仅 `system` + `network`）；移除 `gpui-kit` 与 `raw-window-handle`、`smol`。
 - **二次启动**：已运行实例收到信号后走托盘清理入口，不再尝试显示窗口。
+- **产品名与版本**：更名为 **Memory Cleaner Lite**，版本号 `1.0.0`（托盘精简版；二进制仍为 `MemoryCleaner.exe`，配置目录仍为 `%APPDATA%\MemoryCleaner`）。
 - **配置精简**：不再读写 `always_on_top` / `close_to_notification_area` / `cleanup_history`（旧 TOML 键加载时忽略，下次保存丢弃）。
 - **任务栏窗口闪烁**：`WS_POPUP` 嵌 `Shell_TrayWnd` 后 `IsChild` 恒 false，热路径误 `SetParent` 触发每秒 `WM_SHOWWINDOW` 显隐；改为 `GetParent == taskbar` 判定，失败不重嵌。
 
@@ -26,6 +25,7 @@
 
 - **主窗口与设置对话框**：含内存圆环、清理历史弹窗、进程选择器、热键录制 UI、桌面图标缓存刷新入口。
 - **无界面残留代码**：进程排除选择器/`kill`/`wait` API、清理历史持久化、仅兼容用的窗口设置字段。
+- **进程排除列表**：移除 `excluded_processes` 配置与按进程 EmptyWorkingSet 路径；工作集清理仅走系统 `EmptyWorkingSets`。
 
 
 
@@ -221,7 +221,7 @@
 
 # Changelog
 
-Records Memory Cleaner releases. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+Records Memory Cleaner Lite releases. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 **Writing rules** (see `AGENTS.md` → Documentation & Changelog): each release entry covers **only the final diff** vs the previous tag — not intermediate commits or step-by-step fixes during development.
 
@@ -241,16 +241,19 @@ Records Memory Cleaner releases. Format follows [Keep a Changelog](https://keepa
 - **Tray-only, no main window**: Removed the GPUI GUI; the app runs as a system-tray resident with a Win32 message pump on the main thread.
 - **Dependencies**: Add `sysinfo` 0.40 (`system` + `network` only); remove `gpui-kit`, `raw-window-handle`, and `smol`.
 - **Second launch**: A running instance receives the wake signal as the tray cleanup entry path; no window is shown.
-- **Settings trim**: Stop reading/writing `always_on_top` / `close_to_notification_area` / `cleanup_history` (legacy TOML keys ignored on load, dropped on next save). Process exclusions and hotkey chords remain TOML-only in `%APPDATA%\MemoryCleaner\settings.toml`.
+- **Product name and version**: Renamed to **Memory Cleaner Lite**, version `1.0.0` (tray-only edition; binary remains `MemoryCleaner.exe`, config dir still `%APPDATA%\MemoryCleaner`).
+- **Settings trim**: Stop reading/writing `always_on_top` / `close_to_notification_area` / `cleanup_history` (legacy TOML keys ignored on load, dropped on next save). Hotkey chord remains TOML-only.
 - **Taskbar strip flicker**: After `SetParent` of a `WS_POPUP` into `Shell_TrayWnd`, `IsChild` stays false and the hot path re-`SetParent`ed every second (`WM_SHOWWINDOW` hide/show). Now uses `GetParent == taskbar`; no re-embed when `GetParent` fails.
 
 ### Removed
 
 - **Main window and settings dialogs**: Memory rings, cleanup history popup, process picker, hotkey recorder UI, and desktop icon-cache refresh entry.
 - **Orphan GUI leftovers**: Process-exclusion picker / kill / wait APIs, cleanup-history persistence, window-only settings fields kept only for old-config compat.
+- **Process exclusion list**: Removed `excluded_processes` and per-process EmptyWorkingSet path; Working Set cleanup uses system `EmptyWorkingSets` only.
+
+
 
 ## [1.2.1] - 2026-11-16
-
 
 ### Added
 - **System working-set percentage** — The single-line card now appends the percentage of peak after the current size (e.g. `625 MB · 46% of peak`), replacing the previous hover-tooltip readout.
