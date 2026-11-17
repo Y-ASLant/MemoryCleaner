@@ -8,6 +8,29 @@ Windows 内存清理工具，基于 Rust + GPUI 构建。提供实时内存监�
 
 **[English](README_EN.md)**
 
+## 分支选择
+
+| 分支 | 运行形态 | 适用场景 |
+|------|----------|----------|
+| [master](https://github.com/Y-ASLant/MemoryCleaner/tree/master) | Rust + GPUI 图形界面，支持主窗口、设置对话框与托盘常驻 | 需要可视化内存监控、清理历史和图形化配置 |
+| [Lite](https://github.com/Y-ASLant/MemoryCleaner/tree/Lite) | **纯托盘常驻，无 GPUI 依赖**，不含主窗口和设置对话框 | 更关注低占用，希望通过托盘菜单完成日常清理与设置 |
+
+**Lite 轻量版**移除了 GPUI 及其渲染框架，以降低常驻内存与图形渲染开销，并缩小程序体积。实际资源占用随系统环境和启用功能变化。
+
+Lite 保留 7 种内存清理区域、自动清理、全局热键、开机自启和 Windows 通知；左键单击托盘图标即可清理，右键菜单可调整清理区域、自动清理阈值及常用设置。托盘提示还提供 CPU 占用与上下行网速，并可选择开启原生任务栏监控小窗，无需 GPUI。
+
+### Lite 效果图
+
+![Lite 托盘提示与原生任务栏监控小窗](assets/tray.png)
+
+托盘悬停提示显示系统内存、CPU 占用与网速；可选的任务栏小窗显示上下行网速、CPU 和物理内存占用。
+
+![Lite 可执行文件体积](assets/lite-size.png)
+
+Lite 构建的 `MemoryCleaner.exe` 大小为 **986 KB（1,009,664 字节）**；实际文件体积随版本与构建配置变化。
+
+下文的功能、界面截图、配置项与构建说明均以 **master 分支**为准；Lite 的实现与配置请查看 [Lite 分支](https://github.com/Y-ASLant/MemoryCleaner/tree/Lite)。
+
 ## 功能
 
 - **实时内存监控** — 物理内存与提交内存使用情况，环形进度图可视化；另显示系统工作集的当前大小、历史峰值与占峰值比例；主窗口可见时每 **1 秒** 自动刷新，隐藏到托盘后暂停轮询以节省 CPU；鼠标悬停托盘图标时也会即时刷新 Tooltip
@@ -156,7 +179,7 @@ cargo run --release
 ## 项目结构
 
 ```
-assets/                  # 界面截图（Win10 / Win11 对比，1–4 序号一致）
+assets/                  # 界面截图（主窗口 Win10 / Win11 对比与 Lite 效果图）
 locales/
 └── zh-CN.yml            # 中英文 UI 文案（rust-i18n _version: 2 格式）
 

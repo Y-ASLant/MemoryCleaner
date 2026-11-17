@@ -8,6 +8,29 @@ A Windows memory optimization tool built with Rust + GPUI. Real-time memory moni
 
 **[中文文档](README.md)**
 
+## Branch Selection
+
+| Branch | Application Style | Best For |
+|--------|-------------------|----------|
+| [master](https://github.com/Y-ASLant/MemoryCleaner/tree/master) | Rust + GPUI interface with a main window, settings dialogs, and system tray support | Visual memory monitoring, cleanup history, and graphical configuration |
+| [Lite](https://github.com/Y-ASLant/MemoryCleaner/tree/Lite) | **Tray-only operation with no GPUI dependency**, main window, or settings dialogs | Lower resource usage with everyday cleanup and settings available from the tray menu |
+
+**Lite** removes GPUI and its rendering framework to reduce resident memory usage, rendering overhead, and binary size. Actual resource usage varies with the system environment and enabled features.
+
+Lite retains all 7 cleanup regions, automatic cleanup, global hotkeys, run at startup, and Windows notifications. Left-click the tray icon to clean memory; use the right-click menu to configure cleanup regions, automatic cleanup thresholds, and common settings. The tray tooltip also shows CPU usage and upload/download speeds, with an optional native taskbar monitoring window that requires no GPUI.
+
+### Lite Screenshots
+
+![Lite tray tooltip and native taskbar monitoring window](assets/tray.png)
+
+Hover over the tray icon to view system memory, CPU usage, and network speeds. The optional taskbar window shows upload/download speeds, CPU usage, and physical memory usage.
+
+![Lite executable file size](assets/lite-size.png)
+
+The Lite build shown here has a `MemoryCleaner.exe` file size of **986 KB (1,009,664 bytes)**. Actual file size varies with the version and build configuration.
+
+The features, screenshots, configuration options, and build instructions below describe the **master branch**. See the [Lite branch](https://github.com/Y-ASLant/MemoryCleaner/tree/Lite) for its implementation and configuration.
+
 ## Features
 
 - **Real-time Memory Monitoring** — Physical and system committed memory usage with ring progress charts, plus system working-set current size, historical peak, and percentage of peak; auto-refreshes every **1 second** when the main window is visible, pauses polling when minimized to tray to save CPU; tray icon tooltip updates instantly on hover
@@ -156,7 +179,7 @@ Committed memory uses `GetPerformanceInfo` to show system-wide commit usage and 
 ## Project Structure
 
 ```
-assets/                  # UI screenshots (Win10 / Win11 comparison, numbered 1–4)
+assets/                  # Main-window screenshots (Win10 / Win11) and Lite previews
 locales/
 └── zh-CN.yml            # Chinese & English UI strings (rust-i18n _version: 2 format)
 

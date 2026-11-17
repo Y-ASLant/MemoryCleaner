@@ -75,7 +75,7 @@ cargo run --release
 just clean # cargo clean + remove dist/
 ```
 
-**CI:** `.github/workflows/build.yml` checks pull requests to `main`, pushes to `main`, and `v*` tags. Only tags publish a release. The tag must match `Cargo.toml`'s version; the workflow checks formatting, runs Clippy and tests, builds the Windows release binary, extracts that version's Chinese and English sections from `docs/CHANGELOG.md`, then creates a GitHub Release with those notes and `MemoryCleaner.exe`.
+**CI:** `.github/workflows/build.yml` checks pull requests to `master`, pushes to `master`, and `v*` tags. Only tags publish a release. The tag must match `Cargo.toml`'s version; the workflow checks formatting, runs Clippy and tests, builds the Windows release binary, extracts that version's Chinese and English sections from `docs/CHANGELOG.md`, then creates a GitHub Release with those notes and `MemoryCleaner.exe`.
 
 **Tests:** `just test` / `cargo test` — unit tests in `src/` plus integration tests in `tests/settings_persistence.rs`; use the test output for current counts.
 

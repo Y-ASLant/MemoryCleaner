@@ -247,7 +247,7 @@ Records Memory Cleaner releases. Format follows [Keep a Changelog](https://keepa
 - **Icon cache refresh** — Use the correct current-user tray registry cache path and report access failures; skip cache deletion if Explorer has not exited, and wait for desktop recovery before reporting a successful restart.
 - **Configuration saving** — Retained the 300 ms debounce and moved writes to serialized background work; closing or exiting invalidates pending old snapshots and synchronously saves the latest settings. Save failures appear in the settings dialog.
 - **Dependency updates** — Upgraded `gpui-kit` to 0.7.1, `tray-icon` to 0.26.0, and `rust-i18n` to 4.2.4, alongside other direct and transitive dependencies; adapted to updated window and component APIs while retaining Windows 10 square-corner styling. Cleanup dispatch uses region identifiers rather than translated names.
-- **Build and documentation** — Migrated development tasks from Makefile to `.justfile`; main-branch pushes and pull requests run formatting, Clippy, tests, and build checks, while publishing remains restricted to version tags. Chinese and English documentation reflects the default cleanup bitmask of 43, the scope of process exclusions, and cleanup-effect semantics.
+- **Build and documentation** — Migrated development tasks from Makefile to `.justfile`; pushes and pull requests targeting the default branch run formatting, Clippy, tests, and build checks, while publishing remains restricted to version tags. Chinese and English documentation reflects the default cleanup bitmask of 43, the scope of process exclusions, and cleanup-effect semantics.
 
 ## [1.1.1] - 2026-09-17
 
