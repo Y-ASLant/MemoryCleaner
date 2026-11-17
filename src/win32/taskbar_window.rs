@@ -127,7 +127,7 @@ pub fn install() -> anyhow::Result<()> {
         )
     }?;
 
-    let embedded = try_embed(hwnd);
+    let embedded = find_taskbar().is_some_and(|taskbar| try_embed(hwnd, taskbar));
     STATE.with(|cell| {
         *cell.borrow_mut() = Some(TaskbarWindowState {
             hwnd,
@@ -343,7 +343,7 @@ fn ensure_embedded(state: &mut TaskbarWindowState) {
             state.embedded = true;
         }
         Some(_) if state.embedded => {
-            if try_embed(state.hwnd) {
+            if try_embed(state.hwnd, taskbar) {
                 state.embedded = true;
                 crate::log_msg("[taskbar-window] SetParent re-embed ok");
             } else {
@@ -355,10 +355,7 @@ fn ensure_embedded(state: &mut TaskbarWindowState) {
     }
 }
 
-fn try_embed(hwnd: HWND) -> bool {
-    let Some(taskbar) = find_taskbar() else {
-        return false;
-    };
+fn try_embed(hwnd: HWND, taskbar: HWND) -> bool {
     unsafe {
         match SetParent(hwnd, Some(taskbar)) {
             Ok(_) => {
@@ -377,7 +374,7 @@ fn try_embed(hwnd: HWND) -> bool {
 fn apply_topmost_exstyle(hwnd: HWND, topmost: bool) {
     unsafe {
         let mut ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
-        let bit = isize::try_from(WS_EX_TOPMOST.0).unwrap_or(0);
+        let bit = WS_EX_TOPMOST.0 as isize;
         if topmost {
             ex |= bit;
         } else {
@@ -662,17 +659,33 @@ fn measure_grid(
     }
 }
 
+/// 指标/槽位字符串很短；返回写入的 UTF-16 单元数。
+fn encode_utf16_stack(text: &str, wide: &mut [u16]) -> usize {
+    let mut n = 0usize;
+    for unit in text.encode_utf16() {
+        if n >= wide.len() {
+            break;
+        }
+        wide[n] = unit;
+        n += 1;
+    }
+    n
+}
+
 fn text_extent(hdc: HDC, text: &str) -> (i32, i32) {
-    let wide: Vec<u16> = text.encode_utf16().collect();
+    let mut wide = [0u16; 48];
+    let n = encode_utf16_stack(text, &mut wide);
     let mut size = SIZE::default();
-    unsafe {
-        let _ = GetTextExtentPoint32W(hdc, &wide, &mut size);
+    if n > 0 {
+        unsafe {
+            let _ = GetTextExtentPoint32W(hdc, &wide[..n], &mut size);
+        }
     }
     (size.cx, size.cy)
 }
 
+/// 光栅化并 `UpdateLayeredWindow`：同一 DIB，避免中间 `Vec` 与二次位图。
 fn present_layered(state: &TaskbarWindowState) {
-    let pixels = rasterize(state);
     let w = state.width.max(1);
     let h = state.height.max(1);
     unsafe {
@@ -698,73 +711,15 @@ fn present_layered(state: &TaskbarWindowState) {
             ..Default::default()
         };
         let mut bits: *mut core::ffi::c_void = std::ptr::null_mut();
-        let dib = CreateDIBSection(Some(mem), &bmi, DIB_RGB_COLORS, &mut bits, None, 0);
-        if dib.is_err() || bits.is_null() {
+        let Ok(dib) = CreateDIBSection(Some(mem), &bmi, DIB_RGB_COLORS, &mut bits, None, 0) else {
+            let _ = DeleteDC(mem);
+            return;
+        };
+        if bits.is_null() {
+            let _ = DeleteObject(HGDIOBJ(dib.0));
             let _ = DeleteDC(mem);
             return;
         }
-        let dib = dib.unwrap_or_default();
-        let _ = SelectObject(mem, dib.into());
-        let px = std::slice::from_raw_parts_mut(bits.cast::<u32>(), (w * h) as usize);
-        let n = px.len().min(pixels.len());
-        px[..n].copy_from_slice(&pixels[..n]);
-        let size = SIZE { cx: w, cy: h };
-        let src = POINT { x: 0, y: 0 };
-        let blend = BLENDFUNCTION {
-            BlendOp: AC_SRC_OVER as u8,
-            BlendFlags: 0,
-            SourceConstantAlpha: 255,
-            AlphaFormat: AC_SRC_ALPHA as u8,
-        };
-        let _ = UpdateLayeredWindow(
-            state.hwnd,
-            None,
-            None,
-            Some(&size),
-            Some(mem),
-            Some(&src),
-            COLORREF(0),
-            Some(&blend),
-            ULW_ALPHA,
-        );
-        let _ = DeleteObject(HGDIOBJ(dib.0));
-        let _ = DeleteDC(mem);
-    }
-}
-
-fn rasterize(state: &TaskbarWindowState) -> Vec<u32> {
-    let w = state.width.max(1);
-    let h = state.height.max(1);
-    let mut pixels = vec![0u32; (w * h) as usize];
-    unsafe {
-        let screen = GetDC(None);
-        if screen.is_invalid() {
-            return pixels;
-        }
-        let mem = CreateCompatibleDC(Some(screen));
-        let _ = ReleaseDC(None, screen);
-        if mem.is_invalid() {
-            return pixels;
-        }
-        let bmi = BITMAPINFO {
-            bmiHeader: BITMAPINFOHEADER {
-                biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
-                biWidth: w,
-                biHeight: -h,
-                biPlanes: 1,
-                biBitCount: 32,
-                biCompression: BI_RGB.0,
-                ..Default::default()
-            },
-            ..Default::default()
-        };
-        let mut bits: *mut core::ffi::c_void = std::ptr::null_mut();
-        let dib = CreateDIBSection(Some(mem), &bmi, DIB_RGB_COLORS, &mut bits, None, 0);
-        if dib.is_err() || bits.is_null() {
-            let _ = DeleteDC(mem);
-            return pixels;
-        }
-        let dib = dib.unwrap_or_default();
         let _ = SelectObject(mem, dib.into());
         let old_font = SelectObject(mem, state.font.into());
         let px = std::slice::from_raw_parts_mut(bits.cast::<u32>(), (w * h) as usize);
@@ -811,12 +766,29 @@ fn rasterize(state: &TaskbarWindowState) -> Vec<u32> {
                 premult_bgra(0, 0, 0, a)
             };
         }
-        pixels.copy_from_slice(px);
+        let size = SIZE { cx: w, cy: h };
+        let src = POINT { x: 0, y: 0 };
+        let blend = BLENDFUNCTION {
+            BlendOp: AC_SRC_OVER as u8,
+            BlendFlags: 0,
+            SourceConstantAlpha: 255,
+            AlphaFormat: AC_SRC_ALPHA as u8,
+        };
+        let _ = UpdateLayeredWindow(
+            state.hwnd,
+            None,
+            None,
+            Some(&size),
+            Some(mem),
+            Some(&src),
+            COLORREF(0),
+            Some(&blend),
+            ULW_ALPHA,
+        );
         let _ = SelectObject(mem, old_font);
         let _ = DeleteObject(HGDIOBJ(dib.0));
         let _ = DeleteDC(mem);
     }
-    pixels
 }
 
 fn premult_bgra(r: u32, g: u32, b: u32, a: u32) -> u32 {
@@ -838,9 +810,13 @@ fn draw_line(hdc: HDC, text: &str, x: i32, y: i32) {
     if text.is_empty() {
         return;
     }
-    let wide: Vec<u16> = text.encode_utf16().collect();
+    let mut wide = [0u16; 48];
+    let n = encode_utf16_stack(text, &mut wide);
+    if n == 0 {
+        return;
+    }
     unsafe {
-        let _ = TextOutW(hdc, x, y, &wide);
+        let _ = TextOutW(hdc, x, y, &wide[..n]);
     }
 }
 

@@ -131,11 +131,12 @@ fn retained_log_content(content: &str, now: u64) -> Option<String> {
 }
 
 fn remove_log_file(path: &Path) -> io::Result<()> {
-    match std::fs::remove_file(path) {
-        Ok(()) => Ok(()),
-        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
-        Err(error) => Err(error),
+    if let Err(error) = std::fs::remove_file(path)
+        && error.kind() != io::ErrorKind::NotFound
+    {
+        return Err(error);
     }
+    Ok(())
 }
 
 fn rewrite_log_file(path: &Path, content: &str) -> io::Result<()> {
