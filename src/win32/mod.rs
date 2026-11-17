@@ -9,7 +9,6 @@ pub mod os;
 pub mod process;
 pub mod single_instance;
 pub mod startup;
-pub(crate) mod taskbar_comp;
 pub mod taskbar_window;
 pub mod volume;
 

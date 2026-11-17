@@ -1,15 +1,18 @@
 //! 任务栏信息窗口（TrafficMonitor 同类）。
 //!
 //! 优先 `SetParent` 嵌进 `Shell_TrayWnd`；失败再 `TOPMOST`。
-//! 绘制：TM 不闪路径。D2D 画进合成交换链，`Present` 后 `Commit`。DComp 失败才退回 `UpdateLayeredWindow`。
+//! 绘制：GDI 光栅化到位图，`UpdateLayeredWindow` 原子提交整帧——和 TrafficMonitor 默认走的路径一样。
+//! 不用 DirectComposition 合成交换链：那条路径要等 `Present` 翻转，被任务栏重绘打断时会露出半帧。
 //! 仅主线程调用。
 
 use std::cell::{Cell, RefCell};
 use std::path::PathBuf;
-use std::sync::OnceLock;
+use std::sync::{LazyLock, OnceLock};
 use std::time::{Duration, Instant};
 
-use windows::Win32::Foundation::{COLORREF, HWND, LPARAM, LRESULT, POINT, RECT, SIZE, WPARAM};
+use windows::Win32::Foundation::{
+    COLORREF, GetLastError, HWND, LPARAM, LRESULT, POINT, RECT, SIZE, WPARAM,
+};
 use windows::Win32::Graphics::Gdi::{
     AC_SRC_ALPHA, AC_SRC_OVER, ANTIALIASED_QUALITY, AddFontMemResourceEx, BI_RGB, BITMAPINFO,
     BITMAPINFOHEADER, BLENDFUNCTION, BitBlt, CLIP_DEFAULT_PRECIS, CreateCompatibleDC,
@@ -24,12 +27,13 @@ use windows::Win32::System::Registry::{
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, DestroyWindow, FindWindowExW, FindWindowW, GWL_EXSTYLE,
-    GetWindowLongPtrW, GetWindowRect, HMENU, HWND_TOPMOST, IDC_ARROW, IsChild, LoadCursorW,
+    GetParent, GetWindowLongPtrW, GetWindowRect, HMENU, HWND_TOPMOST, IDC_ARROW, LoadCursorW,
     RegisterClassW, SW_HIDE, SW_SHOWNOACTIVATE, SWP_DEFERERASE, SWP_NOACTIVATE, SWP_NOCOPYBITS,
     SWP_NOREDRAW, SWP_NOSENDCHANGING, SWP_NOZORDER, SetParent, SetWindowLongPtrW, SetWindowPos,
-    ShowWindow, ULW_ALPHA, UpdateLayeredWindow, WM_DESTROY, WM_ERASEBKGND, WM_LBUTTONUP, WM_PAINT,
-    WM_RBUTTONDOWN, WM_RBUTTONUP, WNDCLASSW, WS_CLIPSIBLINGS, WS_EX_LAYERED, WS_EX_NOACTIVATE,
-    WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_POPUP,
+    ShowWindow, ULW_ALPHA, UpdateLayeredWindow, WINDOWPOS, WM_DESTROY, WM_DISPLAYCHANGE,
+    WM_ERASEBKGND, WM_LBUTTONUP, WM_MOVE, WM_NCPAINT, WM_PAINT, WM_RBUTTONDOWN, WM_RBUTTONUP,
+    WM_SHOWWINDOW, WM_SIZE, WM_WINDOWPOSCHANGED, WNDCLASSW, WS_CLIPSIBLINGS, WS_EX_LAYERED,
+    WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_POPUP,
 };
 
 use windows::core::{PCWSTR, w};
@@ -59,11 +63,19 @@ const SLOT_RAM: &str = "RAM: 100%";
 
 thread_local! {
     static STATE: RefCell<Option<TaskbarWindowState>> = const { RefCell::new(None) };
-    static PRESENTING: Cell<bool> = const { Cell::new(false) };
+    static LAST_ULW_AT: Cell<Option<Instant>> = const { Cell::new(None) };
 }
 
 static CLASS_REGISTERED: OnceLock<()> = OnceLock::new();
 static FONT_LOADED: OnceLock<bool> = OnceLock::new();
+
+static FLICKER_T0: LazyLock<Instant> = LazyLock::new(Instant::now);
+
+/// 闪烁诊断：始终 `OutputDebugString`；托盘开「调试日志」时再写入 `App.log`。
+fn flicker_log(msg: impl AsRef<str>) {
+    let ms = FLICKER_T0.elapsed().as_millis();
+    crate::log_msg(&format!("[taskbar-flicker] t={ms}ms {}", msg.as_ref()));
+}
 
 struct TaskbarWindowState {
     hwnd: HWND,
@@ -84,7 +96,6 @@ struct TaskbarWindowState {
     light_text: bool,
     /// 主题缓存时刻，避免每秒读主题抖动导致反色闪。
     theme_checked_at: Instant,
-    comp: Option<crate::win32::taskbar_comp::Comp>,
 }
 
 fn cell_up(up: &str) -> String {
@@ -131,22 +142,6 @@ pub fn install() -> anyhow::Result<()> {
     }?;
 
     let embedded = try_embed(hwnd);
-    let comp = match crate::win32::taskbar_comp::attach(
-        hwnd,
-        width.max(1) as u32,
-        height.max(1) as u32,
-        !embedded,
-    ) {
-        Ok(comp) => {
-            // 与 TrafficMonitor 的 DComp 路径相同：去掉分层样式，不设 NOREDIRECTIONBITMAP。
-            set_ex_bit(hwnd, WS_EX_LAYERED.0, false);
-            Some(comp)
-        }
-        Err(err) => {
-            crate::log_msg(&format!("[taskbar-window] DComp init failed: {err:#}"));
-            None
-        }
-    };
     STATE.with(|cell| {
         *cell.borrow_mut() = Some(TaskbarWindowState {
             hwnd,
@@ -164,17 +159,19 @@ pub fn install() -> anyhow::Result<()> {
             dpi,
             light_text: !taskbar_is_light(),
             theme_checked_at: Instant::now(),
-            comp,
         });
     });
 
     STATE.with(|cell| {
         if let Some(state) = cell.borrow_mut().as_mut() {
-            // 先摆位置。显示时 WM_PAINT 画并 Present，和 TrafficMonitor 一样。
-            relocate_and_paint(state, true);
+            flicker_log(format!(
+                "show before first ulw embed={} size={}x{} light_text={}",
+                state.embedded, state.width, state.height, state.light_text
+            ));
             unsafe {
                 let _ = ShowWindow(state.hwnd, SW_SHOWNOACTIVATE);
             }
+            relocate_and_paint(state, true);
         }
     });
 
@@ -195,7 +192,9 @@ pub fn set_enabled(enabled: bool) {
         let Some(state) = guard.as_mut() else {
             return;
         };
+        let prev = state.enabled;
         state.enabled = enabled;
+        flicker_log(format!("set_enabled {prev}->{enabled}"));
         unsafe {
             let _ = ShowWindow(
                 state.hwnd,
@@ -219,6 +218,7 @@ pub fn update(physical: &MemorySection, cpu_network: &CpuNetworkSnapshot) {
         }
 
         let dpi = taskbar_dpi();
+        let mut dpi_changed = false;
         if dpi != state.dpi
             && dpi > 0
             && let Ok(font) = create_font(dpi)
@@ -226,8 +226,10 @@ pub fn update(physical: &MemorySection, cpu_network: &CpuNetworkSnapshot) {
             unsafe {
                 let _ = DeleteObject(state.font.into());
             }
+            flicker_log(format!("dpi {}->{}", state.dpi, dpi));
             state.font = font;
             state.dpi = dpi;
+            dpi_changed = true;
         }
 
         let up = cell_up(&cpu_network.upload_label());
@@ -242,6 +244,10 @@ pub fn update(physical: &MemorySection, cpu_network: &CpuNetworkSnapshot) {
             if let Some(light) = system_uses_light_theme() {
                 let light_text = !light;
                 if state.light_text != light_text {
+                    flicker_log(format!(
+                        "theme light_text {}->{}",
+                        state.light_text, light_text
+                    ));
                     state.light_text = light_text;
                     theme_changed = true;
                 }
@@ -250,6 +256,9 @@ pub fn update(physical: &MemorySection, cpu_network: &CpuNetworkSnapshot) {
 
         let text_changed =
             state.up != up || state.down != down || state.cpu != cpu || state.ram != ram;
+        let mut measure_applied = false;
+        let mut measure_clamped = false;
+        let mut measured = (state.width, state.height);
         if text_changed {
             state.up = up;
             state.down = down;
@@ -258,6 +267,7 @@ pub fn update(physical: &MemorySection, cpu_network: &CpuNetworkSnapshot) {
             if let Ok((w, h)) =
                 measure_grid(state.font, &state.up, &state.down, &state.cpu, &state.ram)
             {
+                measured = (w, h);
                 // 1px 测量抖动会 ResizeBuffers / SetWindowPos，偶发闪一下。
                 if state.pos_x == i32::MIN
                     || (state.width - w).abs() > 2
@@ -265,11 +275,32 @@ pub fn update(physical: &MemorySection, cpu_network: &CpuNetworkSnapshot) {
                 {
                     state.width = w;
                     state.height = h;
+                    measure_applied = true;
+                } else if state.width != w || state.height != h {
+                    measure_clamped = true;
                 }
             }
         }
 
-        relocate_and_paint(state, text_changed || theme_changed);
+        if text_changed || theme_changed || dpi_changed || measure_applied || measure_clamped {
+            flicker_log(format!(
+                "update text={text_changed} theme={theme_changed} dpi={dpi_changed} \
+                 measure={measure_applied} clamp={measure_clamped} \
+                 measured={}x{} applied={}x{} light_text={} \
+                 \"{}\" | \"{}\" | \"{}\" | \"{}\"",
+                measured.0,
+                measured.1,
+                state.width,
+                state.height,
+                state.light_text,
+                state.up,
+                state.down,
+                state.cpu,
+                state.ram
+            ));
+        }
+
+        relocate_and_paint(state, text_changed || theme_changed || dpi_changed);
     });
 }
 
@@ -291,15 +322,25 @@ fn relocate_and_paint(state: &mut TaskbarWindowState, content_changed: bool) {
     let Some((screen_x, screen_y, width, height)) =
         compute_screen_placement(state.width, state.height)
     else {
+        flicker_log(format!(
+            "place fail content={content_changed} size={}x{} embed={}",
+            state.width, state.height, state.embedded
+        ));
         return;
     };
 
-    let geometry_changed = (state.pos_x - screen_x).abs() > 8
-        || (state.pos_y - screen_y).abs() > 8
-        || (state.width - width).abs() > 2
-        || (state.height - height).abs() > 2;
+    let dx = state.pos_x - screen_x;
+    let dy = state.pos_y - screen_y;
+    let dw = state.width - width;
+    let dh = state.height - height;
+    let geometry_changed = dx.abs() > 8 || dy.abs() > 8 || dw.abs() > 2 || dh.abs() > 2;
 
     if !geometry_changed && !content_changed {
+        flicker_log(format!(
+            "skip content=0 geo=0 dx={dx} dy={dy} dw={dw} dh={dh} \
+             pos={}x{} size={}x{} embed={}",
+            state.pos_x, state.pos_y, state.width, state.height, state.embedded
+        ));
         return;
     }
 
@@ -338,38 +379,70 @@ fn relocate_and_paint(state: &mut TaskbarWindowState, content_changed: bool) {
             )
         };
 
-        unsafe {
-            let _ = SetWindowPos(state.hwnd, insert_after, x, y, width, height, flags);
-        }
+        let ok =
+            unsafe { SetWindowPos(state.hwnd, insert_after, x, y, width, height, flags).is_ok() };
+        flicker_log(format!(
+            "swp ok={ok} content={content_changed} embed={} \
+             from={}x{} {}x{} -> to={}x{} {}x{} client={}x{}",
+            state.embedded,
+            state.pos_x,
+            state.pos_y,
+            state.width,
+            state.height,
+            screen_x,
+            screen_y,
+            width,
+            height,
+            x,
+            y
+        ));
         state.pos_x = screen_x;
         state.pos_y = screen_y;
         state.width = width;
         state.height = height;
     }
 
-    unsafe {
-        let _ = windows::Win32::Graphics::Gdi::InvalidateRect(Some(state.hwnd), None, false);
-    }
+    present_frame(state);
 }
 
 fn ensure_embedded(state: &mut TaskbarWindowState) {
     let Some(taskbar) = find_taskbar() else {
+        if state.embedded {
+            flicker_log("embed lost: Shell_TrayWnd missing");
+            state.embedded = false;
+        }
         return;
     };
-    if unsafe { IsChild(taskbar, state.hwnd).as_bool() } {
+
+    // WS_POPUP + SetParent 后 IsChild 常年 false（App.log：每秒 re-SetParent →
+    // WM_SHOWWINDOW 0→1，整秒闪一次）。以 GetParent == taskbar 为准。
+    let parent = unsafe { GetParent(state.hwnd).ok() };
+    if parent == Some(taskbar) {
         state.embedded = true;
         return;
     }
-    // 未嵌入：不再每秒 SetParent（失败路径会闪）。仅「曾经嵌入又丢了」才立即重试。
+
+    // 未嵌入过：不在热路径上抢 SetParent。
     if !state.embedded {
         return;
     }
+
+    // GetParent 失败不等于丢嵌（跨进程常见）；只有父窗口明确不是任务栏才重嵌。
+    let Some(parent) = parent else {
+        return;
+    };
+
+    flicker_log(format!(
+        "embed parent mismatch parent={parent:?} taskbar={taskbar:?}, re-SetParent"
+    ));
     if try_embed(state.hwnd) {
         state.embedded = true;
+        flicker_log("embed re-SetParent ok");
         crate::log_msg("[taskbar-window] SetParent re-embed ok");
     } else {
         state.embedded = false;
         apply_topmost_exstyle(state.hwnd, true);
+        flicker_log("embed re-SetParent failed -> TOPMOST");
     }
 }
 
@@ -397,19 +470,6 @@ fn apply_topmost_exstyle(hwnd: HWND, topmost: bool) {
         let mut ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
         let bit = isize::try_from(WS_EX_TOPMOST.0).unwrap_or(0);
         if topmost {
-            ex |= bit;
-        } else {
-            ex &= !bit;
-        }
-        SetWindowLongPtrW(hwnd, GWL_EXSTYLE, ex);
-    }
-}
-
-fn set_ex_bit(hwnd: HWND, bit: u32, on: bool) {
-    unsafe {
-        let mut ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
-        let bit = isize::try_from(bit).unwrap_or(0);
-        if on {
             ex |= bit;
         } else {
             ex &= !bit;
@@ -776,48 +836,28 @@ fn text_extent(hdc: HDC, text: &str) -> (i32, i32) {
     (size.cx, size.cy)
 }
 
-fn present_frame(state: &mut TaskbarWindowState) {
-    // Present/Commit 会嵌套派发 WM_PAINT。再进 present 会清掉正在显示的缓冲。
-    if PRESENTING.replace(true) {
-        return;
-    }
-    let _guard = PresentGuard;
-    if state.comp.is_some() {
-        let pixels = rasterize(state);
-        let w = state.width.max(1) as u32;
-        let h = state.height.max(1) as u32;
-        if let Some(comp) = state.comp.as_mut()
-            && comp.present(&pixels, w, h).is_ok()
-        {
-            return;
-        }
-        // 窗口已不是分层窗。这里再 ULW 会空一帧，下一秒才补上，看起来像偶发闪。
-        crate::log_msg("[taskbar-window] DComp present failed");
-        return;
-    }
+fn present_frame(state: &TaskbarWindowState) {
     present_layered(state);
 }
 
-struct PresentGuard;
-
-impl Drop for PresentGuard {
-    fn drop(&mut self) {
-        PRESENTING.set(false);
-    }
-}
-
 fn present_layered(state: &TaskbarWindowState) {
+    let start = Instant::now();
     let pixels = rasterize(state);
     let w = state.width.max(1);
     let h = state.height.max(1);
+    let opaque = pixels.iter().filter(|p| (*p >> 24) != 0).count();
+    let since_prev_ms =
+        LAST_ULW_AT.with(|cell| cell.get().map(|t| t.elapsed().as_millis()).unwrap_or(0));
     unsafe {
         let screen = GetDC(None);
         if screen.is_invalid() {
+            flicker_log("ulw abort GetDC failed");
             return;
         }
         let mem = CreateCompatibleDC(Some(screen));
         let _ = ReleaseDC(None, screen);
         if mem.is_invalid() {
+            flicker_log("ulw abort CreateCompatibleDC failed");
             return;
         }
         let bmi = BITMAPINFO {
@@ -836,6 +876,7 @@ fn present_layered(state: &TaskbarWindowState) {
         let dib = CreateDIBSection(Some(mem), &bmi, DIB_RGB_COLORS, &mut bits, None, 0);
         if dib.is_err() || bits.is_null() {
             let _ = DeleteDC(mem);
+            flicker_log("ulw abort CreateDIBSection failed");
             return;
         }
         let dib = dib.unwrap_or_default();
@@ -851,7 +892,7 @@ fn present_layered(state: &TaskbarWindowState) {
             SourceConstantAlpha: 255,
             AlphaFormat: AC_SRC_ALPHA as u8,
         };
-        let _ = UpdateLayeredWindow(
+        let ok = UpdateLayeredWindow(
             state.hwnd,
             None,
             None,
@@ -861,9 +902,27 @@ fn present_layered(state: &TaskbarWindowState) {
             COLORREF(0),
             Some(&blend),
             ULW_ALPHA,
-        );
+        )
+        .is_ok();
+        let err = if ok { 0 } else { GetLastError().0 };
         let _ = DeleteObject(HGDIOBJ(dib.0));
         let _ = DeleteDC(mem);
+        LAST_ULW_AT.with(|cell| cell.set(Some(Instant::now())));
+        flicker_log(format!(
+            "ulw ok={ok} err={err} cost_ms={} since_prev_ms={since_prev_ms} \
+             size={w}x{h} opaque={opaque}/{} embed={} light_text={} \
+             pos={}x{} \"{}\" | \"{}\" | \"{}\" | \"{}\"",
+            start.elapsed().as_millis(),
+            pixels.len(),
+            state.embedded,
+            state.light_text,
+            state.pos_x,
+            state.pos_y,
+            state.up,
+            state.down,
+            state.cpu,
+            state.ram
+        ));
     }
 }
 
@@ -987,25 +1046,68 @@ unsafe extern "system" fn wnd_proc(
 ) -> LRESULT {
     match msg {
         WM_PAINT => {
-            // TrafficMonitor::OnPaint：本次绘制里只提交一帧。
+            // 分层窗口的像素来自 UpdateLayeredWindow，不是这块 GDI 表面；这里只消掉脏区。
+            flicker_log("msg WM_PAINT");
             unsafe {
-                let mut ps = windows::Win32::Graphics::Gdi::PAINTSTRUCT::default();
-                let _ = windows::Win32::Graphics::Gdi::BeginPaint(hwnd, &mut ps);
-                if !PRESENTING.get() {
-                    STATE.with(|cell| {
-                        if let Some(state) = cell.borrow_mut().as_mut() {
-                            present_frame(state);
-                        }
-                    });
-                }
-                let _ = windows::Win32::Graphics::Gdi::EndPaint(hwnd, &ps);
+                let _ = windows::Win32::Graphics::Gdi::ValidateRect(Some(hwnd), None);
             }
             LRESULT(0)
         }
-        WM_ERASEBKGND => LRESULT(1),
+        WM_ERASEBKGND => {
+            flicker_log("msg WM_ERASEBKGND");
+            LRESULT(1)
+        }
+        WM_NCPAINT => {
+            flicker_log("msg WM_NCPAINT");
+            unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
+        }
+        WM_SHOWWINDOW => {
+            flicker_log(format!("msg WM_SHOWWINDOW wparam={}", wparam.0));
+            unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
+        }
+        WM_SIZE => {
+            flicker_log(format!(
+                "msg WM_SIZE type={} cx={} cy={}",
+                wparam.0,
+                lparam.0 as u16,
+                (lparam.0 >> 16) as u16
+            ));
+            unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
+        }
+        WM_MOVE => {
+            flicker_log(format!(
+                "msg WM_MOVE x={} y={}",
+                lparam.0 as i16,
+                (lparam.0 >> 16) as i16
+            ));
+            unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
+        }
+        WM_WINDOWPOSCHANGED => {
+            let detail = unsafe {
+                let wp = lparam.0 as *const WINDOWPOS;
+                if wp.is_null() {
+                    "null".into()
+                } else {
+                    let wp = &*wp;
+                    format!(
+                        "x={} y={} cx={} cy={} flags=0x{:x}",
+                        wp.x, wp.y, wp.cx, wp.cy, wp.flags.0
+                    )
+                }
+            };
+            flicker_log(format!("msg WM_WINDOWPOSCHANGED {detail}"));
+            unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
+        }
+        WM_DISPLAYCHANGE => {
+            flicker_log(format!("msg WM_DISPLAYCHANGE wparam={}", wparam.0));
+            unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
+        }
         WM_LBUTTONUP => LRESULT(0),
         WM_RBUTTONDOWN | WM_RBUTTONUP => LRESULT(0),
-        WM_DESTROY => LRESULT(0),
+        WM_DESTROY => {
+            flicker_log("msg WM_DESTROY");
+            LRESULT(0)
+        }
         _ => unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) },
     }
 }
