@@ -1,10 +1,10 @@
 //! 任务栏信息窗口（TrafficMonitor 同类）。
 //!
 //! 优先 `SetParent` 嵌进 `Shell_TrayWnd`；失败再 `TOPMOST`。
-//! 绘制：`UpdateLayeredWindow` 逐像素 alpha；持久 DIB 缓冲，尺寸不变时不重建（减闪）。
+//! 绘制：TM 不闪路径。D2D 画进合成交换链，`Present` 后 `Commit`。DComp 失败才退回 `UpdateLayeredWindow`。
 //! 仅主线程调用。
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::path::PathBuf;
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};
@@ -14,9 +14,9 @@ use windows::Win32::Graphics::Gdi::{
     AC_SRC_ALPHA, AC_SRC_OVER, ANTIALIASED_QUALITY, AddFontMemResourceEx, BI_RGB, BITMAPINFO,
     BITMAPINFOHEADER, BLENDFUNCTION, BitBlt, CLIP_DEFAULT_PRECIS, CreateCompatibleDC,
     CreateDIBSection, CreateFontW, DEFAULT_CHARSET, DEFAULT_PITCH, DIB_RGB_COLORS, DeleteDC,
-    DeleteObject, FW_MEDIUM, GetDC, GetDeviceCaps, GetTextExtentPoint32W, HDC, HFONT, HGDIOBJ,
-    LOGPIXELSY, OUT_DEFAULT_PRECIS, ReleaseDC, SRCCOPY, ScreenToClient, SelectObject, SetBkMode,
-    SetTextColor, TRANSPARENT, TextOutW,
+    DeleteObject, FW_MEDIUM, GetDC, GetDeviceCaps, GetTextExtentPoint32W, GetTextMetricsW, HDC,
+    HFONT, HGDIOBJ, LOGPIXELSY, OUT_DEFAULT_PRECIS, ReleaseDC, SRCCOPY, ScreenToClient,
+    SelectObject, SetBkMode, SetTextColor, TEXTMETRICW, TRANSPARENT, TextOutW,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::System::Registry::{
@@ -24,11 +24,11 @@ use windows::Win32::System::Registry::{
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, DestroyWindow, FindWindowExW, FindWindowW, GWL_EXSTYLE,
-    GetWindowLongPtrW, GetWindowRect, HMENU, HWND_TOPMOST, IDC_ARROW, IsChild, IsWindowVisible,
-    LoadCursorW, RegisterClassW, SW_HIDE, SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_NOREDRAW,
-    SWP_NOZORDER, SetParent, SetWindowLongPtrW, SetWindowPos, ShowWindow, ULW_ALPHA,
-    UpdateLayeredWindow, WM_DESTROY, WM_ERASEBKGND, WM_LBUTTONUP, WM_PAINT, WM_RBUTTONDOWN,
-    WM_RBUTTONUP, WNDCLASSW, WS_CLIPSIBLINGS, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
+    GetWindowLongPtrW, GetWindowRect, HMENU, HWND_TOPMOST, IDC_ARROW, IsChild, LoadCursorW,
+    RegisterClassW, SW_HIDE, SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_NOREDRAW, SWP_NOZORDER,
+    SetParent, SetWindowLongPtrW, SetWindowPos, ShowWindow, ULW_ALPHA, UpdateLayeredWindow,
+    WM_DESTROY, WM_ERASEBKGND, WM_LBUTTONUP, WM_PAINT, WM_RBUTTONDOWN, WM_RBUTTONUP, WNDCLASSW,
+    WS_CLIPSIBLINGS, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_NOREDIRECTIONBITMAP, WS_EX_TOOLWINDOW,
     WS_EX_TOPMOST, WS_POPUP,
 };
 
@@ -43,14 +43,14 @@ const CLASS_NAME: PCWSTR = w!("MemoryCleaner.TaskbarWindow");
 const PAD_X: i32 = 4;
 const PAD_Y: i32 = 2;
 const COL_GAP: i32 = 10;
-const LINE_GAP: i32 = 1;
+const LINE_GAP: i32 = 0;
 const GAP_FROM_NOTIFY: i32 = 6;
 /// 任务栏亮度 ≥ 此值 → 黑字，否则白字。
 const LIGHT_TASKBAR_LUMA: u32 = 140;
 const THEME_RECHECK: Duration = Duration::from_secs(5);
 const FONT_TTF: &[u8] = include_bytes!("../fonts/Lilex-Medium.ttf");
 const FONT_FACE: &str = "Lilex";
-const FONT_POINT_SIZE: i32 = 12;
+const FONT_POINT_SIZE: i32 = 13;
 /// 列宽上限样例，避免网速/百分比位数变化改窗宽。
 const SLOT_UP: &str = "↑: 999.99 MB/s";
 const SLOT_DOWN: &str = "↓: 999.99 MB/s";
@@ -59,6 +59,8 @@ const SLOT_RAM: &str = "RAM: 100%";
 
 thread_local! {
     static STATE: RefCell<Option<TaskbarWindowState>> = const { RefCell::new(None) };
+    static REPAINTING: Cell<bool> = const { Cell::new(false) };
+    static PRESENTING: Cell<bool> = const { Cell::new(false) };
 }
 
 static CLASS_REGISTERED: OnceLock<()> = OnceLock::new();
@@ -84,26 +86,7 @@ struct TaskbarWindowState {
     light_text: bool,
     /// 主题缓存时刻，避免每秒读主题抖动导致反色闪。
     theme_checked_at: Instant,
-    /// 持久分层缓冲：同尺寸复用，避免每帧 CreateDIBSection。
-    layer: Option<LayerBuffer>,
-}
-
-struct LayerBuffer {
-    mem_dc: HDC,
-    dib: HGDIOBJ,
-    bits: *mut u32,
-    w: i32,
-    h: i32,
-}
-
-impl LayerBuffer {
-    fn destroy(self) {
-        unsafe {
-            let _ = SelectObject(self.mem_dc, HGDIOBJ::default());
-            let _ = DeleteObject(self.dib);
-            let _ = DeleteDC(self.mem_dc);
-        }
-    }
+    comp: Option<crate::win32::taskbar_comp::Comp>,
 }
 
 fn cell_up(up: &str) -> String {
@@ -135,7 +118,6 @@ pub fn install(command_tx: std::sync::mpsc::Sender<TrayCommand>) -> anyhow::Resu
     let module = unsafe { GetModuleHandleW(None)? };
     let hwnd = unsafe {
         CreateWindowExW(
-            // 先不 TOPMOST；嵌入成功留在任务栏树内，失败再加。
             WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_LAYERED,
             CLASS_NAME,
             PCWSTR::null(),
@@ -152,7 +134,19 @@ pub fn install(command_tx: std::sync::mpsc::Sender<TrayCommand>) -> anyhow::Resu
     }?;
 
     let embedded = try_embed(hwnd);
-
+    let comp =
+        match crate::win32::taskbar_comp::attach(hwnd, width.max(1) as u32, height.max(1) as u32) {
+            Ok(comp) => {
+                // 合成视觉自己显示。留着分层样式会盖住它，或和 ULW 抢同一层。
+                set_ex_bit(hwnd, WS_EX_LAYERED.0, false);
+                set_ex_bit(hwnd, WS_EX_NOREDIRECTIONBITMAP.0, true);
+                Some(comp)
+            }
+            Err(err) => {
+                crate::log_msg(&format!("[taskbar-window] DComp init failed: {err:#}"));
+                None
+            }
+        };
     STATE.with(|cell| {
         *cell.borrow_mut() = Some(TaskbarWindowState {
             hwnd,
@@ -170,16 +164,16 @@ pub fn install(command_tx: std::sync::mpsc::Sender<TrayCommand>) -> anyhow::Resu
             dpi,
             light_text: !taskbar_is_light(),
             theme_checked_at: Instant::now(),
-            layer: None,
+            comp,
         });
     });
 
     STATE.with(|cell| {
         if let Some(state) = cell.borrow_mut().as_mut() {
-            relocate_and_paint(state, true);
             unsafe {
                 let _ = ShowWindow(state.hwnd, SW_SHOWNOACTIVATE);
             }
+            relocate_and_paint(state, true);
         }
     });
 
@@ -260,28 +254,24 @@ pub fn update(physical: &MemorySection, cpu_network: &CpuNetworkSnapshot) {
             if let Ok((w, h)) =
                 measure_grid(state.font, &state.up, &state.down, &state.cpu, &state.ram)
             {
-                state.width = w;
-                state.height = h;
+                // 1px 测量抖动会 ResizeBuffers / SetWindowPos，偶发闪一下。
+                if state.pos_x == i32::MIN
+                    || (state.width - w).abs() > 2
+                    || (state.height - h).abs() > 2
+                {
+                    state.width = w;
+                    state.height = h;
+                }
             }
         }
 
         relocate_and_paint(state, text_changed || theme_changed);
-
-        if !unsafe { IsWindowVisible(state.hwnd).as_bool() } {
-            unsafe {
-                let _ = ShowWindow(state.hwnd, SW_SHOWNOACTIVATE);
-            }
-            let _ = present(state);
-        }
     });
 }
 
 pub fn shutdown() {
     STATE.with(|cell| {
-        if let Some(mut state) = cell.borrow_mut().take() {
-            if let Some(layer) = state.layer.take() {
-                layer.destroy();
-            }
+        if let Some(state) = cell.borrow_mut().take() {
             unsafe {
                 let _ = DestroyWindow(state.hwnd);
                 let _ = DeleteObject(state.font.into());
@@ -300,10 +290,10 @@ fn relocate_and_paint(state: &mut TaskbarWindowState, content_changed: bool) {
         return;
     };
 
-    let geometry_changed = (state.pos_x - screen_x).abs() > 1
-        || (state.pos_y - screen_y).abs() > 1
-        || state.width != width
-        || state.height != height;
+    let geometry_changed = (state.pos_x - screen_x).abs() > 8
+        || (state.pos_y - screen_y).abs() > 8
+        || (state.width - width).abs() > 2
+        || (state.height - height).abs() > 2;
 
     if !geometry_changed && !content_changed {
         return;
@@ -344,7 +334,7 @@ fn relocate_and_paint(state: &mut TaskbarWindowState, content_changed: bool) {
         state.height = height;
     }
 
-    let _ = present(state);
+    present_frame(state);
 }
 
 fn ensure_embedded(state: &mut TaskbarWindowState) {
@@ -392,6 +382,19 @@ fn apply_topmost_exstyle(hwnd: HWND, topmost: bool) {
         let mut ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
         let bit = isize::try_from(WS_EX_TOPMOST.0).unwrap_or(0);
         if topmost {
+            ex |= bit;
+        } else {
+            ex &= !bit;
+        }
+        SetWindowLongPtrW(hwnd, GWL_EXSTYLE, ex);
+    }
+}
+
+fn set_ex_bit(hwnd: HWND, bit: u32, on: bool) {
+    unsafe {
+        let mut ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+        let bit = isize::try_from(bit).unwrap_or(0);
+        if on {
             ex |= bit;
         } else {
             ex &= !bit;
@@ -687,6 +690,36 @@ fn create_font(dpi: i32) -> anyhow::Result<HFONT> {
     Ok(font)
 }
 
+/// 两行排版。行距用 ascent。按可见字面（字顶到次行基线）居中，空的下行不把字顶上去。
+struct Rows {
+    height: i32,
+    y0: i32,
+    y1: i32,
+}
+
+fn rows(hdc: HDC) -> Rows {
+    let mut tm = TEXTMETRICW::default();
+    unsafe {
+        let _ = GetTextMetricsW(hdc, &mut tm);
+    }
+    let cell = tm.tmHeight.max(1);
+    let ascent = tm.tmAscent.clamp(1, cell);
+    let internal = tm.tmInternalLeading.clamp(0, ascent);
+    let descent = tm.tmDescent.max(0);
+    let step = ascent + LINE_GAP;
+    let body = ascent - internal;
+    let visible = step + body;
+    let pad = PAD_Y.max(descent);
+    let height = visible + pad * 2;
+    // 实测字墨质心比窗口中线高 2px（↓ 下行把外接框拉低）。下移后对齐任务栏时钟。
+    let y0 = pad - internal + 2;
+    Rows {
+        height,
+        y0,
+        y1: y0 + step,
+    }
+}
+
 fn measure_grid(
     font: HFONT,
     up: &str,
@@ -700,23 +733,22 @@ fn measure_grid(
             anyhow::bail!("GetDC failed");
         }
         let old = SelectObject(screen, font.into());
-        let (w_up, h_up) = text_extent(screen, up);
-        let (w_down, h_down) = text_extent(screen, down);
-        let (w_cpu, h_cpu) = text_extent(screen, cpu);
-        let (w_ram, h_ram) = text_extent(screen, ram);
+        let (w_up, _) = text_extent(screen, up);
+        let (w_down, _) = text_extent(screen, down);
+        let (w_cpu, _) = text_extent(screen, cpu);
+        let (w_ram, _) = text_extent(screen, ram);
         let (w_up_slot, _) = text_extent(screen, SLOT_UP);
         let (w_down_slot, _) = text_extent(screen, SLOT_DOWN);
         let (w_cpu_slot, _) = text_extent(screen, SLOT_CPU);
         let (w_ram_slot, _) = text_extent(screen, SLOT_RAM);
+        let layout = rows(screen);
         let _ = SelectObject(screen, old);
         let _ = ReleaseDC(None, screen);
 
         let left_w = w_up.max(w_down).max(w_up_slot).max(w_down_slot);
         let right_w = w_cpu.max(w_ram).max(w_cpu_slot).max(w_ram_slot);
-        let line_h = h_up.max(h_down).max(h_cpu).max(h_ram);
         let width = left_w + COL_GAP + right_w + PAD_X * 2;
-        let height = line_h * 2 + LINE_GAP + PAD_Y * 2;
-        Ok((width.max(48), height.max(20)))
+        Ok((width.max(48), layout.height.max(20)))
     }
 }
 
@@ -729,41 +761,49 @@ fn text_extent(hdc: HDC, text: &str) -> (i32, i32) {
     (size.cx, size.cy)
 }
 
-fn premult_bgra(r: u32, g: u32, b: u32, a: u32) -> u32 {
-    let r = r * a / 255;
-    let g = g * a / 255;
-    let b = b * a / 255;
-    (a << 24) | (r << 16) | (g << 8) | b
+fn present_frame(state: &mut TaskbarWindowState) {
+    // Present/Commit 会嵌套派发 WM_PAINT。再进 present 会清掉正在显示的缓冲。
+    if PRESENTING.replace(true) {
+        return;
+    }
+    let _guard = PresentGuard;
+    if state.comp.is_some() {
+        let pixels = rasterize(state);
+        let w = state.width.max(1) as u32;
+        let h = state.height.max(1) as u32;
+        if let Some(comp) = state.comp.as_mut()
+            && comp.present(&pixels, w, h).is_ok()
+        {
+            return;
+        }
+        // 窗口已不是分层窗。这里再 ULW 会空一帧，下一秒才补上，看起来像偶发闪。
+        crate::log_msg("[taskbar-window] DComp present failed");
+        return;
+    }
+    present_layered(state);
 }
 
-fn deepen_coverage(a: u32) -> u32 {
-    let a = a.min(255);
-    if a < 2 {
-        return 0;
+struct PresentGuard;
+
+impl Drop for PresentGuard {
+    fn drop(&mut self) {
+        PRESENTING.set(false);
     }
-    (a + (a * (255 - a)) / 365).min(255)
 }
 
-fn ensure_layer(state: &mut TaskbarWindowState, w: i32, h: i32) -> anyhow::Result<bool> {
-    if let Some(layer) = state.layer.as_ref()
-        && layer.w == w
-        && layer.h == h
-    {
-        return Ok(false);
-    }
-    if let Some(old) = state.layer.take() {
-        old.destroy();
-    }
-
+fn present_layered(state: &TaskbarWindowState) {
+    let pixels = rasterize(state);
+    let w = state.width.max(1);
+    let h = state.height.max(1);
     unsafe {
         let screen = GetDC(None);
         if screen.is_invalid() {
-            anyhow::bail!("GetDC failed");
+            return;
         }
-        let mem_dc = CreateCompatibleDC(Some(screen));
-        if mem_dc.is_invalid() {
-            let _ = ReleaseDC(None, screen);
-            anyhow::bail!("CreateCompatibleDC failed");
+        let mem = CreateCompatibleDC(Some(screen));
+        let _ = ReleaseDC(None, screen);
+        if mem.is_invalid() {
+            return;
         }
         let bmi = BITMAPINFO {
             bmiHeader: BITMAPINFOHEADER {
@@ -778,72 +818,100 @@ fn ensure_layer(state: &mut TaskbarWindowState, w: i32, h: i32) -> anyhow::Resul
             ..Default::default()
         };
         let mut bits: *mut core::ffi::c_void = std::ptr::null_mut();
-        let dib = CreateDIBSection(Some(mem_dc), &bmi, DIB_RGB_COLORS, &mut bits, None, 0);
-        let _ = ReleaseDC(None, screen);
+        let dib = CreateDIBSection(Some(mem), &bmi, DIB_RGB_COLORS, &mut bits, None, 0);
         if dib.is_err() || bits.is_null() {
-            let _ = DeleteDC(mem_dc);
-            anyhow::bail!("CreateDIBSection failed");
+            let _ = DeleteDC(mem);
+            return;
         }
-        let dib = dib?;
-        let _ = SelectObject(mem_dc, dib.into());
-        state.layer = Some(LayerBuffer {
-            mem_dc,
-            dib: HGDIOBJ(dib.0),
-            bits: bits.cast(),
-            w,
-            h,
-        });
+        let dib = dib.unwrap_or_default();
+        let _ = SelectObject(mem, dib.into());
+        let px = std::slice::from_raw_parts_mut(bits.cast::<u32>(), (w * h) as usize);
+        let n = px.len().min(pixels.len());
+        px[..n].copy_from_slice(&pixels[..n]);
+        let size = SIZE { cx: w, cy: h };
+        let src = POINT { x: 0, y: 0 };
+        let blend = BLENDFUNCTION {
+            BlendOp: AC_SRC_OVER as u8,
+            BlendFlags: 0,
+            SourceConstantAlpha: 255,
+            AlphaFormat: AC_SRC_ALPHA as u8,
+        };
+        let _ = UpdateLayeredWindow(
+            state.hwnd,
+            None,
+            None,
+            Some(&size),
+            Some(mem),
+            Some(&src),
+            COLORREF(0),
+            Some(&blend),
+            ULW_ALPHA,
+        );
+        let _ = DeleteObject(HGDIOBJ(dib.0));
+        let _ = DeleteDC(mem);
     }
-    Ok(true)
 }
 
-/// 持久 DIB 上绘制，再 `UpdateLayeredWindow` 一次提交（尺寸不变不传 pptSize）。
-fn present(state: &mut TaskbarWindowState) -> anyhow::Result<()> {
+fn rasterize(state: &TaskbarWindowState) -> Vec<u32> {
     let w = state.width.max(1);
     let h = state.height.max(1);
-    let _size_changed = ensure_layer(state, w, h)?;
-    let light_text = state.light_text;
-    let font = state.font;
-    let up = state.up.clone();
-    let down = state.down.clone();
-    let cpu = state.cpu.clone();
-    let ram = state.ram.clone();
-    let hwnd = state.hwnd;
-
-    let layer = state
-        .layer
-        .as_mut()
-        .ok_or_else(|| anyhow::anyhow!("layer missing"))?;
-
+    let mut pixels = vec![0u32; (w * h) as usize];
     unsafe {
-        let old_font = SelectObject(layer.mem_dc, font.into());
-        let px = std::slice::from_raw_parts_mut(layer.bits, (w * h) as usize);
-
+        let screen = GetDC(None);
+        if screen.is_invalid() {
+            return pixels;
+        }
+        let mem = CreateCompatibleDC(Some(screen));
+        let _ = ReleaseDC(None, screen);
+        if mem.is_invalid() {
+            return pixels;
+        }
+        let bmi = BITMAPINFO {
+            bmiHeader: BITMAPINFOHEADER {
+                biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+                biWidth: w,
+                biHeight: -h,
+                biPlanes: 1,
+                biBitCount: 32,
+                biCompression: BI_RGB.0,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let mut bits: *mut core::ffi::c_void = std::ptr::null_mut();
+        let dib = CreateDIBSection(Some(mem), &bmi, DIB_RGB_COLORS, &mut bits, None, 0);
+        if dib.is_err() || bits.is_null() {
+            let _ = DeleteDC(mem);
+            return pixels;
+        }
+        let dib = dib.unwrap_or_default();
+        let _ = SelectObject(mem, dib.into());
+        let old_font = SelectObject(mem, state.font.into());
+        let px = std::slice::from_raw_parts_mut(bits.cast::<u32>(), (w * h) as usize);
+        let light_text = state.light_text;
         if light_text {
             px.fill(0);
-            let _ = SetTextColor(layer.mem_dc, COLORREF(0x00FF_FFFF));
+            let _ = SetTextColor(mem, COLORREF(0x00FF_FFFF));
         } else {
             px.fill(0x00FF_FFFF);
-            let _ = SetTextColor(layer.mem_dc, COLORREF(0x0000_0000));
+            let _ = SetTextColor(mem, COLORREF(0x0000_0000));
         }
-        let _ = SetBkMode(layer.mem_dc, TRANSPARENT);
-
-        let (_, line_h) = text_extent(layer.mem_dc, &up);
-        let (w_up, _) = text_extent(layer.mem_dc, &up);
-        let (w_down, _) = text_extent(layer.mem_dc, &down);
-        let (w_up_slot, _) = text_extent(layer.mem_dc, SLOT_UP);
-        let (w_down_slot, _) = text_extent(layer.mem_dc, SLOT_DOWN);
+        let _ = SetBkMode(mem, TRANSPARENT);
+        let layout = rows(mem);
+        let shift = (h - layout.height) / 2;
+        let (w_up, _) = text_extent(mem, &state.up);
+        let (w_down, _) = text_extent(mem, &state.down);
+        let (w_up_slot, _) = text_extent(mem, SLOT_UP);
+        let (w_down_slot, _) = text_extent(mem, SLOT_DOWN);
         let left_w = w_up.max(w_down).max(w_up_slot).max(w_down_slot);
         let x_left = PAD_X;
         let x_right = PAD_X + left_w + COL_GAP;
-        let y0 = PAD_Y;
-        let y1 = PAD_Y + line_h + LINE_GAP;
-
-        draw_line(layer.mem_dc, &up, x_left, y0);
-        draw_line(layer.mem_dc, &cpu, x_right, y0);
-        draw_line(layer.mem_dc, &down, x_left, y1);
-        draw_line(layer.mem_dc, &ram, x_right, y1);
-
+        let y0 = layout.y0 + shift;
+        let y1 = layout.y1 + shift;
+        draw_line(mem, &state.up, x_left, y0);
+        draw_line(mem, &state.cpu, x_right, y0);
+        draw_line(mem, &state.down, x_left, y1);
+        draw_line(mem, &state.ram, x_right, y1);
         for pixel in px.iter_mut() {
             let v = *pixel;
             let b = v & 0xFF;
@@ -863,30 +931,27 @@ fn present(state: &mut TaskbarWindowState) -> anyhow::Result<()> {
                 premult_bgra(0, 0, 0, a)
             };
         }
-
-        let size = SIZE { cx: w, cy: h };
-        let src = POINT { x: 0, y: 0 };
-        let blend = BLENDFUNCTION {
-            BlendOp: AC_SRC_OVER as u8,
-            BlendFlags: 0,
-            SourceConstantAlpha: 255,
-            AlphaFormat: AC_SRC_ALPHA as u8,
-        };
-        // 必须始终传 pptSize：部分系统在 size=None 时不刷新像素，会卡在首帧 "—"。
-        let _ = UpdateLayeredWindow(
-            hwnd,
-            None,
-            None,
-            Some(&size),
-            Some(layer.mem_dc),
-            Some(&src),
-            COLORREF(0),
-            Some(&blend),
-            ULW_ALPHA,
-        );
-        let _ = SelectObject(layer.mem_dc, old_font);
+        pixels.copy_from_slice(px);
+        let _ = SelectObject(mem, old_font);
+        let _ = DeleteObject(HGDIOBJ(dib.0));
+        let _ = DeleteDC(mem);
     }
-    Ok(())
+    pixels
+}
+
+fn premult_bgra(r: u32, g: u32, b: u32, a: u32) -> u32 {
+    let r = r * a / 255;
+    let g = g * a / 255;
+    let b = b * a / 255;
+    (a << 24) | (r << 16) | (g << 8) | b
+}
+
+fn deepen_coverage(a: u32) -> u32 {
+    let a = a.min(255);
+    if a < 2 {
+        return 0;
+    }
+    (a + (a * (255 - a)) / 365).min(255)
 }
 
 fn draw_line(hdc: HDC, text: &str, x: i32, y: i32) {
@@ -910,12 +975,19 @@ unsafe extern "system" fn wnd_proc(
             unsafe {
                 let mut ps = windows::Win32::Graphics::Gdi::PAINTSTRUCT::default();
                 let _ = windows::Win32::Graphics::Gdi::BeginPaint(hwnd, &mut ps);
+                let _ = windows::Win32::Graphics::Gdi::EndPaint(hwnd, &ps);
+            }
+            // 任务栏重绘会清掉子窗口一帧。立刻再提交，不等下一秒。
+            if !REPAINTING.get() {
+                REPAINTING.set(true);
                 STATE.with(|cell| {
-                    if let Some(state) = cell.borrow_mut().as_mut() {
-                        let _ = present(state);
+                    if let Some(state) = cell.borrow_mut().as_mut()
+                        && state.comp.is_some()
+                    {
+                        present_frame(state);
                     }
                 });
-                let _ = windows::Win32::Graphics::Gdi::EndPaint(hwnd, &ps);
+                REPAINTING.set(false);
             }
             LRESULT(0)
         }
@@ -943,10 +1015,97 @@ mod tests {
         let (w, h) = measure_grid(font, "↑: 1.0 KB/s", "↓: 2.0 KB/s", "CPU: 10%", "RAM: 50%")
             .expect("extent");
         unsafe {
+            let screen = GetDC(None);
+            assert!(!screen.is_invalid());
+            let old = SelectObject(screen, font.into());
+            let layout = rows(screen);
+            let mut tm = TEXTMETRICW::default();
+            let _ = GetTextMetricsW(screen, &mut tm);
+            let _ = SelectObject(screen, old);
+            let _ = ReleaseDC(None, screen);
             let _ = DeleteObject(font.into());
+            let full_cells = tm.tmHeight * 2 + 1 + PAD_Y * 2;
+            assert!(layout.height < full_cells);
+            let glyph_top = layout.y0 + tm.tmInternalLeading;
+            let glyph_bottom = layout.y1 + tm.tmAscent;
+            assert_eq!(glyph_top, layout.height - glyph_bottom + 4);
+            assert!(glyph_top >= tm.tmDescent);
+            assert_eq!(h, layout.height.max(20));
         }
         assert!(w > 20);
         assert!(h > 10);
+    }
+
+    #[test]
+    fn glyph_ink_vertical_center() {
+        ensure_font_loaded();
+        let font = create_font(96).expect("font");
+        unsafe {
+            let screen = GetDC(None);
+            assert!(!screen.is_invalid());
+            let mem = CreateCompatibleDC(Some(screen));
+            let _ = ReleaseDC(None, screen);
+            assert!(!mem.is_invalid());
+            let old = SelectObject(mem, font.into());
+            let layout = rows(mem);
+            let w = 420;
+            let h = layout.height.max(1);
+            let bmi = BITMAPINFO {
+                bmiHeader: BITMAPINFOHEADER {
+                    biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+                    biWidth: w,
+                    biHeight: -h,
+                    biPlanes: 1,
+                    biBitCount: 32,
+                    biCompression: BI_RGB.0,
+                    ..Default::default()
+                },
+                ..Default::default()
+            };
+            let mut bits: *mut core::ffi::c_void = std::ptr::null_mut();
+            let dib =
+                CreateDIBSection(Some(mem), &bmi, DIB_RGB_COLORS, &mut bits, None, 0).expect("dib");
+            let _ = SelectObject(mem, dib.into());
+            let _ = SelectObject(mem, font.into());
+            let px = std::slice::from_raw_parts_mut(bits.cast::<u32>(), (w * h) as usize);
+            px.fill(0);
+            let _ = SetTextColor(mem, COLORREF(0x00FF_FFFF));
+            let _ = SetBkMode(mem, TRANSPARENT);
+            draw_line(mem, "↑: 12.3 MB/s", PAD_X, layout.y0);
+            draw_line(mem, "CPU: 10%", 200, layout.y0);
+            draw_line(mem, "↓: 12.3 MB/s", PAD_X, layout.y1);
+            draw_line(mem, "RAM: 50%", 200, layout.y1);
+            let mut min_y = h;
+            let mut max_y = -1;
+            let mut weight = 0i64;
+            let mut moment = 0i64;
+            for y in 0..h {
+                let row = &px[(y * w) as usize..(y * w + w) as usize];
+                let mut row_w = 0i64;
+                for p in row {
+                    let v = (*p & 0xFF) as i64;
+                    if v > 8 {
+                        row_w += v;
+                    }
+                }
+                if row_w > 0 {
+                    min_y = min_y.min(y);
+                    max_y = max_y.max(y);
+                    weight += row_w;
+                    moment += row_w * i64::from(y);
+                }
+            }
+            let _ = SelectObject(mem, old);
+            let _ = DeleteObject(HGDIOBJ(dib.0));
+            let _ = DeleteDC(mem);
+            let _ = DeleteObject(font.into());
+            let centroid = moment / weight.max(1);
+            let win_mid_sum = i64::from(h - 1);
+            assert!(
+                (centroid * 2 - win_mid_sum).abs() <= 1,
+                "centroid {centroid} h {h}"
+            );
+        }
     }
 
     #[test]

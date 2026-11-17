@@ -43,7 +43,7 @@ main.rs → OS gate → wake-signal → ensure_elevated() → wake-signal retry
 - **Startup:** Task Scheduler logon task `/RL HIGHEST`; always tray-only (no “launch hidden window”).
 - **COM lifetime:** `ComApartment::run` for toast/startup paths; release COM objects before leaving the apartment.
 - **Second instance:** Wake event → `TrayCommand::Optimize`（与左键清理相同，无窗口）。
-- **Taskbar strip:** `win32/taskbar_window.rs` — prefer `SetParent(Shell_TrayWnd)`, else `TOPMOST` overlay; Lilex Medium 12pt; metrics ~1s; `run_loop` coalesces stacked `RefreshTooltip`.
+- **Taskbar strip:** `win32/taskbar_window.rs` — prefer `SetParent(Shell_TrayWnd)`, else `TOPMOST` overlay; Lilex Medium 13px; metrics ~1s; `run_loop` coalesces stacked `RefreshTooltip`.
 
 ## Key Directories
 
