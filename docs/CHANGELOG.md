@@ -8,6 +8,8 @@
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-11-17
+
 ### 新增
 
 - **托盘设置菜单**：右键切换清理区域、自动清理与阈值、开机自启、通知、调试日志、全局热键开关、任务栏窗口与语言；打开配置目录。左键一键清理。
@@ -17,7 +19,7 @@
 
 ### 变更
 
-- **产品身份**：Memory Cleaner Lite `1.0.0`——`MemoryCleanerLite.exe`、`%APPDATA%\MemoryCleanerLite`、独立互斥体/自启任务/AUMID，可与完整版并行。
+- **产品身份**：Memory Cleaner Lite `1.0.0`——`MemoryCleanerLite.exe`、`%APPDATA%\MemoryCleanerLite`、独立互斥体/自启任务/AUMID，可与完整版并行。发版 tag 可用 `v1.0.0-lite`。
 - **托盘常驻**：无 GPUI/主窗口；主线程 Win32 消息泵 + 托盘菜单。
 - **工作集清理**：仅系统 `EmptyWorkingSets`（无进程排除列表）。
 - **配置**：不读写 master 遗留键（`always_on_top` / `close_to_notification_area` / `cleanup_history` / `excluded_processes` 等），加载忽略、保存丢弃。
@@ -37,6 +39,8 @@ Independent of full Memory Cleaner (master); master history is not kept here.
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-11-17
+
 ### Added
 
 - **Tray settings menu**: areas, auto-cleanup/threshold, startup, notifications, debug log, hotkey toggle, taskbar strip, language, open config folder. Left-click runs cleanup.
@@ -46,7 +50,7 @@ Independent of full Memory Cleaner (master); master history is not kept here.
 
 ### Changed
 
-- **Product identity**: Memory Cleaner Lite `1.0.0` — `MemoryCleanerLite.exe`, `%APPDATA%\MemoryCleanerLite`, separate mutex / startup task / AUMID; side-by-side with full edition.
+- **Product identity**: Memory Cleaner Lite `1.0.0` — `MemoryCleanerLite.exe`, `%APPDATA%\MemoryCleanerLite`, separate mutex / startup task / AUMID; side-by-side with full edition. Release tag may be `v1.0.0-lite`.
 - **Tray-only**: no GPUI/main window; Win32 pump + tray menu.
 - **Working set**: system `EmptyWorkingSets` only (no process exclusion list).
 - **Settings**: master-only keys ignored on load and dropped on save.
@@ -56,4 +60,5 @@ Independent of full Memory Cleaner (master); master history is not kept here.
 - Main window, settings dialogs, cleanup history, process-exclusion UI, hotkey recorder, icon-cache refresh.
 - Per-process EmptyWorkingSet path and `win32/process`.
 
-[Unreleased]: https://github.com/Y-ASLant/MemoryCleaner/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/Y-ASLant/MemoryCleaner/compare/v1.0.0-lite...HEAD
+[1.0.0]: https://github.com/Y-ASLant/MemoryCleaner/releases/tag/v1.0.0-lite

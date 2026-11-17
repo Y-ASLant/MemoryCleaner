@@ -29,8 +29,10 @@ jobs:
         shell: pwsh
         run: |
           $version = (cargo metadata --no-deps --format-version 1 | ConvertFrom-Json).packages[0].version
-          if ($env:GITHUB_REF_NAME -ne "v$version") {
-            throw "Tag $env:GITHUB_REF_NAME does not match package version v$version"
+          $tag = $env:GITHUB_REF_NAME
+          # Lite tags: v1.0.0 or v1.0.0-lite (avoids colliding with full-edition tags).
+          if ($tag -ne "v$version" -and $tag -ne "v$version-lite") {
+            throw "Tag $tag does not match package version v$version or v$version-lite"
           }
 
       - name: Check formatting
@@ -68,12 +70,18 @@ jobs:
       - name: Extract release notes
         shell: pwsh
         run: |
-          $version = [regex]::Escape($env:GITHUB_REF_NAME.Substring(1))
+          # Tags: v1.0.0 or v1.0.0-lite → changelog heading [1.0.0]
+          $raw = $env:GITHUB_REF_NAME
+          if ($raw -notmatch '^v(?<ver>\d+\.\d+\.\d+)(-lite)?$') {
+            throw "Unsupported tag $raw (expected vX.Y.Z or vX.Y.Z-lite)"
+          }
+          $pkg = $Matches['ver']
+          $version = [regex]::Escape($pkg)
           $content = Get-Content docs/CHANGELOG.md -Raw
           $pattern = "(?ms)^## \[$version\].*?(?=^## \[|^---\s*$|\z)"
           $sections = [regex]::Matches($content, $pattern)
           if ($sections.Count -ne 2) {
-            throw "Expected Chinese and English changelog sections for $env:GITHUB_REF_NAME, found $($sections.Count)"
+            throw "Expected Chinese and English changelog sections for v$pkg (tag $raw), found $($sections.Count)"
           }
           ($sections.Value.Trim() -join "`n`n---`n`n") |
             Set-Content release-notes.md -Encoding utf8NoBOM
