@@ -16,6 +16,8 @@ main.rs → wake-signal check → ensure_elevated() → wake-signal retry → si
  ├─ log.rs (optional App.log output, hourly retention, malformed-content bounds, I/O diagnostics)
  ├─ locale.rs (rust-i18n locale apply, list separator, lang-id mapping)
  ├─ memory.rs (GlobalMemoryStatusEx + GetPerformanceInfo → physical/commit; NtQuerySystemInformation → system working set)
+ ├─ system_metrics.rs (sysinfo: CPU usage + network throughput sampler)
+
  ├─ optimize.rs (MemoryAreas bitflags → NT cache-purge steps)
  ├─ settings.rs (TOML persistence at %APPDATA%\MemoryCleaner\settings.toml)
  ├─ privileges.rs (SeProfileSingleProcessPrivilege, SeIncreaseQuotaPrivilege)
@@ -123,8 +125,9 @@ just clean # cargo clean + remove dist/
 
 ## UI Layout Notes
 
-- **Window size:** fixed width 520px; collapsed height ~322px, expanded ~698px (`src/app/` + `src/ui/layout.rs`). Footer bottom padding is `FOOTER_BOTTOM_PADDING` (2px), not `CONTENT_PADDING` — borderless-window frame is thicker at the bottom edge.
-- **Collapsed view:** physical/commit rings, a compact system working-set current/peak card, and cleanup button. System working-set sampling uses `NtQuerySystemInformation(FileCache)` independently; its peak ratio is not memory pressure.
+- **Window size:** fixed width 520px; collapsed height ~370px, expanded ~746px (`src/app/` + `src/ui/layout.rs`). Footer bottom padding is `FOOTER_BOTTOM_PADDING` (2px), not `CONTENT_PADDING` — borderless-window frame is thicker at the bottom edge.
+- **Collapsed view:** physical/commit rings, system working-set current/peak card, CPU usage + download/upload rates card, and cleanup button. System working-set sampling uses `NtQuerySystemInformation(FileCache)` independently; its peak ratio is not memory pressure. CPU/network use `sysinfo` on the same 1s memory refresh path.
+
 - **Expanded view:** adds cleanup-area checkboxes panel (`settings_page::render_settings_content`).
 - **Window behavior dialog** (always on top, close-to-tray, run at startup, debug logging, optimization notifications, cleanup hotkey + recording, language, auto-cleanup threshold): opened from title-bar gear icon; `overlay_closable(false)` — clicking the backdrop does not close it.
 - **Optimization feedback:** progress and result text render inside the cleanup button; result clears after 5 seconds (`OPTIMIZE_RESULT_DISPLAY`).

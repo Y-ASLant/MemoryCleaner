@@ -61,8 +61,16 @@ pub fn system_working_set_card_height() -> f32 {
         + MEMORY_HEADER_H
 }
 
+pub fn cpu_network_card_height() -> f32 {
+    system_working_set_card_height()
+}
+
 pub fn memory_panel_height() -> f32 {
-    memory_section_height() + SECTION_GAP + system_working_set_card_height()
+    memory_section_height()
+        + SECTION_GAP
+        + system_working_set_card_height()
+        + SECTION_GAP
+        + cpu_network_card_height()
 }
 
 pub fn cleanup_section_height() -> f32 {
@@ -134,12 +142,18 @@ mod tests {
     fn window_height_includes_system_working_set_card() {
         assert_eq!(memory_section_height(), 178.);
         assert_eq!(system_working_set_card_height(), 42.);
+        assert_eq!(cpu_network_card_height(), 42.);
         assert_eq!(
             memory_panel_height(),
-            memory_section_height() + SECTION_GAP + 42.
+            memory_section_height()
+                + SECTION_GAP
+                + system_working_set_card_height()
+                + SECTION_GAP
+                + cpu_network_card_height()
         );
-        assert_eq!(collapsed_window_height(MAIN_CONTENT_PADDING), 322.);
-        assert_eq!(expanded_window_height(MAIN_CONTENT_PADDING), 698.);
+        // 折叠高度 = 原 322 + 间距 6 + CPU/网速卡片 42
+        assert_eq!(collapsed_window_height(MAIN_CONTENT_PADDING), 370.);
+        assert_eq!(expanded_window_height(MAIN_CONTENT_PADDING), 746.);
         let footer_bottom = TITLE_BAR_H
             + MAIN_CONTENT_PADDING
             + memory_panel_height()

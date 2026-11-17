@@ -11,7 +11,9 @@ pub mod messages;
 pub mod optimize;
 pub mod privileges;
 pub mod settings;
+pub mod system_metrics;
 pub mod tray;
+
 pub mod ui;
 pub mod version;
 pub mod win32;

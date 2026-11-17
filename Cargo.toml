@@ -32,7 +32,7 @@ tempfile = "3.27.0"
 [dependencies]
 anyhow = "1.0.104"
 bitflags = "2.13.2"
-gpui-kit = "0.9.1"
+gpui-kit = "0.10"
 serde = { version = "1.0.229", features = ["derive"] }
 smol = "2.0.2"
 raw-window-handle = "0.6.2"
@@ -66,6 +66,7 @@ windows = { version = "0.62.2", features = [
     "Win32_Globalization",
     "Wdk_System_SystemServices",
 ] }
+sysinfo = { version = "0.40", default-features = false, features = ["system", "network"] }
 
 [profile.release]
 strip = true

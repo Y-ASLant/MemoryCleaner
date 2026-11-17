@@ -18,6 +18,8 @@ use crate::memory::{MemorySection, MemoryStatus, SystemWorkingSet};
 use crate::messages::{build_cleanup_result_message, format_cleanup_effect};
 use crate::optimize::{self, MemoryAreas};
 use crate::settings::Settings;
+use crate::system_metrics::{CpuNetworkSnapshot, SystemMetricsSampler};
+
 use crate::tray::{TrayCommand, dispatch_command};
 use crate::ui::layout::{
     FOOTER_BOTTOM_PADDING, MAIN_CONTENT_PADDING, MAIN_WINDOW_WIDTH, SECTION_GAP,
@@ -87,6 +89,9 @@ pub struct MemoryCleanerApp {
     pub physical: MemorySection,
     pub virtual_mem: MemorySection,
     system_working_set: Option<SystemWorkingSet>,
+    cpu_network: CpuNetworkSnapshot,
+    metrics_sampler: SystemMetricsSampler,
+
     settings_save_gen: std::sync::Arc<std::sync::atomic::AtomicU32>,
     pub(crate) settings_save_failed: bool,
     memory_refresh_task: Option<Task<()>>,
@@ -156,6 +161,9 @@ impl MemoryCleanerApp {
             physical,
             virtual_mem,
             system_working_set,
+            cpu_network: CpuNetworkSnapshot::unavailable(),
+            metrics_sampler: SystemMetricsSampler::new(),
+
             settings_save_gen: std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0)),
             settings_save_failed: false,
             memory_refresh_task: None,

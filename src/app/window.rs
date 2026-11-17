@@ -188,6 +188,7 @@ impl MemoryCleanerApp {
             &self.physical,
             &self.virtual_mem,
             self.system_working_set.as_ref(),
+            &self.cpu_network,
             self.window_visible(),
             self.settings.run_at_startup,
             self.settings.auto_cleanup_enabled,
@@ -260,7 +261,13 @@ impl MemoryCleanerApp {
         } else if changed {
             self.sync_anim_targets_from_sections();
         }
-        changed || working_set_changed
+
+        let metrics_changed = self.metrics_sampler.refresh();
+        if metrics_changed {
+            self.cpu_network = self.metrics_sampler.snapshot();
+        }
+
+        changed || working_set_changed || metrics_changed
     }
 
     pub fn animated_optimize_percent(&self) -> f32 {

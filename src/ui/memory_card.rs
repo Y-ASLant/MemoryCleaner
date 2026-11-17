@@ -1,5 +1,9 @@
 use crate::memory::{MemorySection, SystemWorkingSet};
-use crate::ui::layout::{MEMORY_HEADER_H, MEMORY_LINE_GAP, MEMORY_SUMMARY_H, SUMMARY_LEAD_GAP};
+use crate::system_metrics::CpuNetworkSnapshot;
+use crate::ui::layout::{
+    MEMORY_HEADER_H, MEMORY_LINE_GAP, MEMORY_SUMMARY_H, SECTION_GAP, SUMMARY_LEAD_GAP,
+};
+
 use rust_i18n::t;
 
 use gpui_kit::base::Progress;
@@ -10,6 +14,9 @@ use gpui_kit::*;
 pub const MEMORY_RING_SIZE: f32 = 108.;
 
 const SYSTEM_WORKING_SET_ICON: IconName = IconName::Inbox;
+const CPU_ICON: IconName = IconName::Cpu;
+const NETWORK_DOWN_ICON: IconName = IconName::ArrowDown;
+const NETWORK_UP_ICON: IconName = IconName::ArrowUp;
 
 /// 内存卡片内容的上下内边距。
 pub const MEMORY_CARD_PY: f32 = 2.;
@@ -128,6 +135,71 @@ pub fn render_system_working_set_card(
                 .text_color(cx.theme().foreground.opacity(0.82)),
         )
 }
+pub fn render_cpu_network_card(metrics: &CpuNetworkSnapshot, cx: &App) -> impl IntoElement {
+    let muted = cx.theme().foreground.opacity(0.82);
+    let cpu = metrics.cpu_label();
+    let down = metrics.download_label();
+    let up = metrics.upload_label();
+
+    h_flex()
+        .w_full()
+        .py(px(MEMORY_CARD_PY))
+        .h(px(MEMORY_HEADER_H))
+        .items_center()
+        .justify_center()
+        .gap(px(SECTION_GAP))
+        .child(
+            h_flex()
+                .items_center()
+                .gap(px(MEMORY_LINE_GAP))
+                .child(Icon::new(CPU_ICON).small())
+                .child(
+                    Label::new(t!("metrics.cpu").to_string())
+                        .text_sm()
+                        .font_weight(FontWeight::SEMIBOLD),
+                )
+                .child(
+                    Label::new(cpu)
+                        .ml(px(SUMMARY_LEAD_GAP))
+                        .text_xs()
+                        .text_color(muted),
+                ),
+        )
+        .child(
+            h_flex()
+                .items_center()
+                .gap(px(MEMORY_LINE_GAP))
+                .child(Icon::new(NETWORK_DOWN_ICON).small())
+                .child(
+                    Label::new(t!("metrics.download").to_string())
+                        .text_sm()
+                        .font_weight(FontWeight::SEMIBOLD),
+                )
+                .child(
+                    Label::new(down)
+                        .ml(px(SUMMARY_LEAD_GAP))
+                        .text_xs()
+                        .text_color(muted),
+                ),
+        )
+        .child(
+            h_flex()
+                .items_center()
+                .gap(px(MEMORY_LINE_GAP))
+                .child(Icon::new(NETWORK_UP_ICON).small())
+                .child(
+                    Label::new(t!("metrics.upload").to_string())
+                        .text_sm()
+                        .font_weight(FontWeight::SEMIBOLD),
+                )
+                .child(
+                    Label::new(up)
+                        .ml(px(SUMMARY_LEAD_GAP))
+                        .text_xs()
+                        .text_color(muted),
+                ),
+        )
+}
 
 pub fn render_memory_card(
     section: &MemorySection,
@@ -139,7 +211,7 @@ pub fn render_memory_card(
     let unavailable = section.is_unavailable();
 
     let icon = if is_physical {
-        IconName::Cpu
+        IconName::MemoryStick
     } else {
         IconName::HardDrive
     };

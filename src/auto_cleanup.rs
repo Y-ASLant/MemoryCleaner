@@ -42,7 +42,6 @@ pub fn threshold_trigger_due(above_threshold_ticks: u32, cooldown_elapsed: bool)
 }
 
 /// 结合最近一次自动清理时间，判断阈值清理是否可执行。
-///
 /// 首次清理没有冷却起点。
 pub fn threshold_cooldown_elapsed(elapsed_since_cleanup: Option<Duration>) -> bool {
     elapsed_since_cleanup.is_none_or(|elapsed| elapsed >= AUTO_CLEANUP_THRESHOLD_COOLDOWN)

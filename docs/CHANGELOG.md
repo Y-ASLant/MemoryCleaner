@@ -5,6 +5,20 @@
 **编写约定**（详见 `AGENTS.md` → Documentation & Changelog）：每个版本只记录相对上一 tag 的**最终差异**，不记录开发过程中的中间修改或逐步修复。
 
 
+## [Unreleased]
+
+### 新增
+
+- **CPU 与网速监控**：主窗口在系统工作集下方新增 CPU 占用与上下行网速单行卡片；托盘提示同步显示。采样基于 `sysinfo`（1 秒刷新，与内存轮询一致），环回/隧道接口不计入网速汇总。
+
+### 变更
+
+- **依赖**：引入 `sysinfo` 0.40（仅 `system` + `network`）；`gpui-kit` 升级至 0.10.0。
+- **主窗口高度**：折叠约 370px、展开约 746px（新增 CPU/网速卡片）。
+- **物理内存图标**：由 CPU 图标改为内存条图标，避免与真实 CPU 指标混淆。
+
+
+
 ## [1.2.1] - 2026-11-16
 
 ### 新增
@@ -203,7 +217,20 @@ Records Memory Cleaner releases. Format follows [Keep a Changelog](https://keepa
 
 
 
+## [Unreleased]
+
+### Added
+
+- **CPU and network rates**: Main window shows a single-row card under system working set for CPU usage and download/upload throughput; tray tooltip includes the same metrics. Sampling uses `sysinfo` (1s, same cadence as memory polling); loopback/tunnel interfaces are excluded from network totals.
+
+### Changed
+
+- **Dependencies**: Add `sysinfo` 0.40 (`system` + `network` only); upgrade `gpui-kit` to 0.10.0.
+- **Main window height**: Collapsed ~370px, expanded ~746px (new CPU/network card).
+- **Physical memory icon**: Switch from CPU to memory-stick icon so it does not collide with the real CPU metric.
+
 ## [1.2.1] - 2026-11-16
+
 
 ### Added
 - **System working-set percentage** — The single-line card now appends the percentage of peak after the current size (e.g. `625 MB · 46% of peak`), replacing the previous hover-tooltip readout.

@@ -43,6 +43,21 @@ memory.current:
   zh-CN: "当前 %{current} · %{percent}%"
   en: "%{current} · %{percent}% of peak"
 
+
+# CPU / network metrics
+metrics.cpu:
+  zh-CN: "CPU"
+  en: "CPU"
+metrics.download:
+  zh-CN: "下行"
+  en: "Down"
+metrics.upload:
+  zh-CN: "上行"
+  en: "Up"
+metrics.cpu_network_summary:
+  zh-CN: "CPU %{cpu} · ↓ %{down} · ↑ %{up}"
+  en: "CPU %{cpu} · ↓ %{down} · ↑ %{up}"
+
 # Tray menu
 tray.hide_window:
   zh-CN: "隐藏窗口"
@@ -65,6 +80,13 @@ tray.tooltip_virtual:
 tray.tooltip_system_working_set:
   zh-CN: "系统工作集: %{current}"
   en: "System working set: %{current}"
+tray.tooltip_cpu:
+  zh-CN: "CPU: %{percent}"
+  en: "CPU: %{percent}"
+tray.tooltip_network:
+  zh-CN: "网速: ↓ %{down} · ↑ %{up}"
+  en: "Network: ↓ %{down} · ↑ %{up}"
+
 
 # Settings / Window behavior dialog
 dialog.window_behavior:

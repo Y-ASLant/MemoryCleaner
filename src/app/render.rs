@@ -18,7 +18,10 @@ fn memory_group_box(
 
 impl Render for MemoryCleanerApp {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        use crate::ui::memory_card::{render_memory_card, render_system_working_set_card};
+        use crate::ui::memory_card::{
+            render_cpu_network_card, render_memory_card, render_system_working_set_card,
+        };
+
         use crate::ui::settings_page::{render_cleanup_footer, render_settings_content};
         use crate::ui::title_bar::render_title_bar;
         use gpui_kit::component::{h_flex, v_flex};
@@ -87,6 +90,10 @@ impl Render for MemoryCleanerApp {
                                         self.system_working_set.as_ref(),
                                         cx,
                                     ),
+                                ))
+                                .child(memory_group_box(
+                                    "cpu-network-card",
+                                    render_cpu_network_card(&self.cpu_network, cx),
                                 )),
                         )
                         .when(self.settings_panel_visible(), |body| {

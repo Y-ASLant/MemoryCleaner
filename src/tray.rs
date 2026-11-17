@@ -13,6 +13,7 @@ use tray_icon::{Icon, MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, 
 use crate::app::MemoryCleanerApp;
 use crate::auto_cleanup::AutoCleanupSource;
 use crate::memory::{MemorySection, SystemWorkingSet};
+use crate::system_metrics::CpuNetworkSnapshot;
 
 /// 优化进行中每次旋转 90° 的间隔。
 const SPIN_STEP_MS: u64 = 96;
@@ -264,6 +265,7 @@ pub fn format_memory_tooltip(
     physical: &MemorySection,
     virtual_mem: &MemorySection,
     system_working_set: Option<&SystemWorkingSet>,
+    cpu_network: &CpuNetworkSnapshot,
 ) -> String {
     let mut lines = vec![t!("tray.tooltip", percent = physical.percent_label()).to_string()];
     lines.push(
@@ -282,6 +284,15 @@ pub fn format_memory_tooltip(
         )
         .to_string(),
     );
+    lines.push(t!("tray.tooltip_cpu", percent = cpu_network.cpu_label()).to_string());
+    lines.push(
+        t!(
+            "tray.tooltip_network",
+            down = cpu_network.download_label(),
+            up = cpu_network.upload_label()
+        )
+        .to_string(),
+    );
     lines.join("\n")
 }
 
@@ -289,6 +300,7 @@ pub fn sync_display(
     physical: &MemorySection,
     virtual_mem: &MemorySection,
     system_working_set: Option<&SystemWorkingSet>,
+    cpu_network: &CpuNetworkSnapshot,
     window_visible: bool,
     run_at_startup: bool,
     auto_cleanup_enabled: bool,
@@ -297,7 +309,7 @@ pub fn sync_display(
         return;
     };
 
-    let tooltip = format_memory_tooltip(physical, virtual_mem, system_working_set);
+    let tooltip = format_memory_tooltip(physical, virtual_mem, system_working_set, cpu_network);
     {
         let mut previous = tray
             .tooltip
@@ -456,10 +468,16 @@ mod tests {
                 current: 128 * 1024 * 1024,
                 peak: 256 * 1024 * 1024,
             };
-            let tooltip = format_memory_tooltip(&physical, &virtual_mem, Some(&working_set));
+            let metrics = CpuNetworkSnapshot {
+                cpu_percent: Some(12.0),
+                download_bps: Some(1024.0),
+                upload_bps: Some(512.0),
+            };
+            let tooltip =
+                format_memory_tooltip(&physical, &virtual_mem, Some(&working_set), &metrics);
             assert_eq!(
                 tooltip,
-                "物理内存: 46%\n提交内存: 86%\n系统工作集: 128.00 MB"
+                "物理内存: 46%\n提交内存: 86%\n系统工作集: 128.00 MB\nCPU: 12%\n网速: ↓ 1.00 KB/s · ↑ 512 B/s"
             );
         });
     }
@@ -473,10 +491,16 @@ mod tests {
                 current: 128 * 1024 * 1024,
                 peak: 256 * 1024 * 1024,
             };
-            let tooltip = format_memory_tooltip(&physical, &virtual_mem, Some(&working_set));
+            let metrics = CpuNetworkSnapshot {
+                cpu_percent: Some(12.0),
+                download_bps: Some(1024.0),
+                upload_bps: Some(512.0),
+            };
+            let tooltip =
+                format_memory_tooltip(&physical, &virtual_mem, Some(&working_set), &metrics);
             assert_eq!(
                 tooltip,
-                "Physical: 46%\nCommitted: 86%\nSystem working set: 128.00 MB"
+                "Physical: 46%\nCommitted: 86%\nSystem working set: 128.00 MB\nCPU: 12%\nNetwork: ↓ 1.00 KB/s · ↑ 512 B/s"
             );
         });
     }
@@ -488,10 +512,11 @@ mod tests {
                 &section("Physical", 46.0),
                 &section("Committed", 86.0),
                 None,
+                &CpuNetworkSnapshot::unavailable(),
             );
             assert_eq!(
                 tooltip,
-                "Physical: 46%\nCommitted: 86%\nSystem working set: —"
+                "Physical: 46%\nCommitted: 86%\nSystem working set: —\nCPU: —\nNetwork: ↓ — · ↑ —"
             );
         });
     }
