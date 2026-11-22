@@ -6,6 +6,8 @@
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-11-22
+
 ### 变更
 
 - **自动清理**：默认开启（`auto_cleanup_enabled = true`；阈值仍为 0 时仅低内存通知）。
@@ -39,6 +41,8 @@
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-11-22
+
 ### Changed
 
 - **Auto-cleanup**: enabled by default (`auto_cleanup_enabled = true`; threshold 0 = low-memory notify only).
@@ -64,5 +68,6 @@ Initial release.
 - **Debug log**: optional `App.log` beside exe (≤ 2 MiB single file).
 - **Product identity**: `MemoryCleanerLite.exe`, `%APPDATA%\MemoryCleanerLite`, separate mutex / startup task / AUMID. Release tag may be `v1.0.0-lite`.
 
-[Unreleased]: https://github.com/Y-ASLant/MemoryCleaner/compare/v1.0.0-lite...HEAD
+[Unreleased]: https://github.com/Y-ASLant/MemoryCleaner/compare/v1.1.0-lite...HEAD
+[1.1.0]: https://github.com/Y-ASLant/MemoryCleaner/releases/tag/v1.1.0-lite
 [1.0.0]: https://github.com/Y-ASLant/MemoryCleaner/releases/tag/v1.0.0-lite
