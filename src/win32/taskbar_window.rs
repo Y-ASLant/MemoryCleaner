@@ -56,7 +56,8 @@ const LINE_GAP: i32 = 0;
 const GAP_FROM_NOTIFY: i32 = 2;
 /// 几何抖动阈值：过大时会盖住通知区/天气板边缘。
 const GEOMETRY_SLACK_PX: i32 = 2;
-const WIDGETS_CACHE_TTL: Duration = Duration::from_secs(5);
+/// UIA 结果 TTL；开关天气靠 TaskbarDa 即时失效，不靠这条。
+const WIDGETS_UIA_TTL: Duration = Duration::from_millis(500);
 /// TaskbarDa 开但 UIA 失败时，右侧天气板预留（96dpi 逻辑像素）。
 const WIDGETS_FALLBACK_WIDTH_96: i32 = 180;
 const THEME_RECHECK: Duration = Duration::from_secs(5);
@@ -75,6 +76,7 @@ thread_local! {
         RefCell::new(WidgetsBoardCache {
             checked_at: None,
             notify_left: i32::MIN,
+            widgets_shown: false,
             board_left: None,
         })
     };
@@ -82,8 +84,9 @@ thread_local! {
 
 struct WidgetsBoardCache {
     checked_at: Option<Instant>,
-    /// 缓存时的通知区左缘；变化则失效。
+    /// 缓存键：通知区左缘 + TaskbarDa。
     notify_left: i32,
+    widgets_shown: bool,
     board_left: Option<i32>,
 }
 
@@ -462,32 +465,41 @@ fn compute_screen_placement(width: i32, height: i32) -> Option<(i32, i32, i32, i
     Some((x, y, width, height))
 }
 
-/// 右侧天气/小组件板左缘。XAML 无 HWND，走 UIA；结果按通知区左缘 + TTL 缓存。
+/// 右侧天气/小组件板左缘。XAML 无 HWND，走 UIA。
+/// `TaskbarDa` 每次热路径读取（注册表便宜）；开/关立即失效。UIA 矩形 500ms 刷新。
 fn right_side_widgets_left(taskbar: HWND, bar: &RECT, notify_left: Option<i32>) -> Option<i32> {
     let notify_left = notify_left.unwrap_or(bar.right);
+    let widgets_shown = taskbar_widgets_btn_shown();
+
     WIDGETS_CACHE.with(|cell| {
         let mut cache = cell.borrow_mut();
-        if cache
-            .checked_at
-            .is_some_and(|t| t.elapsed() < WIDGETS_CACHE_TTL)
-            && cache.notify_left == notify_left
-        {
+        let same_key = cache.notify_left == notify_left && cache.widgets_shown == widgets_shown;
+        let fresh = same_key
+            && cache
+                .checked_at
+                .is_some_and(|t| t.elapsed() < WIDGETS_UIA_TTL);
+        if fresh {
             return cache.board_left;
         }
 
-        let board_left = match resolve_widgets_board(taskbar, bar, notify_left) {
-            WidgetsBoard::Right(left) => Some(left),
-            WidgetsBoard::Absent => None,
-            // UIA 失败才按 DPI 预留；左侧入口是 Absent，不挤右锚。
-            WidgetsBoard::Unavailable => {
-                let dpi = window_dpi(taskbar);
-                let reserve = (WIDGETS_FALLBACK_WIDTH_96 * dpi.max(96) + 48) / 96;
-                Some(notify_left - reserve)
+        let board_left = if !widgets_shown {
+            None
+        } else {
+            match probe_widgets_board(taskbar, bar, notify_left) {
+                WidgetsBoard::Right(left) => Some(left),
+                WidgetsBoard::Absent => None,
+                // UIA 失败才按 DPI 预留；左侧入口是 Absent，不挤右锚。
+                WidgetsBoard::Unavailable => {
+                    let dpi = window_dpi(taskbar);
+                    let reserve = (WIDGETS_FALLBACK_WIDTH_96 * dpi.max(96) + 48) / 96;
+                    Some(notify_left - reserve)
+                }
             }
         };
 
         cache.checked_at = Some(Instant::now());
         cache.notify_left = notify_left;
+        cache.widgets_shown = widgets_shown;
         cache.board_left = board_left;
         board_left
     })
@@ -503,10 +515,7 @@ enum WidgetsBoard {
     Unavailable,
 }
 
-fn resolve_widgets_board(taskbar: HWND, bar: &RECT, notify_left: i32) -> WidgetsBoard {
-    if !taskbar_widgets_btn_shown() {
-        return WidgetsBoard::Absent;
-    }
+fn probe_widgets_board(taskbar: HWND, bar: &RECT, notify_left: i32) -> WidgetsBoard {
     let Ok(board) = crate::win32::com::ComApartment::run(|| {
         let uia: IUIAutomation =
             unsafe { CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER)? };
