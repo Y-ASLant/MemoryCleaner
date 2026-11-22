@@ -6,6 +6,7 @@
 //! 仅主线程调用。
 
 use std::cell::RefCell;
+use std::mem::ManuallyDrop;
 use std::path::PathBuf;
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};
@@ -19,9 +20,17 @@ use windows::Win32::Graphics::Gdi::{
     OUT_DEFAULT_PRECIS, ReleaseDC, ScreenToClient, SelectObject, SetBkMode, SetTextColor,
     TEXTMETRICW, TRANSPARENT, TextOutW,
 };
+use windows::Win32::System::Com::{CLSCTX_INPROC_SERVER, CoCreateInstance};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::System::Registry::{
     HKEY, HKEY_CURRENT_USER, KEY_READ, REG_DWORD, RegOpenKeyExW, RegQueryValueExW,
+};
+use windows::Win32::System::Variant::{
+    VARIANT, VARIANT_0, VARIANT_0_0, VARIANT_0_0_0, VT_BSTR, VariantClear,
+};
+use windows::Win32::UI::Accessibility::{
+    CUIAutomation, IUIAutomation, IUIAutomationCondition, TreeScope_Descendants,
+    UIA_AutomationIdPropertyId,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, DestroyWindow, FindWindowExW, FindWindowW, GWL_EXSTYLE,
@@ -32,8 +41,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
     WM_RBUTTONDOWN, WM_RBUTTONUP, WNDCLASSW, WS_CLIPSIBLINGS, WS_EX_LAYERED, WS_EX_NOACTIVATE,
     WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_POPUP,
 };
-
-use windows::core::{PCWSTR, w};
+use windows::core::{BSTR, PCWSTR, w};
 
 use crate::memory::MemorySection;
 use crate::system_metrics::CpuNetworkSnapshot;
@@ -45,7 +53,12 @@ const PAD_X: i32 = 4;
 const PAD_Y: i32 = 2;
 const COL_GAP: i32 = 10;
 const LINE_GAP: i32 = 0;
-const GAP_FROM_NOTIFY: i32 = 0;
+const GAP_FROM_NOTIFY: i32 = 2;
+/// 几何抖动阈值：过大时会盖住通知区/天气板边缘。
+const GEOMETRY_SLACK_PX: i32 = 2;
+const WIDGETS_CACHE_TTL: Duration = Duration::from_secs(5);
+/// TaskbarDa 开但 UIA 失败时，右侧天气板预留（96dpi 逻辑像素）。
+const WIDGETS_FALLBACK_WIDTH_96: i32 = 180;
 const THEME_RECHECK: Duration = Duration::from_secs(5);
 const FONT_TTF: &[u8] = include_bytes!("../fonts/Lilex-Regular.ttf");
 const FONT_FACE: &str = "Lilex";
@@ -58,6 +71,20 @@ const SLOT_RAM: &str = "RAM: 100%";
 
 thread_local! {
     static STATE: RefCell<Option<TaskbarWindowState>> = const { RefCell::new(None) };
+    static WIDGETS_CACHE: RefCell<WidgetsBoardCache> = const {
+        RefCell::new(WidgetsBoardCache {
+            checked_at: None,
+            notify_left: i32::MIN,
+            board_left: None,
+        })
+    };
+}
+
+struct WidgetsBoardCache {
+    checked_at: Option<Instant>,
+    /// 缓存时的通知区左缘；变化则失效。
+    notify_left: i32,
+    board_left: Option<i32>,
 }
 
 static CLASS_REGISTERED: OnceLock<()> = OnceLock::new();
@@ -279,7 +306,10 @@ fn relocate_and_paint(state: &mut TaskbarWindowState, content_changed: bool) {
     let dy = state.pos_y - screen_y;
     let dw = state.width - width;
     let dh = state.height - height;
-    let geometry_changed = dx.abs() > 8 || dy.abs() > 8 || dw.abs() > 2 || dh.abs() > 2;
+    let geometry_changed = dx.abs() > GEOMETRY_SLACK_PX
+        || dy.abs() > GEOMETRY_SLACK_PX
+        || dw.abs() > 2
+        || dh.abs() > 2;
 
     if !geometry_changed && !content_changed {
         return;
@@ -384,7 +414,7 @@ fn apply_topmost_exstyle(hwnd: HWND, topmost: bool) {
     }
 }
 
-/// 屏幕坐标：托盘通知区左侧。
+/// 屏幕坐标：贴通知区左侧，并避让右侧天气/小组件板。
 fn compute_screen_placement(width: i32, height: i32) -> Option<(i32, i32, i32, i32)> {
     let taskbar = find_taskbar()?;
     let mut bar = RECT::default();
@@ -396,40 +426,30 @@ fn compute_screen_placement(width: i32, height: i32) -> Option<(i32, i32, i32, i
     let height = height.min(bar_h.max(1));
     let width = width.min(bar_w.max(1));
 
-    let (mut x, mut y) = if let Some(notify) = find_notify(taskbar) {
+    let notify = find_notify(taskbar).and_then(|hwnd| {
         let mut nr = RECT::default();
-        if unsafe { GetWindowRect(notify, &mut nr) }.is_ok() {
-            if horizontal {
-                let mut x = nr.left - width - GAP_FROM_NOTIFY;
-                if x < bar.left + GAP_FROM_NOTIFY {
-                    x = bar.left + GAP_FROM_NOTIFY;
-                }
-                let y = bar.top + (bar_h - height).max(0) / 2;
-                (x, y)
-            } else {
-                let x = bar.left + (bar_w - width).max(0) / 2;
-                let mut y = nr.top - height - GAP_FROM_NOTIFY;
-                if y < bar.top + GAP_FROM_NOTIFY {
-                    y = bar.top + GAP_FROM_NOTIFY;
-                }
-                (x, y)
-            }
-        } else if horizontal {
-            (
-                bar.right - width - GAP_FROM_NOTIFY,
-                bar.top + (bar_h - height).max(0) / 2,
-            )
-        } else {
-            (
-                bar.left + (bar_w - width).max(0) / 2,
-                bar.bottom - height - GAP_FROM_NOTIFY,
-            )
-        }
-    } else if horizontal {
-        (
-            bar.right - width - GAP_FROM_NOTIFY,
-            bar.top + (bar_h - height).max(0) / 2,
-        )
+        unsafe { GetWindowRect(hwnd, &mut nr) }.ok()?;
+        Some(nr)
+    });
+
+    let (mut x, mut y) = if horizontal {
+        let notify_left = notify.map(|nr| nr.left);
+        let right_limit = [
+            Some(bar.right),
+            notify_left,
+            right_side_widgets_left(taskbar, &bar, notify_left),
+        ]
+        .into_iter()
+        .flatten()
+        .min()
+        .unwrap_or(bar.right);
+        let x = (right_limit - width - GAP_FROM_NOTIFY).max(bar.left + GAP_FROM_NOTIFY);
+        let y = bar.top + (bar_h - height).max(0) / 2;
+        (x, y)
+    } else if let Some(nr) = notify {
+        let x = bar.left + (bar_w - width).max(0) / 2;
+        let y = (nr.top - height - GAP_FROM_NOTIFY).max(bar.top + GAP_FROM_NOTIFY);
+        (x, y)
     } else {
         (
             bar.left + (bar_w - width).max(0) / 2,
@@ -440,6 +460,107 @@ fn compute_screen_placement(width: i32, height: i32) -> Option<(i32, i32, i32, i
     x = x.clamp(bar.left, (bar.right - width).max(bar.left));
     y = y.clamp(bar.top, (bar.bottom - height).max(bar.top));
     Some((x, y, width, height))
+}
+
+/// 右侧天气/小组件板左缘。XAML 无 HWND，走 UIA；结果按通知区左缘 + TTL 缓存。
+fn right_side_widgets_left(taskbar: HWND, bar: &RECT, notify_left: Option<i32>) -> Option<i32> {
+    let notify_left = notify_left.unwrap_or(bar.right);
+    WIDGETS_CACHE.with(|cell| {
+        let mut cache = cell.borrow_mut();
+        if cache
+            .checked_at
+            .is_some_and(|t| t.elapsed() < WIDGETS_CACHE_TTL)
+            && cache.notify_left == notify_left
+        {
+            return cache.board_left;
+        }
+
+        let board_left = match resolve_widgets_board(taskbar, bar, notify_left) {
+            WidgetsBoard::Right(left) => Some(left),
+            WidgetsBoard::Absent => None,
+            // UIA 失败才按 DPI 预留；左侧入口是 Absent，不挤右锚。
+            WidgetsBoard::Unavailable => {
+                let dpi = window_dpi(taskbar);
+                let reserve = (WIDGETS_FALLBACK_WIDTH_96 * dpi.max(96) + 48) / 96;
+                Some(notify_left - reserve)
+            }
+        };
+
+        cache.checked_at = Some(Instant::now());
+        cache.notify_left = notify_left;
+        cache.board_left = board_left;
+        board_left
+    })
+}
+
+#[derive(Clone, Copy)]
+enum WidgetsBoard {
+    /// 右半侧/贴通知区，右锚止于此。
+    Right(i32),
+    /// 关闭或仅左侧入口。
+    Absent,
+    /// COM/UIA 不可用。
+    Unavailable,
+}
+
+fn resolve_widgets_board(taskbar: HWND, bar: &RECT, notify_left: i32) -> WidgetsBoard {
+    if !taskbar_widgets_btn_shown() {
+        return WidgetsBoard::Absent;
+    }
+    let Ok(board) = crate::win32::com::ComApartment::run(|| {
+        let uia: IUIAutomation =
+            unsafe { CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER)? };
+        let root = unsafe { uia.ElementFromHandle(taskbar)? };
+        let condition = automation_id_condition(&uia, "WidgetsButton")?;
+        let Ok(found) = (unsafe { root.FindFirst(TreeScope_Descendants, &condition) }) else {
+            return Ok(WidgetsBoard::Absent);
+        };
+        let rect = unsafe { found.CurrentBoundingRectangle()? };
+        if rect.right - rect.left <= 2 || rect.bottom - rect.top <= 2 {
+            return Ok(WidgetsBoard::Absent);
+        }
+        // 左半侧是开始旁入口，右锚不避让。
+        let mid = bar.left + (bar.right - bar.left) / 2;
+        if rect.left < mid && rect.right < notify_left - 8 {
+            return Ok(WidgetsBoard::Absent);
+        }
+        Ok(WidgetsBoard::Right(rect.left))
+    }) else {
+        return WidgetsBoard::Unavailable;
+    };
+    board
+}
+
+fn taskbar_widgets_btn_shown() -> bool {
+    hkcu_dword(
+        r"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced",
+        "TaskbarDa",
+    )
+    .is_some_and(|v| v != 0)
+}
+
+fn automation_id_condition(
+    uia: &IUIAutomation,
+    automation_id: &str,
+) -> windows::core::Result<IUIAutomationCondition> {
+    let mut value = VARIANT {
+        Anonymous: VARIANT_0 {
+            Anonymous: ManuallyDrop::new(VARIANT_0_0 {
+                vt: VT_BSTR,
+                wReserved1: 0,
+                wReserved2: 0,
+                wReserved3: 0,
+                Anonymous: VARIANT_0_0_0 {
+                    bstrVal: ManuallyDrop::new(BSTR::from(automation_id)),
+                },
+            }),
+        },
+    };
+    let condition = unsafe { uia.CreatePropertyCondition(UIA_AutomationIdPropertyId, &value) };
+    unsafe {
+        let _ = VariantClear(&mut value);
+    }
+    condition
 }
 
 fn ensure_font_loaded() {
@@ -533,9 +654,18 @@ fn window_dpi(hwnd: HWND) -> i32 {
 
 /// 浅色任务栏主题（黑字）。只信注册表；不采屏幕（BitBlt 会触发 DWM 重合成）。
 fn system_uses_light_theme() -> Option<bool> {
-    let subkey = wide_null(r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");
+    Some(
+        hkcu_dword(
+            r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize",
+            "SystemUsesLightTheme",
+        )? != 0,
+    )
+}
+
+fn hkcu_dword(subkey: &str, value_name: &str) -> Option<u32> {
+    let subkey = wide_null(subkey);
     let mut key = HKEY::default();
-    let open = unsafe {
+    if unsafe {
         RegOpenKeyExW(
             HKEY_CURRENT_USER,
             PCWSTR(subkey.as_ptr()),
@@ -543,30 +673,33 @@ fn system_uses_light_theme() -> Option<bool> {
             KEY_READ,
             &mut key,
         )
-    };
-    if open.is_err() {
+    }
+    .is_err()
+    {
         return None;
     }
     let key = unsafe { crate::win32::handle::OwnedRegistryKey::from_raw(key) };
-    let name = wide_null("SystemUsesLightTheme");
+    let name = wide_null(value_name);
     let mut data = [0u8; 4];
     let mut data_size = data.len() as u32;
-    let mut value_type = REG_DWORD;
-    let query = unsafe {
+    let mut ty = REG_DWORD;
+    if unsafe {
         RegQueryValueExW(
             key.raw(),
             PCWSTR(name.as_ptr()),
             None,
-            Some(&mut value_type),
+            Some(&mut ty),
             Some(data.as_mut_ptr()),
             Some(&mut data_size),
         )
-    };
-    if query.is_err() || data_size < 4 {
+    }
+    .is_err()
+        || ty != REG_DWORD
+        || data_size < 4
+    {
         return None;
     }
-    let value = u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
-    Some(value != 0)
+    Some(u32::from_le_bytes(data))
 }
 
 fn create_font(dpi: i32) -> anyhow::Result<HFONT> {

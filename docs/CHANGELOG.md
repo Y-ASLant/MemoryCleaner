@@ -6,6 +6,10 @@
 
 ## [Unreleased]
 
+### 修复
+
+- **任务栏指标条**：避让 Win11 右侧天气/小组件板（UIA `WidgetsButton` + `TaskbarDa` 回退）；收紧贴通知区定位，降低遮挡系统托盘。
+
 ## [1.0.0] - 2026-11-17
 
 首个版本。
@@ -25,6 +29,10 @@
 **Memory Cleaner Lite**. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
+
+### Fixed
+
+- **Taskbar strip**: avoid Win11 right-side weather/widgets board (UIA `WidgetsButton` + `TaskbarDa` fallback); tighter notify-edge placement to reduce tray occlusion.
 
 ## [1.0.0] - 2026-11-17
 
