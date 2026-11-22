@@ -39,7 +39,7 @@ cargo run --release
 | `debug_logging` | bool | `false` | 写入 exe 旁 `App.log`（单文件 ≤ 2 MiB） |
 | `cleanup_hotkey_enabled` | bool | `true` | 全局热键开关 |
 | `cleanup_hotkey` | string | `"Ctrl+Alt+C"` | 热键组合 |
-| `auto_cleanup_enabled` | bool | `false` | 自动清理 |
+| `auto_cleanup_enabled` | bool | `true` | 自动清理 |
 | `auto_cleanup_threshold` | u32 | `0` | 物理内存占用阈值；`0` 仅低内存通知 |
 | `show_taskbar_window` | bool | `true` | 任务栏指标条 |
 | `taskbar_font_point_size` | u32 | `10` | 任务栏字体整数磅值（5–72） |

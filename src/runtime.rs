@@ -1,7 +1,6 @@
 //! 无窗口运行时：设置、清理、自动清理与指标采样。
 
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -18,14 +17,14 @@ use crate::messages::{build_cleanup_result_message, format_cleanup_effect};
 use crate::optimize::{self, MemoryAreas};
 use crate::settings::Settings;
 use crate::system_metrics::{CpuNetworkSnapshot, SystemMetricsSampler};
-use crate::tray::{self, TrayCommand};
+use crate::tray::{self, CommandTx, TrayCommand};
 use crate::win32;
 
 const METRICS_INTERVAL: Duration = Duration::from_secs(1);
 
 pub struct Runtime {
     settings: Settings,
-    command_tx: Sender<TrayCommand>,
+    command_tx: CommandTx,
     metrics_sampler: SystemMetricsSampler,
     physical: MemorySection,
     virtual_mem: MemorySection,
@@ -38,7 +37,7 @@ pub struct Runtime {
 }
 
 impl Runtime {
-    pub fn start(settings: Settings, command_tx: Sender<TrayCommand>) -> Arc<Mutex<Self>> {
+    pub fn start(settings: Settings, command_tx: CommandTx) -> Arc<Mutex<Self>> {
         let physical = MemorySection::unavailable(&t!("memory.physical"));
         let virtual_mem = MemorySection::unavailable(&t!("memory.virtual"));
         crate::log::set_debug_enabled(settings.debug_logging);
@@ -268,7 +267,6 @@ impl Runtime {
         if !self.settings.show_taskbar_window {
             return;
         }
-        win32::taskbar_window::set_font_point_size(self.settings.taskbar_font_point_size);
         win32::taskbar_window::update(&self.physical, &self.cpu_network);
     }
 
@@ -377,14 +375,17 @@ impl Runtime {
         self.sync_taskbar_window();
     }
 
-    fn poll_threshold(&mut self, above_threshold_ticks: &mut u32) {
+    /// 返回下次轮询间隔：关闭阈值时拉长睡眠，减少空闲抢锁。
+    fn poll_threshold(&mut self, above_threshold_ticks: &mut u32) -> Duration {
+        const IDLE_POLL: Duration = Duration::from_secs(30);
         if !self.settings.auto_cleanup_enabled || self.is_optimizing {
-            return;
+            *above_threshold_ticks = 0;
+            return IDLE_POLL;
         }
         let threshold = self.settings.auto_cleanup_threshold;
         if threshold == 0 {
             *above_threshold_ticks = 0;
-            return;
+            return IDLE_POLL;
         }
         let memory_load = MemoryStatus::query()
             .map(|status| status.memory_load)
@@ -401,6 +402,7 @@ impl Runtime {
             *above_threshold_ticks = 0;
             self.run_auto_cleanup(AutoCleanupSource::Threshold);
         }
+        AUTO_CLEANUP_POLL_INTERVAL
     }
 }
 
@@ -455,7 +457,7 @@ fn open_config_dir() {
     let _ = std::process::Command::new("explorer.exe").arg(path).spawn();
 }
 
-fn spawn_metrics_loop(command_tx: Sender<TrayCommand>) {
+fn spawn_metrics_loop(command_tx: CommandTx) {
     let _ = thread::Builder::new()
         .name("metrics".into())
         .spawn(move || {
@@ -480,10 +482,12 @@ fn spawn_threshold_loop(runtime: Arc<Mutex<Runtime>>) {
         .spawn(move || {
             let mut above_threshold_ticks = 0u32;
             while !stop.load(Ordering::Relaxed) {
-                thread::sleep(AUTO_CLEANUP_POLL_INTERVAL);
-                if let Ok(mut app) = runtime.lock() {
-                    app.poll_threshold(&mut above_threshold_ticks);
-                }
+                let sleep_for = if let Ok(mut app) = runtime.lock() {
+                    app.poll_threshold(&mut above_threshold_ticks)
+                } else {
+                    AUTO_CLEANUP_POLL_INTERVAL
+                };
+                thread::sleep(sleep_for);
             }
         });
 }

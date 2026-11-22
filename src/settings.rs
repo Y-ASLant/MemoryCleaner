@@ -50,7 +50,7 @@ impl Default for Settings {
             debug_logging: false,
             cleanup_hotkey_enabled: true,
             cleanup_hotkey: crate::win32::hotkey::HotkeyBinding::DEFAULT_CLEANUP.into(),
-            auto_cleanup_enabled: false,
+            auto_cleanup_enabled: true,
             auto_cleanup_threshold: 0,
             show_taskbar_window: true,
             taskbar_font_point_size: TASKBAR_FONT_PT_DEFAULT,
@@ -279,8 +279,8 @@ impl Settings {
         );
         push_entry(
             &mut out,
-            "自动清理总开关（低内存通知 + 阈值轮询）",
-            "Auto-cleanup master switch (low-memory notify + threshold poll)",
+            "自动清理总开关（默认开；低内存通知 + 阈值轮询）",
+            "Auto-cleanup master switch (default on; low-memory notify + threshold poll)",
             "auto_cleanup_enabled",
             b(self.auto_cleanup_enabled),
         );
@@ -427,7 +427,7 @@ mod tests {
             settings.cleanup_hotkey,
             crate::win32::hotkey::HotkeyBinding::DEFAULT_CLEANUP
         );
-        assert!(!settings.auto_cleanup_enabled);
+        assert!(settings.auto_cleanup_enabled);
         assert_eq!(settings.auto_cleanup_threshold, 0);
         assert!(settings.show_taskbar_window);
         assert_eq!(settings.taskbar_font_point_size, TASKBAR_FONT_PT_DEFAULT);

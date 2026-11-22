@@ -1,4 +1,3 @@
-use std::sync::mpsc::Sender;
 use std::sync::{Mutex, OnceLock};
 use std::thread::JoinHandle;
 
@@ -18,12 +17,12 @@ use windows::Win32::UI::WindowsAndMessaging::{
 };
 
 use crate::settings::Settings;
-use crate::tray::TrayCommand;
+use crate::tray::{CommandTx, TrayCommand};
 
 const HOTKEY_ID_OPTIMIZE: i32 = 1;
 const WM_APP_SHUTDOWN: u32 = windows::Win32::UI::WindowsAndMessaging::WM_USER + 1;
 
-static COMMAND_TX: OnceLock<Sender<TrayCommand>> = OnceLock::new();
+static COMMAND_TX: OnceLock<CommandTx> = OnceLock::new();
 static SERVICE: OnceLock<Mutex<HotkeyService>> = OnceLock::new();
 static CLASS_REGISTERED: OnceLock<()> = OnceLock::new();
 
@@ -235,7 +234,7 @@ fn spawn_hotkey_worker(binding: HotkeyBinding) -> Result<HotkeyWorker> {
     })
 }
 
-pub fn bind_command_sender(tx: Sender<TrayCommand>) {
+pub fn bind_command_sender(tx: CommandTx) {
     let _ = COMMAND_TX.set(tx);
 }
 

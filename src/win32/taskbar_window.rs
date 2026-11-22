@@ -61,6 +61,8 @@ const WIDGETS_UIA_TTL: Duration = Duration::from_millis(500);
 /// TaskbarDa 开但 UIA 失败时，右侧天气板预留（96dpi 逻辑像素）。
 const WIDGETS_FALLBACK_WIDTH_96: i32 = 180;
 const THEME_RECHECK: Duration = Duration::from_secs(5);
+/// 文案未变时，任务栏几何/嵌套最多按此间隔复查（避免每秒 FindWindow/UIA）。
+const GEOMETRY_RECHECK: Duration = Duration::from_secs(2);
 const FONT_TTF: &[u8] = include_bytes!("../fonts/Lilex-Regular.ttf");
 const FONT_FACE: &str = "Lilex";
 /// 测试用默认磅值（与 settings::TASKBAR_FONT_PT_DEFAULT 一致）。
@@ -116,6 +118,8 @@ struct TaskbarWindowState {
     light_text: bool,
     /// 主题缓存时刻，避免每秒读主题抖动导致反色闪。
     theme_checked_at: Instant,
+    /// 上次几何复查（内容未变时节流）。
+    geom_checked_at: Instant,
 }
 
 fn cell_up(up: &str) -> String {
@@ -181,6 +185,7 @@ pub fn install(font_point_size: u32) -> anyhow::Result<()> {
             dpi,
             light_text: !system_uses_light_theme().unwrap_or(false),
             theme_checked_at: Instant::now(),
+            geom_checked_at: Instant::now(),
         });
     });
 
@@ -322,7 +327,14 @@ pub fn update(physical: &MemorySection, cpu_network: &CpuNetworkSnapshot) {
             }
         }
 
-        relocate_and_paint(state, text_changed || theme_changed || font_changed);
+        let content_changed = text_changed || theme_changed || font_changed;
+        if content_changed {
+            state.geom_checked_at = Instant::now();
+            relocate_and_paint(state, true);
+        } else if state.geom_checked_at.elapsed() >= GEOMETRY_RECHECK {
+            state.geom_checked_at = Instant::now();
+            relocate_and_paint(state, false);
+        }
     });
 }
 

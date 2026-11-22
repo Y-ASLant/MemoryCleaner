@@ -1,7 +1,5 @@
 #![windows_subsystem = "windows"]
 
-use std::sync::mpsc;
-
 use memory_cleaner::{locale, log_msg, runtime::Runtime, settings::Settings, tray, win32};
 
 fn main() {
@@ -26,7 +24,13 @@ fn main() {
         return;
     }
 
-    let (command_tx, command_rx) = mpsc::channel();
+    let (command_tx, command_rx) = match tray::command_channel() {
+        Ok(ch) => ch,
+        Err(e) => {
+            log_msg(&format!("[main] command channel failed: {e:#}"));
+            return;
+        }
+    };
     if let Err(e) = win32::single_instance::ensure_single_instance(command_tx.clone()) {
         log_msg(&e.to_string());
         std::process::exit(0);

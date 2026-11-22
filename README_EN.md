@@ -39,7 +39,7 @@ Artifact: `target/release/MemoryCleanerLite.exe`
 | `debug_logging` | bool | `false` | `App.log` beside the exe (≤ 2 MiB single file) |
 | `cleanup_hotkey_enabled` | bool | `true` | Global hotkey on/off |
 | `cleanup_hotkey` | string | `"Ctrl+Alt+C"` | Hotkey chord |
-| `auto_cleanup_enabled` | bool | `false` | Automatic cleanup |
+| `auto_cleanup_enabled` | bool | `true` | Automatic cleanup |
 | `auto_cleanup_threshold` | u32 | `0` | Physical usage %; `0` = low-memory notify only |
 | `show_taskbar_window` | bool | `true` | Taskbar metrics strip |
 | `taskbar_font_point_size` | u32 | `10` | Taskbar font size in integer pt (5–72) |

@@ -1,7 +1,8 @@
 use std::cell::RefCell;
+use std::sync::Arc;
 use std::sync::OnceLock;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
-use std::sync::mpsc::Sender;
+use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread;
 use std::time::Duration;
 
@@ -23,7 +24,8 @@ thread_local! {
     static TRAY: RefCell<Option<TrayState>> = const { RefCell::new(None) };
 }
 
-static CMD_TX: OnceLock<Sender<TrayCommand>> = OnceLock::new();
+static CMD_TX: OnceLock<CommandTx> = OnceLock::new();
+static WAKE_EVENT: OnceLock<Arc<crate::win32::handle::OwnedWin32Handle>> = OnceLock::new();
 static SPIN_GENERATION: AtomicU32 = AtomicU32::new(0);
 static SPIN_ACTIVE: AtomicBool = AtomicBool::new(false);
 static MAIN_THREAD_ID: AtomicU32 = AtomicU32::new(0);
@@ -58,6 +60,36 @@ pub enum TrayCommand {
     SetSpinFrame { quarters: u32, generation: u32 },
     OptimizeFinished,
     Quit,
+}
+
+/// 向主循环投递命令；`send` 会唤醒 `MsgWaitForMultipleObjects`。
+#[derive(Clone)]
+pub struct CommandTx {
+    tx: Sender<TrayCommand>,
+    wake: Arc<crate::win32::handle::OwnedWin32Handle>,
+}
+
+impl CommandTx {
+    pub fn send(&self, command: TrayCommand) -> Result<(), mpsc::SendError<TrayCommand>> {
+        let result = self.tx.send(command);
+        unsafe {
+            let _ = windows::Win32::System::Threading::SetEvent(self.wake.raw());
+        }
+        result
+    }
+}
+
+/// 创建命令通道与主循环唤醒事件（auto-reset）。
+pub fn command_channel() -> anyhow::Result<(CommandTx, Receiver<TrayCommand>)> {
+    use windows::Win32::System::Threading::CreateEventW;
+
+    let (tx, rx) = mpsc::channel();
+    let handle = unsafe { CreateEventW(None, false, false, None) }?;
+    let wake = Arc::new(unsafe { crate::win32::handle::OwnedWin32Handle::from_raw(handle) });
+    WAKE_EVENT
+        .set(Arc::clone(&wake))
+        .map_err(|_| anyhow::anyhow!("command wake event already initialized"))?;
+    Ok((CommandTx { tx, wake }, rx))
 }
 
 struct TrayState {
@@ -97,7 +129,7 @@ fn with_tray_mut(f: impl FnOnce(&mut TrayState)) {
     });
 }
 
-pub fn install(command_tx: Sender<TrayCommand>, settings: &Settings) -> anyhow::Result<()> {
+pub fn install(command_tx: CommandTx, settings: &Settings) -> anyhow::Result<()> {
     let _ = CMD_TX.set(command_tx.clone());
     MAIN_THREAD_ID.store(
         unsafe { windows::Win32::System::Threading::GetCurrentThreadId() },
@@ -455,7 +487,7 @@ pub fn format_memory_tooltip(
     lines.join("\n")
 }
 
-fn install_event_handlers(tx: Sender<TrayCommand>) {
+fn install_event_handlers(tx: CommandTx) {
     TrayIconEvent::set_event_handler(Some({
         let tx = tx.clone();
         move |event| match event {
@@ -496,13 +528,21 @@ pub fn request_quit() {
 }
 
 /// 主线程：泵消息并处理命令（托盘 API 不可跨线程）。
-pub fn run_loop<F>(command_rx: std::sync::mpsc::Receiver<TrayCommand>, mut on_command: F)
+///
+/// 空闲时阻塞等待；命令 `SetEvent` 或窗口/线程消息会唤醒。不再 16ms 空转。
+pub fn run_loop<F>(command_rx: Receiver<TrayCommand>, mut on_command: F)
 where
     F: FnMut(TrayCommand),
 {
+    use windows::Win32::System::Threading::INFINITE;
     use windows::Win32::UI::WindowsAndMessaging::{
-        DispatchMessageW, MSG, PM_REMOVE, PeekMessageW, TranslateMessage, WM_QUIT,
+        DispatchMessageW, MSG, MWMO_INPUTAVAILABLE, MsgWaitForMultipleObjectsEx, PM_REMOVE,
+        PeekMessageW, QS_ALLINPUT, TranslateMessage, WM_QUIT,
     };
+
+    let wake = WAKE_EVENT
+        .get()
+        .expect("command_channel must run before run_loop");
 
     loop {
         // 菜单模态期间 metrics 会堆积；合并 RefreshTooltip，松手后只刷一次。
@@ -521,11 +561,9 @@ where
             on_command(TrayCommand::RefreshTooltip);
         }
 
-        let mut had_message = false;
         unsafe {
             let mut msg = MSG::default();
             while PeekMessageW(&mut msg, None, 0, 0, PM_REMOVE).into() {
-                had_message = true;
                 if msg.message == WM_QUIT {
                     return;
                 }
@@ -534,9 +572,10 @@ where
             }
         }
 
-        if !had_message {
-            thread::sleep(Duration::from_millis(16));
-        }
+        let handles = [wake.raw()];
+        let _ = unsafe {
+            MsgWaitForMultipleObjectsEx(Some(&handles), INFINITE, QS_ALLINPUT, MWMO_INPUTAVAILABLE)
+        };
     }
 }
 

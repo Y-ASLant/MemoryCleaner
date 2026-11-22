@@ -6,12 +6,17 @@
 
 ## [Unreleased]
 
+### 变更
+
+- **自动清理**：默认开启（`auto_cleanup_enabled = true`；阈值仍为 0 时仅低内存通知）。
+
 ### 新增
 
 - **配置**：首次运行、缺键或无标准注释头时写入带**中英注释**的完整 `settings.toml`。`taskbar_font_point_size`（**整数 pt**，默认 **10**，范围 **5–72**，`-MulDiv(pt,dpi,72)`）可调任务栏字体。
 
 ### 修复
 
+- **空闲主循环**：`MsgWaitForMultipleObjectsEx` + 命令唤醒事件，去掉 16ms 空转；任务栏几何 2s 节流；阈值关闭时 30s 轮询。
 - **任务栏指标条**：避让 Win11 右侧天气/小组件板（UIA `WidgetsButton` + `TaskbarDa` 回退）；收紧贴通知区定位，降低遮挡系统托盘。
 
 ## [1.0.0] - 2026-11-17
@@ -34,12 +39,17 @@
 
 ## [Unreleased]
 
+### Changed
+
+- **Auto-cleanup**: enabled by default (`auto_cleanup_enabled = true`; threshold 0 = low-memory notify only).
+
 ### Added
 
 - **Settings**: first run, missing keys, or no standard comment header writes a full `settings.toml` with **bilingual comments**. `taskbar_font_point_size` (**integer pt**, default **10**, range **5–72**, `-MulDiv(pt,dpi,72)`) controls the taskbar strip font.
 
 ### Fixed
 
+- **Idle loop**: `MsgWaitForMultipleObjectsEx` + command wake event (no 16ms spin); taskbar geometry recheck every 2s; 30s threshold poll when disabled.
 - **Taskbar strip**: avoid Win11 right-side weather/widgets board (UIA `WidgetsButton` + `TaskbarDa` fallback); tighter notify-edge placement to reduce tray occlusion.
 
 ## [1.0.0] - 2026-11-17

@@ -1,4 +1,4 @@
-use std::sync::{Arc, mpsc::Sender};
+use std::sync::Arc;
 use std::thread::{self, JoinHandle};
 
 use anyhow::{Context, Result, bail};
@@ -8,7 +8,7 @@ use windows::Win32::System::Memory::{
 };
 use windows::Win32::System::Threading::{CreateEventW, INFINITE, SetEvent, WaitForMultipleObjects};
 
-use crate::tray::TrayCommand;
+use crate::tray::{CommandTx, TrayCommand};
 use crate::win32::handle::OwnedWin32Handle;
 
 /// 持有 Windows 内存资源通知句柄。
@@ -55,7 +55,7 @@ pub struct MemoryNotificationMonitor {
 }
 
 impl MemoryNotificationMonitor {
-    pub fn start(command_tx: Sender<TrayCommand>) -> Result<Self> {
+    pub fn start(command_tx: CommandTx) -> Result<Self> {
         let stop_event = Arc::new(unsafe {
             OwnedWin32Handle::from_raw(
                 CreateEventW(None, true, false, None).context("CreateEventW(stop) failed")?,
@@ -92,7 +92,7 @@ impl Drop for MemoryNotificationMonitor {
 }
 
 fn run(
-    command_tx: Sender<TrayCommand>,
+    command_tx: CommandTx,
     stop_event: HANDLE,
     low: MemoryNotification,
     high: MemoryNotification,
@@ -125,7 +125,7 @@ mod tests {
 
     #[test]
     fn monitor_stops_when_dropped() {
-        let (command_tx, _command_rx) = std::sync::mpsc::channel();
+        let (command_tx, _command_rx) = crate::tray::command_channel().expect("command channel");
         let monitor =
             MemoryNotificationMonitor::start(command_tx).expect("start low-memory monitor");
         drop(monitor);

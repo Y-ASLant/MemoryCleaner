@@ -5,7 +5,7 @@
 //! `TrayCommand::Optimize`（与左键清理相同）。
 
 use anyhow::{Context, Result, anyhow, bail};
-use std::sync::{OnceLock, mpsc::Sender};
+use std::sync::OnceLock;
 
 use windows::Win32::Foundation::{ERROR_ALREADY_EXISTS, GetLastError, WAIT_OBJECT_0};
 use windows::Win32::System::Threading::{
@@ -15,7 +15,7 @@ use windows::Win32::System::Threading::{
 use windows::core::{HRESULT, PCWSTR};
 
 use super::wide_null;
-use crate::tray::TrayCommand;
+use crate::tray::{CommandTx, TrayCommand};
 use crate::win32::handle::OwnedWin32Handle;
 
 const MUTEX_NAME: &str = "MemoryCleanerLite_{C4E91F0A-7B2D-4A63-9E18-5F6D0C8B3A21}";
@@ -53,7 +53,7 @@ pub fn signal_existing_instance() -> InstanceSignal {
 
 /// 确保应用仅有一个实例。成功时本进程即为该实例，
 /// 且 `event_watcher` 将唤醒信号转发到 `command_tx`。
-pub fn ensure_single_instance(command_tx: Sender<TrayCommand>) -> Result<()> {
+pub fn ensure_single_instance(command_tx: CommandTx) -> Result<()> {
     let mutex_name = wide_null(MUTEX_NAME);
 
     let mutex = unsafe {
@@ -80,7 +80,7 @@ pub fn ensure_single_instance(command_tx: Sender<TrayCommand>) -> Result<()> {
     Ok(())
 }
 
-fn spawn_event_watcher(event: OwnedWin32Handle, command_tx: Sender<TrayCommand>) -> Result<()> {
+fn spawn_event_watcher(event: OwnedWin32Handle, command_tx: CommandTx) -> Result<()> {
     std::thread::Builder::new()
         .name("single-instance-watcher".into())
         .spawn(move || watcher_loop(event, command_tx))
@@ -88,7 +88,7 @@ fn spawn_event_watcher(event: OwnedWin32Handle, command_tx: Sender<TrayCommand>)
     Ok(())
 }
 
-fn watcher_loop(event: OwnedWin32Handle, command_tx: Sender<TrayCommand>) {
+fn watcher_loop(event: OwnedWin32Handle, command_tx: CommandTx) {
     loop {
         let result = unsafe { WaitForSingleObject(event.raw(), INFINITE) };
         if result != WAIT_OBJECT_0 {
