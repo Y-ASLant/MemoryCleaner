@@ -1,5 +1,5 @@
 use crate::optimize::MemoryAreas;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use std::path::PathBuf;
 
 #[cfg(windows)]
@@ -33,9 +33,10 @@ pub struct Settings {
     /// 触发自动清理的物理内存占用百分比（0–100）。
     /// `0` 关闭阈值触发。
     pub auto_cleanup_threshold: u32,
-    /// 在系统任务栏显示占用信息窗口（TrafficMonitor 同类嵌入/贴靠）。
+    /// 在系统任务栏显示占用信息窗口（嵌入或贴靠）。
     pub show_taskbar_window: bool,
-    /// 任务栏指标条字体磅值（逻辑点，随 DPI 缩放）。
+    /// 任务栏指标条字体磅值（整数 pt；`lfHeight = -MulDiv(pt, dpi, 72)`）。
+    #[serde(deserialize_with = "deserialize_font_point_size")]
     pub taskbar_font_point_size: u32,
 }
 
@@ -52,9 +53,56 @@ impl Default for Settings {
             auto_cleanup_enabled: false,
             auto_cleanup_threshold: 0,
             show_taskbar_window: true,
-            taskbar_font_point_size: 13,
+            taskbar_font_point_size: TASKBAR_FONT_PT_DEFAULT,
         }
     }
+}
+
+/// 任务栏字体：整数磅值 5–72，默认 10。
+pub const TASKBAR_FONT_PT_DEFAULT: u32 = 10;
+pub const TASKBAR_FONT_PT_MIN: u32 = 5;
+pub const TASKBAR_FONT_PT_MAX: u32 = 72;
+
+pub(crate) fn normalize_font_point_size(pt: u32) -> u32 {
+    pt.clamp(TASKBAR_FONT_PT_MIN, TASKBAR_FONT_PT_MAX)
+}
+
+/// 接受整数或小数 toml（小数四舍五入），兼容旧一位小数写法。
+fn deserialize_font_point_size<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<u32, D::Error> {
+    use serde::de::{self, Visitor};
+    use std::fmt;
+
+    struct FontPt;
+    impl<'de> Visitor<'de> for FontPt {
+        type Value = u32;
+
+        fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            f.write_str("an integer or float font point size")
+        }
+
+        fn visit_u64<E: de::Error>(self, v: u64) -> Result<u32, E> {
+            Ok(v.min(u64::from(u32::MAX)) as u32)
+        }
+
+        fn visit_i64<E: de::Error>(self, v: i64) -> Result<u32, E> {
+            if v <= 0 {
+                Ok(0)
+            } else {
+                Ok(v.min(i64::from(u32::MAX)) as u32)
+            }
+        }
+
+        fn visit_f64<E: de::Error>(self, v: f64) -> Result<u32, E> {
+            if !v.is_finite() || v <= 0.0 {
+                return Ok(TASKBAR_FONT_PT_DEFAULT);
+            }
+            Ok(v.round().clamp(0.0, f64::from(u32::MAX)) as u32)
+        }
+    }
+
+    deserializer.deserialize_any(FontPt)
 }
 
 impl Settings {
@@ -252,8 +300,8 @@ impl Settings {
         );
         push_entry(
             &mut out,
-            "任务栏指标条字体磅值 8–28（默认 13）；仅 toml，改完需重启",
-            "Taskbar strip font point size 8–28 (default 13); TOML-only, restart required",
+            "任务栏字体磅值（整数 pt，5–72，默认 10）；仅 toml，改完需重启",
+            "Taskbar font size in integer pt (5–72, default 10); TOML-only, restart required",
             "taskbar_font_point_size",
             &self.taskbar_font_point_size.to_string(),
         );
@@ -288,7 +336,7 @@ impl Settings {
 
     /// 任务栏字体磅值钳到可读范围。
     fn normalize_taskbar_font(&mut self) {
-        self.taskbar_font_point_size = self.taskbar_font_point_size.clamp(8, 28);
+        self.taskbar_font_point_size = normalize_font_point_size(self.taskbar_font_point_size);
     }
 
     fn normalize_cleanup_hotkey(&mut self) {
@@ -382,15 +430,23 @@ mod tests {
         assert!(!settings.auto_cleanup_enabled);
         assert_eq!(settings.auto_cleanup_threshold, 0);
         assert!(settings.show_taskbar_window);
-        assert_eq!(settings.taskbar_font_point_size, 13);
+        assert_eq!(settings.taskbar_font_point_size, TASKBAR_FONT_PT_DEFAULT);
     }
 
     #[test]
     fn taskbar_font_point_size_is_clamped() {
         let settings = Settings::from_toml("taskbar_font_point_size = 3");
-        assert_eq!(settings.taskbar_font_point_size, 8);
+        assert_eq!(settings.taskbar_font_point_size, TASKBAR_FONT_PT_MIN);
         let settings = Settings::from_toml("taskbar_font_point_size = 99");
-        assert_eq!(settings.taskbar_font_point_size, 28);
+        assert_eq!(settings.taskbar_font_point_size, TASKBAR_FONT_PT_MAX);
+    }
+
+    #[test]
+    fn taskbar_font_point_size_rounds_legacy_fraction() {
+        let settings = Settings::from_toml("taskbar_font_point_size = 13.5");
+        assert_eq!(settings.taskbar_font_point_size, 14);
+        let settings = Settings::from_toml("taskbar_font_point_size = 10.4");
+        assert_eq!(settings.taskbar_font_point_size, 10);
     }
 
     #[test]
@@ -401,8 +457,8 @@ mod tests {
         let full = Settings::default().to_toml_documented();
         assert!(!Settings::toml_missing_known_keys(&full));
         assert!(full.contains(Settings::TOML_COMMENT_MARKER));
-        assert!(full.contains("任务栏指标条字体"));
-        assert!(full.contains("Taskbar strip font"));
+        assert!(full.contains("任务栏字体磅值"));
+        assert!(full.contains("Taskbar font size"));
     }
 
     #[test]

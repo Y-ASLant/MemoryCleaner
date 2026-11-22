@@ -42,7 +42,7 @@ cargo run --release
 | `auto_cleanup_enabled` | bool | `false` | 自动清理 |
 | `auto_cleanup_threshold` | u32 | `0` | 物理内存占用阈值；`0` 仅低内存通知 |
 | `show_taskbar_window` | bool | `true` | 任务栏指标条 |
-| `taskbar_font_point_size` | u32 | `13` | 任务栏字体磅值（8–28） |
+| `taskbar_font_point_size` | u32 | `10` | 任务栏字体整数磅值（5–72） |
 
 未识别的配置键加载时忽略，保存时丢弃。首次运行、缺键或无标准注释头时写入带中英注释的完整默认项，便于手改。
 

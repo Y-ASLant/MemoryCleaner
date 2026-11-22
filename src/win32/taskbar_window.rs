@@ -1,7 +1,7 @@
-//! 任务栏信息窗口（TrafficMonitor 同类）。
+//! 任务栏信息窗口。
 //!
 //! 优先 `SetParent` 嵌进 `Shell_TrayWnd`；失败再 `TOPMOST`。
-//! 绘制：GDI 光栅化到位图，`UpdateLayeredWindow` 原子提交整帧——和 TrafficMonitor 默认走的路径一样。
+//! 绘制：GDI 光栅化到位图，`UpdateLayeredWindow` 原子提交整帧。
 //! 不用 DirectComposition 合成交换链：那条路径要等 `Present` 翻转，被任务栏重绘打断时会露出半帧。
 //! 仅主线程调用。
 
@@ -15,7 +15,7 @@ use windows::Win32::Foundation::{COLORREF, HWND, LPARAM, LRESULT, POINT, RECT, S
 use windows::Win32::Graphics::Gdi::{
     AC_SRC_ALPHA, AC_SRC_OVER, ANTIALIASED_QUALITY, AddFontMemResourceEx, BI_RGB, BITMAPINFO,
     BITMAPINFOHEADER, BLENDFUNCTION, CLIP_DEFAULT_PRECIS, CreateCompatibleDC, CreateDIBSection,
-    CreateFontW, DEFAULT_CHARSET, DEFAULT_PITCH, DIB_RGB_COLORS, DeleteDC, DeleteObject, FW_MEDIUM,
+    CreateFontW, DEFAULT_CHARSET, DEFAULT_PITCH, DIB_RGB_COLORS, DeleteDC, DeleteObject, FW_NORMAL,
     GetDC, GetDeviceCaps, GetTextExtentPoint32W, GetTextMetricsW, HDC, HFONT, HGDIOBJ, LOGPIXELSY,
     OUT_DEFAULT_PRECIS, ReleaseDC, ScreenToClient, SelectObject, SetBkMode, SetTextColor,
     TEXTMETRICW, TRANSPARENT, TextOutW,
@@ -63,9 +63,9 @@ const WIDGETS_FALLBACK_WIDTH_96: i32 = 180;
 const THEME_RECHECK: Duration = Duration::from_secs(5);
 const FONT_TTF: &[u8] = include_bytes!("../fonts/Lilex-Regular.ttf");
 const FONT_FACE: &str = "Lilex";
-/// 测试与文档用默认磅值（settings 默认同为 13）。
+/// 测试用默认磅值（与 settings::TASKBAR_FONT_PT_DEFAULT 一致）。
 #[cfg(test)]
-const DEFAULT_FONT_POINT_SIZE: i32 = 13;
+const DEFAULT_FONT_POINT_SIZE: i32 = 10;
 /// 列宽上限样例，避免网速/百分比位数变化改窗宽。
 const SLOT_UP: &str = "↑: 999.99 MB/s";
 const SLOT_DOWN: &str = "↓: 999.99 MB/s";
@@ -135,7 +135,7 @@ pub fn install(font_point_size: u32) -> anyhow::Result<()> {
     ensure_class()?;
     ensure_font_loaded();
 
-    let font_point_size = clamp_font_point_size(font_point_size);
+    let font_point_size = crate::settings::normalize_font_point_size(font_point_size) as i32;
     let dpi = taskbar_dpi();
     let font = create_font(dpi, font_point_size)?;
     let up = cell_up("—");
@@ -194,12 +194,13 @@ pub fn install(font_point_size: u32) -> anyhow::Result<()> {
     });
 
     crate::log_msg(&format!(
-        "[taskbar-window] installed ({})",
+        "[taskbar-window] installed ({}, font={font_point_size}pt dpi={dpi} h={})",
         if embedded {
             "SetParent embed"
         } else {
             "TOPMOST fallback"
-        }
+        },
+        font_height_px(dpi, font_point_size),
     ));
     Ok(())
 }
@@ -225,7 +226,7 @@ pub fn set_enabled(enabled: bool) {
 
 /// 更新任务栏字体磅值（settings.toml）；与当前相同则 noop。
 pub fn set_font_point_size(font_point_size: u32) {
-    let font_point_size = clamp_font_point_size(font_point_size);
+    let font_point_size = crate::settings::normalize_font_point_size(font_point_size) as i32;
     STATE.with(|cell| {
         let mut guard = cell.borrow_mut();
         let Some(state) = guard.as_mut() else {
@@ -752,14 +753,18 @@ fn hkcu_dword(subkey: &str, value_name: &str) -> Option<u32> {
     Some(u32::from_le_bytes(data))
 }
 
-fn clamp_font_point_size(pt: u32) -> i32 {
-    pt.clamp(8, 28) as i32
+/// MSDN：`lfHeight = -MulDiv(pt, dpi, 72)`（就近取整）。
+fn font_height_px(dpi: i32, point_size: i32) -> i32 {
+    let pt = point_size.max(1) as i64;
+    let dpi = dpi.max(1) as i64;
+    // MulDiv 对正数就近取整：+(c/2) 再除。
+    let h = -((pt * dpi + 36) / 72) as i32;
+    if h == 0 { -1 } else { h }
 }
 
 fn create_font(dpi: i32, point_size: i32) -> anyhow::Result<HFONT> {
     ensure_font_loaded();
-    let point_size = point_size.max(1);
-    let height = -((point_size * dpi + 48) / 96);
+    let height = font_height_px(dpi, point_size);
     let face = wide_null(FONT_FACE);
     let font = unsafe {
         CreateFontW(
@@ -767,7 +772,7 @@ fn create_font(dpi: i32, point_size: i32) -> anyhow::Result<HFONT> {
             0,
             0,
             0,
-            FW_MEDIUM.0 as i32,
+            FW_NORMAL.0 as i32,
             0,
             0,
             0,
@@ -1033,6 +1038,21 @@ unsafe extern "system" fn wnd_proc(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn font_height_matches_msdn_muldiv() {
+        // 96dpi：MulDiv(pt,96,72)
+        assert_eq!(font_height_px(96, 9), -12);
+        assert_eq!(font_height_px(96, 10), -13);
+        assert_eq!(font_height_px(96, 11), -15);
+        assert_eq!(font_height_px(96, 12), -16);
+        assert_ne!(font_height_px(96, 10), font_height_px(96, 11));
+        assert_ne!(font_height_px(96, 11), font_height_px(96, 12));
+        // 120dpi（125%）
+        assert_eq!(font_height_px(120, 10), -17);
+        assert_eq!(font_height_px(120, 11), -18);
+        assert_eq!(font_height_px(120, 12), -20);
+    }
 
     #[test]
     fn measure_size_positive() {

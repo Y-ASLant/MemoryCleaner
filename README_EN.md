@@ -42,7 +42,7 @@ Artifact: `target/release/MemoryCleanerLite.exe`
 | `auto_cleanup_enabled` | bool | `false` | Automatic cleanup |
 | `auto_cleanup_threshold` | u32 | `0` | Physical usage %; `0` = low-memory notify only |
 | `show_taskbar_window` | bool | `true` | Taskbar metrics strip |
-| `taskbar_font_point_size` | u32 | `13` | Taskbar font point size (8–28) |
+| `taskbar_font_point_size` | u32 | `10` | Taskbar font size in integer pt (5–72) |
 
 Unrecognized keys are ignored on load and dropped on save. First run, missing keys, or a file without the standard comment header writes a full default set with bilingual comments for manual editing.
 

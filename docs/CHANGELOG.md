@@ -8,7 +8,7 @@
 
 ### 新增
 
-- **配置**：首次运行、缺键或无标准注释头时写入带**中英注释**的完整 `settings.toml`。`taskbar_font_point_size`（默认 13，范围 8–28）可调任务栏字体。
+- **配置**：首次运行、缺键或无标准注释头时写入带**中英注释**的完整 `settings.toml`。`taskbar_font_point_size`（**整数 pt**，默认 **10**，范围 **5–72**，`-MulDiv(pt,dpi,72)`）可调任务栏字体。
 
 ### 修复
 
@@ -36,7 +36,7 @@
 
 ### Added
 
-- **Settings**: first run, missing keys, or no standard comment header writes a full `settings.toml` with **bilingual comments**. `taskbar_font_point_size` (default 13, range 8–28) controls the taskbar strip font.
+- **Settings**: first run, missing keys, or no standard comment header writes a full `settings.toml` with **bilingual comments**. `taskbar_font_point_size` (**integer pt**, default **10**, range **5–72**, `-MulDiv(pt,dpi,72)`) controls the taskbar strip font.
 
 ### Fixed
 
