@@ -35,6 +35,8 @@ pub struct Settings {
     pub auto_cleanup_threshold: u32,
     /// 在系统任务栏显示占用信息窗口（TrafficMonitor 同类嵌入/贴靠）。
     pub show_taskbar_window: bool,
+    /// 任务栏指标条字体磅值（逻辑点，随 DPI 缩放）。
+    pub taskbar_font_point_size: u32,
 }
 
 impl Default for Settings {
@@ -50,11 +52,15 @@ impl Default for Settings {
             auto_cleanup_enabled: false,
             auto_cleanup_threshold: 0,
             show_taskbar_window: true,
+            taskbar_font_point_size: 13,
         }
     }
 }
 
 impl Settings {
+    /// 落盘文件头标记：用于判断是否需重写中英注释。
+    const TOML_COMMENT_MARKER: &str = "Memory Cleaner Lite — settings.toml";
+
     #[cfg(windows)]
     fn replace_config_file(tmp: &std::path::Path, dest: &std::path::Path) -> std::io::Result<()> {
         let tmp_w: Vec<u16> = tmp
@@ -95,22 +101,170 @@ impl Settings {
 
     pub fn load() -> Self {
         let path = Self::config_path();
-        let mut settings = match std::fs::read_to_string(&path) {
-            Ok(content) => match toml::from_str(&content) {
-                Ok(settings) => settings,
+        let (mut settings, seed_file) = match std::fs::read_to_string(&path) {
+            Ok(content) => match toml::from_str::<Settings>(&content) {
+                Ok(settings) => {
+                    // 缺键或无标准注释头：写回完整带注释配置，方便手改。
+                    let seed = Self::toml_needs_rewrite(&content);
+                    (settings, seed)
+                }
                 Err(e) => {
                     crate::log_msg(&format!("Failed to parse {}: {e}", path.display()));
-                    Self::default()
+                    (Self::default(), true)
                 }
             },
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Self::default(),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => (Self::default(), true),
             Err(e) => {
                 crate::log_msg(&format!("Failed to read {}: {e}", path.display()));
-                Self::default()
+                (Self::default(), false)
             }
         };
         settings.normalize();
+        if seed_file && let Err(error) = settings.try_save() {
+            crate::log_msg(&format!("[settings] seed failed: {error}"));
+        }
         settings
+    }
+
+    /// 已知配置键是否都在文件顶层出现（忽略未知键）。
+    fn toml_missing_known_keys(content: &str) -> bool {
+        const KEYS: &[&str] = &[
+            "run_at_startup",
+            "memory_areas",
+            "show_optimization_notifications",
+            "language",
+            "debug_logging",
+            "cleanup_hotkey_enabled",
+            "cleanup_hotkey",
+            "auto_cleanup_enabled",
+            "auto_cleanup_threshold",
+            "show_taskbar_window",
+            "taskbar_font_point_size",
+        ];
+        let Ok(table) = content.parse::<toml::Table>() else {
+            return true;
+        };
+        KEYS.iter().any(|key| !table.contains_key(*key))
+    }
+
+    fn toml_needs_rewrite(content: &str) -> bool {
+        Self::toml_missing_known_keys(content) || !content.contains(Self::TOML_COMMENT_MARKER)
+    }
+
+    /// 落盘用：带中英注释的完整 settings.toml 文本。
+    fn to_toml_documented(&self) -> String {
+        let mut out = String::with_capacity(1600);
+        out.push_str("# ");
+        out.push_str(Self::TOML_COMMENT_MARKER);
+        out.push('\n');
+        out.push_str(
+            "# 每项：上一行中文说明，下一行 English。托盘改设置会整文件覆盖并保留本注释格式。\n\
+# Per key: Chinese line, then English. Tray edits rewrite the whole file (comments kept).\n\
+# 仅 toml 可改且需重启：cleanup_hotkey、taskbar_font_point_size。\n\
+# TOML-only (restart required): cleanup_hotkey, taskbar_font_point_size.\n\n",
+        );
+
+        fn push_entry(out: &mut String, zh: &str, en: &str, key: &str, value: &str) {
+            out.push_str("# ");
+            out.push_str(zh);
+            out.push('\n');
+            out.push_str("# ");
+            out.push_str(en);
+            out.push('\n');
+            out.push_str(key);
+            out.push_str(" = ");
+            out.push_str(value);
+            out.push_str("\n\n");
+        }
+
+        let b = |v: bool| if v { "true" } else { "false" };
+        let s = |v: &str| toml::Value::String(v.to_string()).to_string();
+
+        push_entry(
+            &mut out,
+            "登录后最高权限计划任务，仅托盘启动",
+            "Highest-privilege logon task; tray only",
+            "run_at_startup",
+            b(self.run_at_startup),
+        );
+        push_entry(
+            &mut out,
+            "清理区域位掩码（见 README；待机列表两项互斥）",
+            "Cleanup area bitmask (see README; standby variants mutually exclusive)",
+            "memory_areas",
+            &self.memory_areas.to_string(),
+        );
+        push_entry(
+            &mut out,
+            "清理完成时弹出 Windows Toast 通知",
+            "Windows toast when cleanup finishes",
+            "show_optimization_notifications",
+            b(self.show_optimization_notifications),
+        );
+        push_entry(
+            &mut out,
+            "界面语言：auto / zh-CN / en（auto 跟系统 UI）",
+            "UI language: auto / zh-CN / en (auto follows system UI)",
+            "language",
+            &s(&self.language),
+        );
+        push_entry(
+            &mut out,
+            "调试日志写入 exe 旁 App.log（单文件 ≤ 2 MiB）",
+            "Debug log to App.log beside the exe (single file ≤ 2 MiB)",
+            "debug_logging",
+            b(self.debug_logging),
+        );
+        push_entry(
+            &mut out,
+            "启用全局清理热键（RegisterHotKey）",
+            "Enable global cleanup hotkey (RegisterHotKey)",
+            "cleanup_hotkey_enabled",
+            b(self.cleanup_hotkey_enabled),
+        );
+        push_entry(
+            &mut out,
+            "热键组合，如 Ctrl+Alt+C；仅 toml，改完需重启",
+            "Hotkey chord e.g. Ctrl+Alt+C; TOML-only, restart required",
+            "cleanup_hotkey",
+            &s(&self.cleanup_hotkey),
+        );
+        push_entry(
+            &mut out,
+            "自动清理总开关（低内存通知 + 阈值轮询）",
+            "Auto-cleanup master switch (low-memory notify + threshold poll)",
+            "auto_cleanup_enabled",
+            b(self.auto_cleanup_enabled),
+        );
+        push_entry(
+            &mut out,
+            "物理内存占用阈值 0–100；0 表示不按阈值触发",
+            "Physical memory usage threshold 0–100; 0 disables threshold triggers",
+            "auto_cleanup_threshold",
+            &self.auto_cleanup_threshold.to_string(),
+        );
+        push_entry(
+            &mut out,
+            "在系统任务栏显示 ↑/↓/CPU/RAM 指标条",
+            "Show ↑/↓/CPU/RAM metrics strip on the taskbar",
+            "show_taskbar_window",
+            b(self.show_taskbar_window),
+        );
+        push_entry(
+            &mut out,
+            "任务栏指标条字体磅值 8–28（默认 13）；仅 toml，改完需重启",
+            "Taskbar strip font point size 8–28 (default 13); TOML-only, restart required",
+            "taskbar_font_point_size",
+            &self.taskbar_font_point_size.to_string(),
+        );
+
+        while out.ends_with("\n\n") {
+            out.pop();
+        }
+        if !out.ends_with('\n') {
+            out.push('\n');
+        }
+        out
     }
 
     fn normalize(&mut self) {
@@ -118,7 +272,9 @@ impl Settings {
         self.normalize_language();
         self.normalize_cleanup_hotkey();
         self.normalize_auto_cleanup();
+        self.normalize_taskbar_font();
     }
+
     fn normalize_language(&mut self) {
         if !matches!(self.language.as_str(), "auto" | "zh-CN" | "en") {
             self.language = "auto".into();
@@ -128,6 +284,11 @@ impl Settings {
     /// 将自动清理阈值钳到合法占用百分比范围。
     fn normalize_auto_cleanup(&mut self) {
         self.auto_cleanup_threshold = self.auto_cleanup_threshold.min(100);
+    }
+
+    /// 任务栏字体磅值钳到可读范围。
+    fn normalize_taskbar_font(&mut self) {
+        self.taskbar_font_point_size = self.taskbar_font_point_size.clamp(8, 28);
     }
 
     fn normalize_cleanup_hotkey(&mut self) {
@@ -168,7 +329,7 @@ impl Settings {
             .lock()
             .map_err(|error| std::io::Error::other(error.to_string()))?;
         std::fs::create_dir_all(Self::config_dir())?;
-        let content = toml::to_string_pretty(self).map_err(std::io::Error::other)?;
+        let content = self.to_toml_documented();
         let final_path = Self::config_path();
         let tmp_path = final_path.with_extension("toml.tmp");
         std::fs::write(&tmp_path, content)?;
@@ -212,6 +373,7 @@ mod tests {
         assert_eq!(settings.memory_areas, MemoryAreas::DEFAULT.bits());
         assert_eq!(settings.memory_areas, 43);
         assert_eq!(settings.language, "auto");
+        assert!(!settings.debug_logging);
         assert!(settings.cleanup_hotkey_enabled);
         assert_eq!(
             settings.cleanup_hotkey,
@@ -219,6 +381,104 @@ mod tests {
         );
         assert!(!settings.auto_cleanup_enabled);
         assert_eq!(settings.auto_cleanup_threshold, 0);
+        assert!(settings.show_taskbar_window);
+        assert_eq!(settings.taskbar_font_point_size, 13);
+    }
+
+    #[test]
+    fn taskbar_font_point_size_is_clamped() {
+        let settings = Settings::from_toml("taskbar_font_point_size = 3");
+        assert_eq!(settings.taskbar_font_point_size, 8);
+        let settings = Settings::from_toml("taskbar_font_point_size = 99");
+        assert_eq!(settings.taskbar_font_point_size, 28);
+    }
+
+    #[test]
+    fn toml_missing_known_keys_detects_partial_file() {
+        assert!(Settings::toml_missing_known_keys(
+            "run_at_startup = false\n"
+        ));
+        let full = Settings::default().to_toml_documented();
+        assert!(!Settings::toml_missing_known_keys(&full));
+        assert!(full.contains(Settings::TOML_COMMENT_MARKER));
+        assert!(full.contains("任务栏指标条字体"));
+        assert!(full.contains("Taskbar strip font"));
+    }
+
+    #[test]
+    fn documented_toml_roundtrips_through_parser() {
+        let original = Settings {
+            debug_logging: true,
+            language: "zh-CN".into(),
+            cleanup_hotkey: "Ctrl+Shift+M".into(),
+            taskbar_font_point_size: 16,
+            ..Default::default()
+        };
+        let text = original.to_toml_documented();
+        let restored: Settings = toml::from_str(&text).unwrap();
+        assert!(restored.debug_logging);
+        assert_eq!(restored.language, "zh-CN");
+        assert_eq!(restored.cleanup_hotkey, "Ctrl+Shift+M");
+        assert_eq!(restored.taskbar_font_point_size, 16);
+        assert!(!Settings::toml_needs_rewrite(&text));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn load_seeds_full_file_when_missing() {
+        with_temp_appdata(|app_data| {
+            let loaded = Settings::load();
+            let path = app_data
+                .join(crate::version::CONFIG_DIR_NAME)
+                .join("settings.toml");
+            let content = std::fs::read_to_string(&path).expect("seeded file");
+            assert!(!Settings::toml_missing_known_keys(&content));
+            assert!(content.contains(Settings::TOML_COMMENT_MARKER));
+            assert!(content.contains("Highest-privilege"));
+            assert_eq!(loaded.language, "auto");
+            assert!(loaded.show_taskbar_window);
+        });
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn load_fills_missing_keys_preserving_values() {
+        with_temp_appdata(|app_data| {
+            let dir = app_data.join(crate::version::CONFIG_DIR_NAME);
+            std::fs::create_dir_all(&dir).unwrap();
+            let path = dir.join("settings.toml");
+            std::fs::write(&path, "debug_logging = true\nlanguage = \"en\"\n").unwrap();
+            let loaded = Settings::load();
+            assert!(loaded.debug_logging);
+            assert_eq!(loaded.language, "en");
+            let content = std::fs::read_to_string(&path).unwrap();
+            assert!(!Settings::toml_missing_known_keys(&content));
+            assert!(content.contains("debug_logging = true"));
+            assert!(content.contains(Settings::TOML_COMMENT_MARKER));
+        });
+    }
+
+    #[cfg(windows)]
+    fn with_temp_appdata(run: impl FnOnce(&std::path::Path)) {
+        use std::sync::Mutex;
+        static LOCK: Mutex<()> = Mutex::new(());
+        let _guard = LOCK.lock().expect("appdata lock");
+        let temp = tempfile::tempdir().expect("tempdir");
+        let previous = std::env::var_os("APPDATA");
+        // SAFETY: 测试串行持锁，返回前恢复 APPDATA。
+        unsafe {
+            std::env::set_var("APPDATA", temp.path());
+        }
+        run(temp.path());
+        if let Some(path) = previous {
+            unsafe {
+                std::env::set_var("APPDATA", path);
+            }
+        } else {
+            unsafe {
+                std::env::remove_var("APPDATA");
+            }
+        }
     }
 
     #[test]
@@ -230,7 +490,7 @@ mod tests {
             auto_cleanup_enabled: true,
             ..Default::default()
         };
-        let restored: Settings = toml::from_str(&toml::to_string(&original).unwrap()).unwrap();
+        let restored: Settings = toml::from_str(&original.to_toml_documented()).unwrap();
         assert!(restored.debug_logging);
         assert_eq!(restored.language, "en");
         assert_eq!(restored.memory_areas, MemoryAreas::WORKING_SET.bits());
@@ -261,8 +521,8 @@ available_after = 2
         );
         assert!(settings.auto_cleanup_enabled);
         assert_eq!(settings.auto_cleanup_threshold, 90);
-        let serialized = toml::to_string(&settings).expect("settings serialize");
-        assert!(!serialized.contains("always_on_top"));
+        let serialized = settings.to_toml_documented();
+        assert!(!serialized.contains("always_on_top ="));
         assert!(!serialized.contains("close_to_notification_area"));
         assert!(!serialized.contains("cleanup_history"));
         assert!(!serialized.contains("auto_cleanup_interval_minutes"));

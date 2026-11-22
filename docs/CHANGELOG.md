@@ -6,6 +6,10 @@
 
 ## [Unreleased]
 
+### 新增
+
+- **配置**：首次运行、缺键或无标准注释头时写入带**中英注释**的完整 `settings.toml`。`taskbar_font_point_size`（默认 13，范围 8–28）可调任务栏字体。
+
 ### 修复
 
 - **任务栏指标条**：避让 Win11 右侧天气/小组件板（UIA `WidgetsButton` + `TaskbarDa` 回退）；收紧贴通知区定位，降低遮挡系统托盘。
@@ -29,6 +33,10 @@
 **Memory Cleaner Lite**. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
+
+### Added
+
+- **Settings**: first run, missing keys, or no standard comment header writes a full `settings.toml` with **bilingual comments**. `taskbar_font_point_size` (default 13, range 8–28) controls the taskbar strip font.
 
 ### Fixed
 

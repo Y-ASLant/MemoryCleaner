@@ -63,7 +63,9 @@ const WIDGETS_FALLBACK_WIDTH_96: i32 = 180;
 const THEME_RECHECK: Duration = Duration::from_secs(5);
 const FONT_TTF: &[u8] = include_bytes!("../fonts/Lilex-Regular.ttf");
 const FONT_FACE: &str = "Lilex";
-const FONT_POINT_SIZE: i32 = 13;
+/// 测试与文档用默认磅值（settings 默认同为 13）。
+#[cfg(test)]
+const DEFAULT_FONT_POINT_SIZE: i32 = 13;
 /// 列宽上限样例，避免网速/百分比位数变化改窗宽。
 const SLOT_UP: &str = "↑: 999.99 MB/s";
 const SLOT_DOWN: &str = "↓: 999.99 MB/s";
@@ -107,6 +109,8 @@ struct TaskbarWindowState {
     pos_x: i32,
     pos_y: i32,
     font: HFONT,
+    /// 逻辑磅值（与 settings 一致，已钳位）。
+    font_point_size: i32,
     dpi: i32,
     /// `true` = 白字（深色栏）；`false` = 黑字（浅色栏）
     light_text: bool,
@@ -127,12 +131,13 @@ fn cell_ram(ram: &str) -> String {
     format!("RAM: {ram}")
 }
 
-pub fn install() -> anyhow::Result<()> {
+pub fn install(font_point_size: u32) -> anyhow::Result<()> {
     ensure_class()?;
     ensure_font_loaded();
 
+    let font_point_size = clamp_font_point_size(font_point_size);
     let dpi = taskbar_dpi();
-    let font = create_font(dpi)?;
+    let font = create_font(dpi, font_point_size)?;
     let up = cell_up("—");
     let down = cell_down("—");
     let cpu = cell_cpu("—");
@@ -172,6 +177,7 @@ pub fn install() -> anyhow::Result<()> {
             pos_x: i32::MIN,
             pos_y: i32::MIN,
             font,
+            font_point_size,
             dpi,
             light_text: !system_uses_light_theme().unwrap_or(false),
             theme_checked_at: Instant::now(),
@@ -217,6 +223,36 @@ pub fn set_enabled(enabled: bool) {
     });
 }
 
+/// 更新任务栏字体磅值（settings.toml）；与当前相同则 noop。
+pub fn set_font_point_size(font_point_size: u32) {
+    let font_point_size = clamp_font_point_size(font_point_size);
+    STATE.with(|cell| {
+        let mut guard = cell.borrow_mut();
+        let Some(state) = guard.as_mut() else {
+            return;
+        };
+        if state.font_point_size == font_point_size {
+            return;
+        }
+        let Ok(font) = create_font(state.dpi, font_point_size) else {
+            return;
+        };
+        unsafe {
+            let _ = DeleteObject(state.font.into());
+        }
+        state.font = font;
+        state.font_point_size = font_point_size;
+        if let Ok((w, h)) = measure_grid(state.font, &state.up, &state.down, &state.cpu, &state.ram)
+        {
+            state.width = w;
+            state.height = h;
+        }
+        if state.enabled {
+            relocate_and_paint(state, true);
+        }
+    });
+}
+
 pub fn update(physical: &MemorySection, cpu_network: &CpuNetworkSnapshot) {
     STATE.with(|cell| {
         let mut guard = cell.borrow_mut();
@@ -228,17 +264,22 @@ pub fn update(physical: &MemorySection, cpu_network: &CpuNetworkSnapshot) {
         }
 
         let dpi = taskbar_dpi();
-        let mut dpi_changed = false;
-        if dpi != state.dpi
-            && dpi > 0
-            && let Ok(font) = create_font(dpi)
-        {
+        let mut font_changed = false;
+        if dpi != state.dpi && dpi > 0 {
+            state.dpi = dpi;
+            font_changed = true;
+        }
+        if font_changed && let Ok(font) = create_font(state.dpi, state.font_point_size) {
             unsafe {
                 let _ = DeleteObject(state.font.into());
             }
             state.font = font;
-            state.dpi = dpi;
-            dpi_changed = true;
+            if let Ok((w, h)) =
+                measure_grid(state.font, &state.up, &state.down, &state.cpu, &state.ram)
+            {
+                state.width = w;
+                state.height = h;
+            }
         }
 
         let up = cell_up(&cpu_network.upload_label());
@@ -280,7 +321,7 @@ pub fn update(physical: &MemorySection, cpu_network: &CpuNetworkSnapshot) {
             }
         }
 
-        relocate_and_paint(state, text_changed || theme_changed || dpi_changed);
+        relocate_and_paint(state, text_changed || theme_changed || font_changed);
     });
 }
 
@@ -711,9 +752,14 @@ fn hkcu_dword(subkey: &str, value_name: &str) -> Option<u32> {
     Some(u32::from_le_bytes(data))
 }
 
-fn create_font(dpi: i32) -> anyhow::Result<HFONT> {
+fn clamp_font_point_size(pt: u32) -> i32 {
+    pt.clamp(8, 28) as i32
+}
+
+fn create_font(dpi: i32, point_size: i32) -> anyhow::Result<HFONT> {
     ensure_font_loaded();
-    let height = -((FONT_POINT_SIZE * dpi + 48) / 96);
+    let point_size = point_size.max(1);
+    let height = -((point_size * dpi + 48) / 96);
     let face = wide_null(FONT_FACE);
     let font = unsafe {
         CreateFontW(
@@ -991,7 +1037,7 @@ mod tests {
     #[test]
     fn measure_size_positive() {
         ensure_font_loaded();
-        let font = create_font(96).expect("font");
+        let font = create_font(96, DEFAULT_FONT_POINT_SIZE).expect("font");
         let (w, h) = measure_grid(font, "↑: 1.0 KB/s", "↓: 2.0 KB/s", "CPU: 10%", "RAM: 50%")
             .expect("extent");
         unsafe {
@@ -1019,7 +1065,7 @@ mod tests {
     #[test]
     fn glyph_ink_vertical_center() {
         ensure_font_loaded();
-        let font = create_font(96).expect("font");
+        let font = create_font(96, DEFAULT_FONT_POINT_SIZE).expect("font");
         unsafe {
             let screen = GetDC(None);
             assert!(!screen.is_invalid());

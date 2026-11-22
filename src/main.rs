@@ -47,7 +47,7 @@ fn main() {
         return;
     }
 
-    if let Err(e) = win32::taskbar_window::install() {
+    if let Err(e) = win32::taskbar_window::install(settings.taskbar_font_point_size) {
         log_msg(&format!("[taskbar-window] install failed: {e:#}"));
     } else {
         win32::taskbar_window::set_enabled(settings.show_taskbar_window);

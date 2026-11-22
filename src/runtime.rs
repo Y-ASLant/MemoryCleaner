@@ -268,6 +268,7 @@ impl Runtime {
         if !self.settings.show_taskbar_window {
             return;
         }
+        win32::taskbar_window::set_font_point_size(self.settings.taskbar_font_point_size);
         win32::taskbar_window::update(&self.physical, &self.cpu_network);
     }
 
